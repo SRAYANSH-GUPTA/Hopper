@@ -22,6 +22,7 @@ import {
   listMcpServerStatus as listMcpServerStatusService,
 } from "@services/tauri";
 import { expandCustomPromptText } from "@utils/customPrompts";
+import { consumePendingHandoff } from "@/features/context/contextStore";
 import {
   asString,
   extractReviewThreadId,
@@ -79,6 +80,7 @@ type UseThreadMessagingOptions = {
   safeMessageActivity: () => void;
   onDebug?: (entry: DebugEntry) => void;
   pushThreadErrorMessage: (threadId: string, message: string) => void;
+  startThreadForWorkspace?: (workspaceId: string) => Promise<string | null>;
   ensureThreadForActiveWorkspace: () => Promise<string | null>;
   ensureThreadForWorkspace: (workspaceId: string) => Promise<string | null>;
   refreshThread: (workspaceId: string, threadId: string) => Promise<string | null>;
@@ -123,6 +125,7 @@ export function useThreadMessaging({
   safeMessageActivity,
   onDebug,
   pushThreadErrorMessage,
+  startThreadForWorkspace,
   ensureThreadForActiveWorkspace,
   ensureThreadForWorkspace,
   refreshThread,
@@ -143,15 +146,19 @@ export function useThreadMessaging({
       if (!messageText && images.length === 0) {
         return { status: "blocked" };
       }
-      let finalText = messageText;
+      // Prepend handoff context if provider was just switched.
+      const handoff = consumePendingHandoff(workspace.id);
+      let finalText = handoff
+        ? `${handoff}\n\n---\n\n**User:** ${messageText}`
+        : messageText;
       if (!options?.skipPromptExpansion) {
-        const promptExpansion = expandCustomPromptText(messageText, customPrompts);
+        const promptExpansion = expandCustomPromptText(finalText, customPrompts);
         if (promptExpansion && "error" in promptExpansion) {
           pushThreadErrorMessage(threadId, promptExpansion.error);
           safeMessageActivity();
           return { status: "blocked" };
         }
-        finalText = promptExpansion?.expanded ?? messageText;
+        finalText = promptExpansion?.expanded ?? finalText;
       }
       const isProcessing = threadStatusById[threadId]?.isProcessing ?? false;
       const activeTurnId = activeTurnIdByThread[threadId] ?? null;
@@ -274,6 +281,26 @@ export function useThreadMessaging({
         });
         if (rpcError) {
           if (requestMode !== "steer") {
+            // Auto-recover: Codex daemon doesn't know this thread ID (e.g. after
+            // switching back from Claude, which used frontend-generated UUIDs).
+            // Create a fresh Codex thread and retry once with the processed text.
+            if (
+              rpcError.toLowerCase().includes("thread not found") &&
+              startThreadForWorkspace
+            ) {
+              const newThreadId = await startThreadForWorkspace(workspace.id);
+              if (newThreadId && newThreadId !== threadId) {
+                dispatch({
+                  type: "setActiveThreadId",
+                  workspaceId: workspace.id,
+                  threadId: newThreadId,
+                });
+                return sendMessageToThread(workspace, newThreadId, finalText, images, {
+                  ...options,
+                  skipPromptExpansion: true,
+                });
+              }
+            }
             markProcessing(threadId, false);
             setActiveTurnId(threadId, null);
             pushThreadErrorMessage(threadId, `Turn failed to start: ${rpcError}`);
@@ -357,6 +384,7 @@ export function useThreadMessaging({
       recordThreadActivity,
       safeMessageActivity,
       setActiveTurnId,
+      startThreadForWorkspace,
       steerEnabled,
       threadStatusById,
     ],

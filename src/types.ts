@@ -239,6 +239,7 @@ export type LocalAgentProvider = "codex" | "claude";
 
 export type AppSettings = {
   localProvider: LocalAgentProvider;
+  claudeModelId: string | null;
   codexBin: string | null;
   codexArgs: string | null;
   backendMode: BackendMode;

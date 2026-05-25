@@ -407,6 +407,7 @@ pub(crate) async fn send_user_message(
                 .map(|w| w.path.clone())
                 .unwrap_or_default()
         };
+        let model_id = state.app_settings.lock().await.claude_model_id.clone();
         let event_sink = TauriEventSink::new(app.clone());
         return claude::send_message_claude(
             Arc::clone(&state.claude_state),
@@ -414,6 +415,7 @@ pub(crate) async fn send_user_message(
             workspace_cwd,
             thread_id,
             text,
+            model_id,
             event_sink,
         )
         .await;
@@ -965,7 +967,7 @@ pub(crate) async fn generate_commit_message(
                 AppServerEvent {
                     workspace_id: workspace_id.to_string(),
                     message: json!({
-                        "method": "codex/backgroundThread",
+                        "method": "agent/backgroundThread",
                         "params": {
                             "threadId": thread_id,
                             "action": "hide"
@@ -1006,7 +1008,7 @@ pub(crate) async fn generate_run_metadata(
                 AppServerEvent {
                     workspace_id: workspace_id.to_string(),
                     message: json!({
-                        "method": "codex/backgroundThread",
+                        "method": "agent/backgroundThread",
                         "params": {
                             "threadId": thread_id,
                             "action": "hide"
@@ -1048,7 +1050,7 @@ pub(crate) async fn generate_agent_description(
                 AppServerEvent {
                     workspace_id: workspace_id.to_string(),
                     message: json!({
-                        "method": "codex/backgroundThread",
+                        "method": "agent/backgroundThread",
                         "params": {
                             "threadId": thread_id,
                             "action": "hide"

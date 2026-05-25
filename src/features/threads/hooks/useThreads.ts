@@ -785,6 +785,7 @@ export function useThreads({
     safeMessageActivity,
     onDebug,
     pushThreadErrorMessage,
+    startThreadForWorkspace,
     ensureThreadForActiveWorkspace,
     ensureThreadForWorkspace,
     refreshThread,

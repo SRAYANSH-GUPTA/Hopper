@@ -1366,7 +1366,7 @@ fn emit_background_thread_hide(event_sink: &DaemonEventSink, workspace_id: &str,
     event_sink.emit_app_server_event(AppServerEvent {
         workspace_id: workspace_id.to_string(),
         message: json!({
-            "method": "codex/backgroundThread",
+            "method": "agent/backgroundThread",
             "params": {
                 "threadId": thread_id,
                 "action": "hide"

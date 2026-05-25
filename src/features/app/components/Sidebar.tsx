@@ -1,5 +1,6 @@
 import type {
   AccountSnapshot,
+  ModelOption,
   RequestUserInputRequest,
   RateLimitSnapshot,
   ThreadListOrganizeMode,
@@ -155,6 +156,8 @@ type SidebarProps = {
   onWorkspaceDragEnter: (event: React.DragEvent<HTMLElement>) => void;
   onWorkspaceDragLeave: (event: React.DragEvent<HTMLElement>) => void;
   onWorkspaceDrop: (event: React.DragEvent<HTMLElement>) => void;
+  /** Available Codex models — already fetched and connection-aware from MainApp's useModels */
+  codexModels?: ModelOption[];
 };
 
 export const Sidebar = memo(function Sidebar({
@@ -216,6 +219,7 @@ export const Sidebar = memo(function Sidebar({
   onWorkspaceDragEnter,
   onWorkspaceDragLeave,
   onWorkspaceDrop,
+  codexModels = [],
 }: SidebarProps) {
   const [expandedWorkspaces, setExpandedWorkspaces] = useState(
     new Set<string>(),
@@ -1028,6 +1032,10 @@ export const Sidebar = memo(function Sidebar({
         </div>
       </div>
       <SidebarBottomRail
+        workspaceIds={workspaces.map((w) => w.id)}
+        activeWorkspaceId={activeWorkspaceId}
+        activeThreadId={activeThreadId}
+        codexModels={codexModels}
         sessionPercent={sessionPercent}
         weeklyPercent={weeklyPercent}
         sessionResetLabel={sessionResetLabel}

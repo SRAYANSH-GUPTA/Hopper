@@ -161,6 +161,8 @@ const baseSettings: AppSettings = {
   ],
   selectedOpenAppId: "vscode",
   globalWorktreesFolder: null,
+  localProvider: "codex",
+  claudeModelId: null,
 };
 
 const createDoctorResult = () => ({

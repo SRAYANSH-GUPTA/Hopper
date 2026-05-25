@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { AppSettings, ComposerEditorSettings, WorkspaceInfo } from "@/types";
+import type { AppSettings, ComposerEditorSettings, ModelOption, WorkspaceInfo } from "@/types";
 import type { ThreadState } from "@/features/threads/hooks/useThreadsReducer";
 import type { WorkspaceLaunchScriptsState } from "@app/hooks/useWorkspaceLaunchScripts";
 import { REMOTE_THREAD_POLL_INTERVAL_MS } from "@app/hooks/useRemoteThreadRefreshOnFocus";
@@ -144,6 +144,8 @@ type UseMainAppLayoutSurfacesArgs = {
   };
   launchScriptsState: WorkspaceLaunchScriptsState | undefined;
   models: ComposerProps["models"];
+  /** Full ModelOption list for the sidebar — same data as models but with all fields */
+  codexModels: ModelOption[];
   selectedModelId: ComposerProps["selectedModelId"];
   onSelectModel: ComposerProps["onSelectModel"];
   collaborationModes: ComposerProps["collaborationModes"];
@@ -306,6 +308,7 @@ function buildPrimarySurface({
   launchScriptState,
   launchScriptsState,
   models,
+  codexModels,
   selectedModelId,
   onSelectModel,
   collaborationModes,
@@ -435,6 +438,7 @@ function buildPrimarySurface({
       onWorkspaceDragEnter: workspaceDrop.onWorkspaceDragEnter,
       onWorkspaceDragLeave: workspaceDrop.onWorkspaceDragLeave,
       onWorkspaceDrop: workspaceDrop.onWorkspaceDrop,
+      codexModels,
     },
     messagesProps: {
       items: activeItems,
@@ -1017,6 +1021,7 @@ export function useMainAppLayoutSurfaces({
   launchScriptState,
   launchScriptsState,
   models,
+  codexModels,
   selectedModelId,
   onSelectModel,
   collaborationModes,
@@ -1179,6 +1184,7 @@ export function useMainAppLayoutSurfaces({
     launchScriptState,
     launchScriptsState,
     models,
+    codexModels,
     selectedModelId,
     onSelectModel,
     collaborationModes,

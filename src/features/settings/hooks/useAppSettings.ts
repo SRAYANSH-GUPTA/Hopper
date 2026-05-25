@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppSettings } from "@/types";
 import { getAppSettings, runCodexDoctor, updateAppSettings } from "@services/tauri";
+import { PROVIDER_MAP, DEFAULT_PROVIDER_ID } from "@/features/app/providers";
 import { clampUiScale, UI_SCALE_DEFAULT } from "@utils/uiScale";
 import { CHAT_SCROLLBACK_DEFAULT, normalizeChatHistoryScrollbackItems } from "@utils/chatScrollback";
 import {
@@ -135,6 +136,7 @@ function buildDefaultSettings(): AppSettings {
   };
   return {
     localProvider: "codex",
+    claudeModelId: null,
     codexBin: null,
     codexArgs: null,
     backendMode: isMobile ? "remote" : "local",
@@ -244,7 +246,10 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
     ...remoteBackendSettings,
-    localProvider: settings.localProvider === "claude" ? "claude" : "codex",
+    localProvider: PROVIDER_MAP.has(settings.localProvider)
+      ? settings.localProvider
+      : (DEFAULT_PROVIDER_ID as AppSettings["localProvider"]),
+    claudeModelId: settings.claudeModelId?.trim() ? settings.claudeModelId.trim() : null,
     codexBin: settings.codexBin?.trim() ? settings.codexBin.trim() : null,
     codexArgs: settings.codexArgs?.trim() ? settings.codexArgs.trim() : null,
     uiScale: clampUiScale(settings.uiScale),

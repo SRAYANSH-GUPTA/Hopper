@@ -12,6 +12,7 @@ import {
   SettingsToggleRow,
 } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { FileEditorCard } from "@/features/shared/components/FileEditorCard";
+import { PROVIDERS, DEFAULT_PROVIDER_ID } from "@/features/app/providers";
 
 type SettingsCodexSectionProps = {
   appSettings: AppSettings;
@@ -227,10 +228,13 @@ export function SettingsCodexSection({
     selectedEffort,
   ]);
 
+  const activeProvider = appSettings.localProvider ?? DEFAULT_PROVIDER_ID;
+  const isCodexProvider = activeProvider === "codex";
+
   return (
     <SettingsSection
-      title="Codex"
-      subtitle="Configure the Codex CLI used by CodexMonitor and validate the install."
+      title="Local Agent"
+      subtitle="Configure the local agent CLI and default parameters."
     >
       <div className="settings-field">
         <label className="settings-field-label" htmlFor="local-provider">
@@ -240,26 +244,29 @@ export function SettingsCodexSection({
           <select
             id="local-provider"
             className="settings-select"
-            value={appSettings.localProvider ?? "codex"}
+            value={activeProvider}
             onChange={(event) =>
               void onUpdateAppSettings({
                 ...appSettings,
-                localProvider: event.target.value as "codex" | "claude",
+                localProvider: event.target.value as AppSettings["localProvider"],
               })
             }
           >
-            <option value="codex">Codex</option>
-            <option value="claude">Claude</option>
+            {PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
           </select>
         </div>
         <div className="settings-help">
-          Choose whether CodexMonitor uses the Codex CLI or the Claude CLI as the local agent. Changes take effect immediately — reconnect a workspace to apply.
+          Choose which local agent CLI to use. Changes take effect immediately — reconnect a workspace to apply.
         </div>
       </div>
+      {isCodexProvider && (
+      <>
       <div className="settings-divider" />
       <div className="settings-field">
         <label className="settings-field-label" htmlFor="codex-path">
-          Default Codex path
+          Codex path
         </label>
         <div className="settings-field-row">
           <input
@@ -288,7 +295,7 @@ export function SettingsCodexSection({
         </div>
         <div className="settings-help">Leave empty to use the system PATH resolution.</div>
         <label className="settings-field-label" htmlFor="codex-args">
-          Default Codex args
+          Codex args
         </label>
         <div className="settings-field-row">
           <input
@@ -310,7 +317,7 @@ export function SettingsCodexSection({
           Extra flags passed before <code>app-server</code>. Use quotes for values with spaces.
         </div>
         <div className="settings-help">
-          These settings apply to the shared Codex app-server used across all connected workspaces.
+          These settings apply to the shared agent server used across all connected workspaces.
         </div>
         <div className="settings-help">
           Per-thread override processing ignores unsupported flags: <code>-m</code>/
@@ -360,7 +367,7 @@ export function SettingsCodexSection({
         {doctorState.result && (
           <div className={`settings-doctor ${doctorState.result.ok ? "ok" : "error"}`}>
             <div className="settings-doctor-title">
-              {doctorState.result.ok ? "Codex looks good" : "Codex issue detected"}
+              {doctorState.result.ok ? "Agent looks good" : "Agent issue detected"}
             </div>
             <div className="settings-doctor-body">
               <div>Version: {doctorState.result.version ?? "unknown"}</div>
@@ -387,9 +394,9 @@ export function SettingsCodexSection({
             <div className="settings-doctor-title">
               {codexUpdateState.result.ok
                 ? codexUpdateState.result.upgraded
-                  ? "Codex updated"
-                  : "Codex already up-to-date"
-                : "Codex update failed"}
+                  ? "Updated successfully"
+                  : "Already up-to-date"
+                : "Update failed"}
             </div>
             <div className="settings-doctor-body">
               <div>Method: {codexUpdateState.result.method}</div>
@@ -413,6 +420,8 @@ export function SettingsCodexSection({
           </div>
         )}
       </div>
+      </>
+      )}
 
       <div className="settings-divider" />
       <div className="settings-field-label settings-field-label--section">
@@ -548,12 +557,12 @@ export function SettingsCodexSection({
         </div>
       </div>
 
-      <FileEditorCard
+      {isCodexProvider && <FileEditorCard
         title="Global AGENTS.md"
         meta={globalAgentsMeta}
         error={globalAgentsError}
         value={globalAgentsContent}
-        placeholder="Add global instructions for Codex agents…"
+        placeholder="Add global instructions for AI agents…"
         disabled={globalAgentsLoading}
         refreshDisabled={globalAgentsRefreshDisabled}
         saveDisabled={globalAgentsSaveDisabled}
@@ -577,14 +586,14 @@ export function SettingsCodexSection({
           textarea: "settings-agents-textarea",
           help: "settings-help",
         }}
-      />
+      />}
 
-      <FileEditorCard
+      {isCodexProvider && <FileEditorCard
         title="Global config.toml"
         meta={globalConfigMeta}
         error={globalConfigError}
         value={globalConfigContent}
-        placeholder="Edit the global Codex config.toml…"
+        placeholder="Edit the global config.toml…"
         disabled={globalConfigLoading}
         refreshDisabled={globalConfigRefreshDisabled}
         saveDisabled={globalConfigSaveDisabled}
@@ -608,7 +617,7 @@ export function SettingsCodexSection({
           textarea: "settings-agents-textarea",
           help: "settings-help",
         }}
-      />
+      />}
     </SettingsSection>
   );
 }

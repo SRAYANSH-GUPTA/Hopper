@@ -379,6 +379,8 @@ pub(crate) struct RemoteBackendTarget {
 pub(crate) struct AppSettings {
     #[serde(default, rename = "localProvider")]
     pub(crate) local_provider: LocalAgentProvider,
+    #[serde(default, rename = "claudeModelId")]
+    pub(crate) claude_model_id: Option<String>,
     #[serde(default, rename = "codexBin")]
     pub(crate) codex_bin: Option<String>,
     #[serde(default, rename = "codexArgs")]
@@ -1134,6 +1136,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             local_provider: LocalAgentProvider::Codex,
+            claude_model_id: None,
             codex_bin: None,
             codex_args: None,
             backend_mode: default_backend_mode(),

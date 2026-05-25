@@ -84,7 +84,7 @@ export function WorktreeCard({
               {!worktree.connected && (
                 <span
                   className="connect"
-                  title="Connect workspace context to the shared Codex server"
+                  title="Connect workspace to the local agent"
                   onClick={(event) => {
                     event.stopPropagation();
                     onConnectWorkspace(worktree);

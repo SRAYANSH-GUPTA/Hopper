@@ -389,7 +389,7 @@ fn should_suppress_hidden_thread_event(
     !has_result_or_error
         && !matches!(
             method_name,
-            Some("thread/archived") | Some("codex/backgroundThread")
+            Some("thread/archived") | Some("agent/backgroundThread")
         )
 }
 
@@ -808,7 +808,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                     let payload = AppServerEvent {
                         workspace_id: fallback_workspace_id.clone(),
                         message: json!({
-                            "method": "codex/parseError",
+                            "method": "agent/parseError",
                             "params": { "error": err.to_string(), "raw": line },
                         }),
                     };
@@ -896,7 +896,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                 .unwrap_or_else(|| fallback_workspace_id.clone());
 
             if let Some(ref tid) = thread_id {
-                if method_name == Some("codex/backgroundThread") {
+                if method_name == Some("agent/backgroundThread") {
                     let action = value
                         .get("params")
                         .and_then(|params| params.get("action"))
@@ -912,7 +912,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                     let payload = AppServerEvent {
                         workspace_id: routed_workspace_id.clone(),
                         message: json!({
-                            "method": "codex/backgroundThread",
+                            "method": "agent/backgroundThread",
                             "params": {
                                 "threadId": tid,
                                 "action": "hide"
@@ -1062,7 +1062,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
             let payload = AppServerEvent {
                 workspace_id: workspace_id.clone(),
                 message: json!({
-                    "method": "codex/stderr",
+                    "method": "agent/stderr",
                     "params": { "message": line },
                 }),
             };
@@ -1093,7 +1093,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
     let payload = AppServerEvent {
         workspace_id: entry.id.clone(),
         message: json!({
-            "method": "codex/connected",
+            "method": "agent/connected",
             "params": { "workspaceId": entry.id.clone() }
         }),
     };
@@ -1381,7 +1381,7 @@ mod tests {
             false
         ));
         assert!(!should_suppress_hidden_thread_event(
-            Some("codex/backgroundThread"),
+            Some("agent/backgroundThread"),
             false
         ));
     }

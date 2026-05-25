@@ -112,7 +112,7 @@ pub(crate) fn connect_workspace_claude<E: EventSink>(workspace_id: &str, event_s
     event_sink.emit_app_server_event(AppServerEvent {
         workspace_id: workspace_id.to_string(),
         message: json!({
-            "method": "codex/connected",
+            "method": "agent/connected",
             "params": { "workspaceId": workspace_id }
         }),
     });
@@ -211,6 +211,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     workspace_cwd: String,
     thread_id: String,
     text: String,
+    model_id: Option<String>,
     event_sink: E,
 ) -> Result<Value, String> {
     // Ensure thread exists in state
@@ -273,6 +274,11 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     if let Some(ref sid) = session_id {
         cmd.arg("--resume").arg(sid);
     }
+    let resolved_model = model_id
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("claude-sonnet-4-6");
+    cmd.arg("--model").arg(resolved_model);
     cmd.arg("-p").arg(&text);
     if !workspace_cwd.is_empty() {
         cmd.current_dir(&workspace_cwd);
@@ -284,6 +290,10 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         .spawn()
         .map_err(|e| format!("Failed to spawn claude: {e}"))?;
     let stdout = child.stdout.take().ok_or("missing stdout")?;
+
+    // Clone before the async move so originals are available for the return value.
+    let thread_id_ret = thread_id.clone();
+    let turn_id_ret = turn_id.clone();
 
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
@@ -521,5 +531,12 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         let _ = child.wait().await;
     });
 
-    Ok(json!({ "ok": true }))
+    Ok(json!({
+        "result": {
+            "turn": {
+                "id": turn_id_ret,
+                "threadId": thread_id_ret,
+            }
+        }
+    }))
 }

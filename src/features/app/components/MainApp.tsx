@@ -51,6 +51,7 @@ import { useMainAppWorkspaceActions } from "@app/hooks/useMainAppWorkspaceAction
 import { useMainAppWorkspaceLifecycle } from "@app/hooks/useMainAppWorkspaceLifecycle";
 import { useMainAppMobileThreadRefresh } from "@app/hooks/useMainAppMobileThreadRefresh";
 import { useHomeAccount } from "@app/hooks/useHomeAccount";
+import { useContextHandoff } from "@/features/context/useContextHandoff";
 import type {
   ComposerEditorSettings,
   ServiceTier,
@@ -120,6 +121,10 @@ export default function MainApp() {
     clearDebugEntries,
     shouldReduceTransparency,
   } = useAppBootstrapOrchestration();
+
+  // Track conversation turns for cross-provider context handoff
+  useContextHandoff(appSettings.localProvider ?? "codex");
+
   const {
     threadListSortKey,
     setThreadListSortKey,
@@ -1698,6 +1703,7 @@ export default function MainApp() {
     launchScriptState,
     launchScriptsState,
     models,
+    codexModels: models,
     selectedModelId,
     onSelectModel: handleSelectModel,
     collaborationModes,

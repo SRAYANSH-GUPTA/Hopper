@@ -52,7 +52,7 @@ export function AboutView() {
           {version ? `Version ${version}` : "Version —"}
         </div>
         <div className="about-tagline">
-          Monitor the situation of your Codex agents
+          Monitor your local AI agents
         </div>
         <div className="about-divider" />
         <div className="about-links">
@@ -72,7 +72,7 @@ export function AboutView() {
             Twitter
           </button>
         </div>
-        <div className="about-footer">Made with ♥ by Codex & Dimillian</div>
+        <div className="about-footer">Made with ♥ by Dimillian</div>
       </div>
     </div>
   );
