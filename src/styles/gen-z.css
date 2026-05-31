@@ -149,6 +149,143 @@
   padding-top: 8px;
 }
 
+/* Marketplace panel — VS Code Extensions style */
+.sidebar-marketplace-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+/* Override marketplace internal layout for sidebar */
+.sidebar-marketplace-panel .marketplace-view {
+  padding: 12px 10px 24px !important;
+  gap: 14px !important;
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+.sidebar-marketplace-panel .marketplace-title {
+  font-size: 10px !important;
+  font-weight: var(--gz-weight-bold) !important;
+  letter-spacing: 0.9px !important;
+  text-transform: uppercase !important;
+  color: rgba(255,255,255,0.28) !important;
+}
+
+.sidebar-marketplace-panel .marketplace-subtitle {
+  display: none !important;
+}
+
+.sidebar-marketplace-panel .marketplace-providers {
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+}
+
+.sidebar-marketplace-panel .marketplace-providers-label {
+  display: none !important;
+}
+
+.sidebar-marketplace-panel .marketplace-provider-chip {
+  font-size: 10px !important;
+  padding: 3px 8px !important;
+  border-radius: var(--gz-radius-pill) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+  background: rgba(255,255,255,0.04) !important;
+  color: rgba(255,255,255,0.45) !important;
+}
+
+.sidebar-marketplace-panel .marketplace-provider-chip.is-selected {
+  background: var(--gz-accent-soft) !important;
+  border-color: rgba(124,110,255,0.3) !important;
+  color: var(--gz-accent) !important;
+}
+
+/* Category filter row */
+.sidebar-marketplace-panel .marketplace-cats {
+  gap: 4px !important;
+  flex-wrap: wrap !important;
+}
+
+.sidebar-marketplace-panel .marketplace-cat-btn {
+  font-size: 10px !important;
+  padding: 3px 8px !important;
+  border-radius: var(--gz-radius-pill) !important;
+}
+
+/* Search bar */
+.sidebar-marketplace-panel .marketplace-search-input {
+  font-size: 12px !important;
+  border-radius: var(--gz-radius-sm) !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  background: rgba(255,255,255,0.04) !important;
+  color: rgba(255,255,255,0.85) !important;
+  padding: 7px 10px !important;
+}
+
+.sidebar-marketplace-panel .marketplace-search-input::placeholder {
+  color: rgba(255,255,255,0.22) !important;
+}
+
+/* Skill cards — full width in sidebar */
+.sidebar-marketplace-panel .marketplace-grid {
+  grid-template-columns: 1fr !important;
+  gap: 6px !important;
+}
+
+.sidebar-marketplace-panel .marketplace-card {
+  border-radius: var(--gz-radius-sm) !important;
+  border: 1px solid rgba(255,255,255,0.07) !important;
+  background: rgba(255,255,255,0.025) !important;
+  padding: 10px 12px !important;
+  gap: 8px !important;
+}
+
+.sidebar-marketplace-panel .marketplace-card:hover {
+  border-color: rgba(124,110,255,0.25) !important;
+  background: rgba(124,110,255,0.04) !important;
+}
+
+.sidebar-marketplace-panel .marketplace-card-name {
+  font-size: 12px !important;
+  font-weight: var(--gz-weight-label) !important;
+  color: rgba(255,255,255,0.85) !important;
+}
+
+.sidebar-marketplace-panel .marketplace-card-desc {
+  font-size: 11px !important;
+  color: rgba(255,255,255,0.3) !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+}
+
+.sidebar-marketplace-panel .marketplace-btn--install {
+  font-size: 10px !important;
+  padding: 4px 10px !important;
+  border-radius: var(--gz-radius-pill) !important;
+  background: var(--gz-accent) !important;
+  border-color: var(--gz-accent) !important;
+}
+
+.sidebar-marketplace-panel .marketplace-btn--uninstall {
+  font-size: 10px !important;
+  padding: 4px 10px !important;
+  border-radius: var(--gz-radius-pill) !important;
+}
+
+/* Detail panel */
+.sidebar-marketplace-panel .marketplace-detail {
+  border-radius: var(--gz-radius-sm) !important;
+  border: 1px solid rgba(255,255,255,0.07) !important;
+  background: rgba(255,255,255,0.02) !important;
+  padding: 12px !important;
+  font-size: 12px !important;
+}
+
 /* Right panel is fully removed — hide any lingering references */
 .right-panel,
 .right-panel-resizer,
@@ -593,34 +730,194 @@
 
 /* ── Composer dock ────────────────────────────────────────────────────────── */
 
+/* Dock wrapper — dark glass, no border-top, subtle blur */
 .composer {
-  padding-bottom: 20px !important;
+  background: rgba(8, 8, 12, 0.88) !important;
+  backdrop-filter: blur(24px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.2) !important;
+  border-top: 1px solid rgba(255,255,255,0.055) !important;
+  padding: 14px var(--main-panel-padding) 24px !important;
+  gap: 10px !important;
 }
 
+/* Unified composer card */
 .composer-box {
-  border-color: rgba(255,255,255,0.1) !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(255,255,255,0.09) !important;
+  background: rgba(255,255,255,0.03) !important;
   box-shadow:
-    0 0 0 1px rgba(255,255,255,0.04),
-    0 8px 32px rgba(0,0,0,0.32),
-    0 2px 8px rgba(0,0,0,0.2) !important;
+    inset 0 1px 0 rgba(255,255,255,0.05),
+    0 8px 32px rgba(0,0,0,0.4) !important;
+  overflow: hidden !important;
 }
 
-.composer-box textarea {
+/* Textarea */
+.composer-box textarea,
+.composer textarea {
   font-size: 14px !important;
   font-weight: var(--gz-weight-body) !important;
   line-height: 1.65 !important;
+  color: rgba(255,255,255,0.88) !important;
 }
 
-.composer-box textarea::placeholder {
+.composer-box textarea::placeholder,
+.composer textarea::placeholder {
+  color: rgba(255,255,255,0.2) !important;
   font-weight: 400 !important;
-  color: rgba(255,255,255,0.22) !important;
 }
 
-/* Meta bar selects */
+/* Input area padding */
+.composer-box .composer-input-area {
+  padding: 16px 16px 8px !important;
+}
+
+/* Meta bar — the strip with selects + send btn */
+.composer-bar {
+  border-top: 1px solid rgba(255,255,255,0.06) !important;
+  padding: 10px 16px 14px !important;
+  gap: 6px !important;
+  background: transparent !important;
+}
+
+.composer-box .composer-bar {
+  padding: 10px 18px 16px !important;
+}
+
+/* Each select wrapper chip (Plan, model, effort…) */
+.open-app-button,
+.workspace-home-control .open-app-button {
+  border-radius: 8px !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  background: rgba(255,255,255,0.04) !important;
+  color: rgba(255,255,255,0.55) !important;
+  transition: background 0.13s, border-color 0.13s, color 0.13s !important;
+}
+
+.open-app-button:hover {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: rgba(255,255,255,0.14) !important;
+  color: rgba(255,255,255,0.85) !important;
+}
+
+/* Selects inside the chips */
 .composer-select {
   font-size: 11.5px !important;
   font-weight: var(--gz-weight-label) !important;
-  letter-spacing: 0.1px !important;
+  letter-spacing: 0.05px !important;
+  color: rgba(255,255,255,0.65) !important;
+}
+
+/* Circular action buttons (expand ↑, mic 🎤) */
+.composer-action {
+  border-radius: 10px !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  background: rgba(255,255,255,0.04) !important;
+  color: rgba(255,255,255,0.45) !important;
+  width: 32px !important;
+  height: 32px !important;
+  transition: background 0.13s, border-color 0.13s, color 0.13s !important;
+}
+
+.composer-action:hover:not(:disabled) {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: rgba(255,255,255,0.14) !important;
+  color: rgba(255,255,255,0.9) !important;
+}
+
+.composer-action.is-stop {
+  border-color: rgba(255,107,107,0.35) !important;
+  background: rgba(255,107,107,0.08) !important;
+  color: rgba(255,140,140,0.85) !important;
+}
+
+.composer-action.is-stop:hover {
+  background: rgba(255,107,107,0.15) !important;
+}
+
+.composer-action--mic.is-active {
+  border-color: rgba(124,110,255,0.4) !important;
+  background: rgba(124,110,255,0.12) !important;
+  color: var(--gz-accent) !important;
+}
+
+/* Attach button */
+.composer-attach {
+  border-radius: 10px !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  background: rgba(255,255,255,0.04) !important;
+  color: rgba(255,255,255,0.4) !important;
+}
+
+.composer-attach:hover:not(:disabled) {
+  background: rgba(255,255,255,0.08) !important;
+  color: rgba(255,255,255,0.85) !important;
+}
+
+/* open-app-button chips in meta bar (Plan, model, effort, approval) */
+.composer .open-app-button,
+.composer-bar .open-app-button {
+  border-radius: 8px !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  background: rgba(255,255,255,0.04) !important;
+  overflow: hidden !important;
+}
+
+.composer .open-app-button:hover,
+.composer-bar .open-app-button:hover {
+  background: rgba(255,255,255,0.07) !important;
+  border-color: rgba(255,255,255,0.13) !important;
+}
+
+.composer .open-app-label,
+.composer-bar .open-app-label {
+  font-size: 11.5px !important;
+  font-weight: var(--gz-weight-label) !important;
+  color: rgba(255,255,255,0.6) !important;
+  gap: 5px !important;
+}
+
+.composer .open-app-toggle,
+.composer-bar .open-app-toggle {
+  border-left: 1px solid rgba(255,255,255,0.07) !important;
+  color: rgba(255,255,255,0.3) !important;
+  padding: 6px 7px !important;
+}
+
+.composer .open-app-action,
+.composer-bar .open-app-action {
+  padding: 6px 10px !important;
+}
+
+/* Suggestions popover */
+.composer-suggestions {
+  background: rgba(12,12,18,0.96) !important;
+  border: 1px solid rgba(255,255,255,0.09) !important;
+  border-radius: var(--gz-radius-md) !important;
+  backdrop-filter: blur(16px) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+}
+
+.composer-suggestion:hover,
+.composer-suggestion.is-active {
+  background: rgba(255,255,255,0.05) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
+
+.composer-suggestion-title {
+  font-size: 12px !important;
+  font-weight: var(--gz-weight-label) !important;
+  color: rgba(255,255,255,0.85) !important;
+}
+
+.composer-suggestion-description {
+  color: rgba(255,255,255,0.3) !important;
+}
+
+.composer-suggestion-section {
+  font-size: 9px !important;
+  font-weight: var(--gz-weight-bold) !important;
+  letter-spacing: 0.9px !important;
+  color: rgba(255,255,255,0.25) !important;
 }
 
 /* ── Provider toggle — Claude / Codex pill ────────────────────────────────── */

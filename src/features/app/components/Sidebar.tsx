@@ -14,6 +14,8 @@ import { FolderOpen } from "lucide-react";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch";
 import Folders from "lucide-react/dist/esm/icons/folders";
 import ListChecks from "lucide-react/dist/esm/icons/list-checks";
+import Store from "lucide-react/dist/esm/icons/store";
+import { MarketplaceView } from "../../marketplace/components/MarketplaceView";
 import { SidebarBottomRail } from "./SidebarBottomRail";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarSearchBar } from "./SidebarSearchBar";
@@ -232,7 +234,7 @@ export const Sidebar = memo(function Sidebar({
   gitPanelNode,
   planPanelNode,
 }: SidebarProps) {
-  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan">("explorer");
+  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "marketplace">("explorer");
   const [expandedWorkspaces, setExpandedWorkspaces] = useState(
     new Set<string>(),
   );
@@ -930,15 +932,30 @@ export const Sidebar = memo(function Sidebar({
               <ListChecks size={20} aria-hidden />
             </button>
           )}
+          <button
+            type="button"
+            className={`sidebar-activity-btn ds-tooltip-trigger${activeView === "marketplace" ? " is-active" : ""}`}
+            onClick={() => setActiveView("marketplace")}
+            aria-label="Extensions"
+            aria-pressed={activeView === "marketplace"}
+            data-tooltip="Extensions"
+            data-tooltip-placement="right"
+          >
+            <Store size={20} aria-hidden />
+          </button>
         </div>
       </div>
 
-      {/* Sidebar panel — switches between Explorer and Source Control */}
+      {/* Sidebar panel — switches between Explorer, Git, Plan, Marketplace */}
       <div className="sidebar-panel">
         {activeView === "git" && gitPanelNode ? (
           <div className="sidebar-git-panel">{gitPanelNode}</div>
         ) : activeView === "plan" && planPanelNode ? (
           <div className="sidebar-git-panel">{planPanelNode}</div>
+        ) : activeView === "marketplace" ? (
+          <div className="sidebar-marketplace-panel">
+            <MarketplaceView />
+          </div>
         ) : (
           <>
             <SidebarHeader
