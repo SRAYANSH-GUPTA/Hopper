@@ -1252,6 +1252,30 @@ export async function marketplaceUninstall(
   });
 }
 
+// ─── MCP Servers ──────────────────────────────────────────────────────────────
+
+export type McpServerConfig = {
+  command: string;
+  args: string[];
+  env?: Record<string, string> | null;
+};
+
+export async function mcpListServers(): Promise<Record<string, McpServerConfig>> {
+  return invoke<Record<string, McpServerConfig>>("mcp_list_servers");
+}
+
+export async function mcpAddServer(id: string, config: McpServerConfig): Promise<void> {
+  return invoke("mcp_add_server", { id, config });
+}
+
+export async function mcpRemoveServer(id: string): Promise<void> {
+  return invoke("mcp_remove_server", { id });
+}
+
+export async function readTextFile(path: string): Promise<string> {
+  return invoke<string>("read_text_file", { path });
+}
+
 function camelCaseSkill(r: Record<string, unknown>): MarketplaceSkill {
   return {
     id: r.id as string,

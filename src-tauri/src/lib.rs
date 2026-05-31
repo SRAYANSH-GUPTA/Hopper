@@ -9,6 +9,7 @@ use tauri::WindowEvent;
 mod backend;
 mod claude;
 mod marketplace;
+mod mcp;
 mod codex;
 mod daemon_binary;
 mod dictation;
@@ -316,7 +317,11 @@ pub fn run() {
             marketplace::marketplace_search,
             marketplace::marketplace_install,
             marketplace::marketplace_installed,
-            marketplace::marketplace_uninstall
+            marketplace::marketplace_uninstall,
+            mcp::mcp_list_servers,
+            mcp::mcp_add_server,
+            mcp::mcp_remove_server,
+            mcp::read_text_file
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");

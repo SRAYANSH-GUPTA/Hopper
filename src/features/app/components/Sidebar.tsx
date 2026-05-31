@@ -15,7 +15,9 @@ import GitBranch from "lucide-react/dist/esm/icons/git-branch";
 import Folders from "lucide-react/dist/esm/icons/folders";
 import ListChecks from "lucide-react/dist/esm/icons/list-checks";
 import Store from "lucide-react/dist/esm/icons/store";
+import Plug from "lucide-react/dist/esm/icons/plug";
 import { MarketplaceView } from "../../marketplace/components/MarketplaceView";
+import { McpView } from "../../mcp/components/McpView";
 import { SidebarBottomRail } from "./SidebarBottomRail";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarSearchBar } from "./SidebarSearchBar";
@@ -234,7 +236,7 @@ export const Sidebar = memo(function Sidebar({
   gitPanelNode,
   planPanelNode,
 }: SidebarProps) {
-  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "marketplace">("explorer");
+  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "marketplace" | "mcp">("explorer");
   const [expandedWorkspaces, setExpandedWorkspaces] = useState(
     new Set<string>(),
   );
@@ -943,6 +945,17 @@ export const Sidebar = memo(function Sidebar({
           >
             <Store size={20} aria-hidden />
           </button>
+          <button
+            type="button"
+            className={`sidebar-activity-btn ds-tooltip-trigger${activeView === "mcp" ? " is-active" : ""}`}
+            onClick={() => setActiveView("mcp")}
+            aria-label="MCP Servers"
+            aria-pressed={activeView === "mcp"}
+            data-tooltip="MCP Servers"
+            data-tooltip-placement="right"
+          >
+            <Plug size={20} aria-hidden />
+          </button>
         </div>
       </div>
 
@@ -955,6 +968,10 @@ export const Sidebar = memo(function Sidebar({
         ) : activeView === "marketplace" ? (
           <div className="sidebar-marketplace-panel">
             <MarketplaceView />
+          </div>
+        ) : activeView === "mcp" ? (
+          <div className="sidebar-mcp-panel">
+            <McpView />
           </div>
         ) : (
           <>
