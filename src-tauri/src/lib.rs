@@ -98,9 +98,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .manage(menu::MenuItemRegistry::<tauri::Wry>::default())
         .manage(tray::TrayState::default())
-        .on_menu_event(menu::handle_menu_event)
-        .enable_macos_default_menu(false)
-        .menu(menu::build_menu);
+        .enable_macos_default_menu(false);
 
     #[cfg(not(desktop))]
     let builder = tauri::Builder::default();
@@ -129,6 +127,13 @@ pub fn run() {
                 if let Some(main_window) = app.get_webview_window("main") {
                     let _ = main_window.set_decorations(false);
                     // Keep menu accelerators wired while suppressing a visible native menu bar.
+                    let _ = main_window.hide_menu();
+                }
+            }
+            #[cfg(all(desktop, not(target_os = "windows")))]
+            {
+                if let Some(main_window) = app.get_webview_window("main") {
+                    let _ = main_window.set_decorations(false);
                     let _ = main_window.hide_menu();
                 }
             }

@@ -1268,8 +1268,18 @@
 /* ── Main topbar — minimal ────────────────────────────────────────────────── */
 
 .main-topbar {
-  border-bottom: 1px solid var(--gz-sidebar-border) !important;
-  backdrop-filter: blur(20px) !important;
+  gap: 14px !important;
+  padding: 10px 16px !important;
+  margin: 8px 12px 10px !important;
+  width: calc(100% - 24px) !important;
+  border: 1px solid color-mix(in srgb, #ffffff 7%, transparent) !important;
+  border-radius: 0 10px 10px 10px !important;
+  background: color-mix(in srgb, #15191d 92%, transparent) !important;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+  top: 6px !important;
+  backdrop-filter: blur(14px) saturate(1.1) !important;
 }
 
 .workspace-name,

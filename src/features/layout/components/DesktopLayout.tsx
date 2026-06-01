@@ -1,5 +1,6 @@
 import { useEffect, useRef, type MouseEvent, type ReactNode } from "react";
 import { ChatPane } from "./ChatPane";
+import { MainTopbar } from "../../app/components/MainTopbar";
 
 type CenterMode = "chat" | "diff";
 
@@ -91,6 +92,8 @@ export function DesktopLayout({
   centerMode,
   preloadGitDiffs,
   splitChatDiffView,
+  topbarLeftNode,
+  topbarActionsNode,
   messagesNode,
   gitDiffViewerNode,
   composerNode,
@@ -147,6 +150,7 @@ export function DesktopLayout({
       <section className="main main-no-right-panel">
         {updateToastNode}
         {errorToastsNode}
+        <MainTopbar leftNode={topbarLeftNode} actionsNode={topbarActionsNode} />
         {showHome && homeNode}
 
         {showWorkspace && (

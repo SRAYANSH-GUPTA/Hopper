@@ -361,33 +361,50 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px var(--main-panel-padding) 12px;
-  border-bottom: 1px solid var(--cm-border-default);
-  background: var(--cm-surface-topbar);
+  gap: 14px;
+  padding: 10px 16px;
+  margin: 8px 12px 10px;
+  width: calc(100% - 24px);
+  border: 1px solid color-mix(in srgb, #ffffff 7%, transparent);
+  border-radius: 0 10px 10px 10px;
+  background: color-mix(in srgb, #15191d 92%, transparent);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
   -webkit-app-region: drag;
   grid-column: 1;
   grid-row: 1;
   position: sticky;
-  top: 0;
+  top: 6px;
   z-index: 3;
-  backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.1);
   min-height: var(--main-topbar-height);
-  transition: padding-left 180ms ease, padding-right 180ms ease;
+  transition: width 180ms ease, margin 180ms ease, padding 180ms ease;
 }
 
 .app.sidebar-collapsed .main-topbar {
-  padding-left: calc(
-    var(--main-panel-padding)
+  margin-left: calc(
+    12px
     + var(--titlebar-inset-left, 0px)
     + var(--titlebar-collapsed-left-extra, 0px)
     + var(--titlebar-toggle-size, 28px)
     + var(--titlebar-toggle-title-offset, -6px)
   );
+  width: calc(
+    100%
+    - (
+      24px
+      + var(--titlebar-inset-left, 0px)
+      + var(--titlebar-collapsed-left-extra, 0px)
+      + var(--titlebar-toggle-size, 28px)
+      + var(--titlebar-toggle-title-offset, -6px)
+    )
+  );
 }
 
 .app.layout-compact.sidebar-collapsed .main-topbar {
-  padding-left: calc(
-    var(--topbar-compact-padding, 16px)
+  margin-left: calc(
+    12px
     + var(--titlebar-inset-left, 0px)
     + var(--titlebar-collapsed-left-extra, 0px)
     + var(--titlebar-toggle-size, 28px)
@@ -396,18 +413,14 @@
 }
 
 .app.layout-compact.right-panel-collapsed .main-topbar {
-  padding-right: calc(
-    var(--topbar-compact-padding, 16px)
-    + var(--window-caption-width, 0px)
-    + var(--window-caption-gap, 0px)
+  margin-right: calc(
+    12px + var(--window-caption-width, 0px) + var(--window-caption-gap, 0px)
   );
 }
 
 .app.right-panel-collapsed .main-topbar {
-  padding-right: calc(
-    var(--main-panel-padding)
-    + var(--window-caption-width, 0px)
-    + var(--window-caption-gap, 0px)
+  margin-right: calc(
+    12px + var(--window-caption-width, 0px) + var(--window-caption-gap, 0px)
   );
 }
 
@@ -419,10 +432,14 @@
 .main-topbar-left {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
   min-width: 0;
   flex: 1;
   -webkit-app-region: no-drag;
+  color: rgba(247, 248, 250, 0.94);
+  font-size: 15px;
+  font-weight: 450;
+  line-height: 1.35;
 }
 
 .topbar-leading {
@@ -863,9 +880,23 @@
 
 .actions {
   display: flex;
-  gap: 12px;
+  align-items: flex-end;
+  gap: 8px;
   flex-shrink: 0;
   -webkit-app-region: no-drag;
+  color: rgba(232, 236, 241, 0.72);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.main-topbar-fallback {
+  color: rgba(247, 248, 250, 0.94);
+  font-size: 14px;
+}
+
+.main-topbar-fallback-time {
+  color: rgba(232, 236, 241, 0.72);
+  font-size: 13px;
 }
 
 .compact-workspace-live-indicator {
