@@ -20,6 +20,7 @@ import {
 } from "@threads/utils/threadCodexParamsSeed";
 import { makeThreadCodexParamsKey } from "@threads/utils/threadStorage";
 import { useThreadCodexOrchestration } from "./useThreadCodexOrchestration";
+import { PROVIDER_MAP } from "../../app/providers";
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
 
@@ -292,10 +293,15 @@ export function useThreadSelectionHandlersOrchestration({
       const hasActiveThread = Boolean(activeThreadIdRef.current);
       if (!appSettingsLoading && !hasActiveThread) {
         setAppSettings((current) => {
-          if (current.lastComposerModelId === id) {
+          const providerId = current.localProvider ?? "codex";
+          const provider = PROVIDER_MAP.get(providerId);
+          if (provider && provider.getModelId(current) === id) {
             return current;
           }
-          const nextSettings = { ...current, lastComposerModelId: id };
+          const nextSettings = { 
+            ...current, 
+            ...(provider ? provider.setModelId(id as string) : { lastComposerModelId: id })
+          };
           void queueSaveSettings(nextSettings);
           return nextSettings;
         });

@@ -61,10 +61,6 @@ export function useSidebarLayoutActions({
     openSettings();
   }, [openSettings]);
 
-  const onOpenMarketplace = useCallback(() => {
-    openSettings("marketplace");
-  }, [openSettings]);
-
   const onSelectHome = useCallback(() => {
     resetPullRequestSelection();
     clearDraftState();
@@ -189,7 +185,6 @@ export function useSidebarLayoutActions({
 
   return {
     onOpenSettings,
-    onOpenMarketplace,
     onSelectHome,
     onSelectWorkspace,
     onConnectWorkspace,

@@ -51,7 +51,7 @@ import { useMainAppWorkspaceActions } from "@app/hooks/useMainAppWorkspaceAction
 import { useMainAppWorkspaceLifecycle } from "@app/hooks/useMainAppWorkspaceLifecycle";
 import { useMainAppMobileThreadRefresh } from "@app/hooks/useMainAppMobileThreadRefresh";
 import { useHomeAccount } from "@app/hooks/useHomeAccount";
-import { useContextHandoff } from "@/features/context/useContextHandoff";
+import { useContextHandoff, triggerHandoff } from "@/features/context/useContextHandoff";
 import type {
   ComposerEditorSettings,
   ServiceTier,
@@ -521,6 +521,19 @@ export default function MainApp() {
     threadSortKey: threadListSortKey,
     onThreadCodexMetadataDetected: handleThreadCodexMetadataDetected,
   });
+
+  const handleProviderSwitch = useCallback((providerId: string) => {
+    if (activeWorkspaceId && activeThreadId && providerId !== appSettings.localProvider) {
+      triggerHandoff(activeWorkspaceId, activeThreadId, providerId);
+    }
+    void queueSaveSettings({ ...appSettings, localProvider: providerId as typeof appSettings.localProvider }).then(() => {
+      for (const workspace of workspaces) {
+        if (workspace.connected) {
+          void connectWorkspace(workspace);
+        }
+      }
+    });
+  }, [activeWorkspaceId, activeThreadId, appSettings.localProvider, queueSaveSettings, workspaces, connectWorkspace]);
   const { connectionState: remoteThreadConnectionState, reconnectLive } =
     useRemoteThreadLiveConnection({
       backendMode: appSettings.backendMode,
@@ -1595,6 +1608,7 @@ export default function MainApp() {
       splitChatDiffView: appSettings.splitChatDiffView,
       gitDiffIgnoreWhitespaceChanges:
         appSettings.gitDiffIgnoreWhitespaceChanges,
+      localProvider: appSettings.localProvider,
     },
     workspaces,
     groupedWorkspaces,
@@ -1704,7 +1718,6 @@ export default function MainApp() {
     launchScriptState,
     launchScriptsState,
     models,
-    codexModels: models,
     selectedModelId,
     onSelectModel: handleSelectModel,
     collaborationModes,
@@ -1789,6 +1802,7 @@ export default function MainApp() {
     rightPanelCollapsed,
     expandRightPanel,
     collapseRightPanel,
+    onProviderSwitch: handleProviderSwitch,
   });
 
   const {

@@ -23,6 +23,10 @@
   /* Surface tweaks */
   --gz-sidebar-bg: rgba(10, 10, 14, 0.97);
   --gz-sidebar-border: rgba(255,255,255,0.055);
+  --gz-project-accent: #2dd4bf;
+  --gz-project-accent-2: #fb7185;
+  --gz-project-accent-soft: rgba(45, 212, 191, 0.18);
+  --gz-project-accent-glow: rgba(45, 212, 191, 0.32);
   font-family: var(--gz-font);
   /* Global dot-grid background */
   background-color: #0a0a0e !important;
@@ -125,6 +129,14 @@
 /* Inner spacing for explorer panel items */
 .sidebar-panel .sidebar-header {
   padding: 0 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  background:
+    linear-gradient(
+      120deg,
+      rgba(45, 212, 191, 0.09),
+      rgba(251, 113, 133, 0.08) 58%,
+      rgba(255, 255, 255, 0.01)
+    );
 }
 
 .sidebar-panel .sidebar-search-bar {
@@ -908,9 +920,10 @@
 
 .sidebar-header .subtitle {
   font-size: 13px !important;
-  font-weight: var(--gz-weight-label) !important;
-  color: rgba(255,255,255,0.75) !important;
+  font-weight: var(--gz-weight-bold) !important;
+  color: rgba(255,255,255,0.92) !important;
   letter-spacing: -0.1px !important;
+  text-transform: uppercase !important;
 }
 
 /* Header icon buttons (sort, refresh, search) */
@@ -952,28 +965,73 @@
 /* Workspace rows — project cards */
 .workspace-row::before {
   border-radius: var(--gz-radius-sm) !important;
-  background: rgba(255,255,255,0.03) !important;
-  border: 1px solid rgba(255,255,255,0.06) !important;
+  background:
+    linear-gradient(
+      132deg,
+      rgba(255,255,255,0.04),
+      rgba(255,255,255,0.015)
+    ) !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
   box-shadow: none !important;
 }
 
 .workspace-row:hover::before {
-  background: rgba(255,255,255,0.06) !important;
-  border-color: rgba(255,255,255,0.1) !important;
+  background:
+    linear-gradient(
+      132deg,
+      rgba(45, 212, 191, 0.15),
+      rgba(251, 113, 133, 0.11)
+    ) !important;
+  border-color: rgba(45, 212, 191, 0.4) !important;
+  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.1) inset !important;
+}
+
+.workspace-row {
+  position: relative;
+}
+
+.workspace-row::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  border-radius: 999px;
+  background: var(--gz-project-accent);
+  transition: height 120ms ease;
+}
+
+.workspace-row:hover::after {
+  height: 55%;
   box-shadow: none !important;
 }
 
 .workspace-row.active::before {
-  background: var(--gz-accent-soft) !important;
-  border-color: rgba(124,110,255,0.3) !important;
+  background:
+    linear-gradient(
+      132deg,
+      var(--gz-project-accent-soft),
+      rgba(251, 113, 133, 0.18)
+    ) !important;
+  border-color: rgba(45, 212, 191, 0.62) !important;
+  box-shadow:
+    0 0 0 1px rgba(45, 212, 191, 0.22) inset,
+    0 0 18px rgba(45, 212, 191, 0.12) !important;
+}
+
+.workspace-row.active::after {
+  height: 72%;
+  background: linear-gradient(180deg, var(--gz-project-accent), var(--gz-project-accent-2));
 }
 
 /* Workspace name */
 .workspace-name {
   font-size: 13px !important;
-  font-weight: var(--gz-weight-label) !important;
+  font-weight: var(--gz-weight-bold) !important;
   letter-spacing: -0.2px !important;
-  color: rgba(255,255,255,0.8) !important;
+  color: rgba(255,255,255,0.92) !important;
 }
 
 .workspace-row.active .workspace-name {
@@ -1034,15 +1092,23 @@
 }
 
 .thread-row:hover {
-  background: rgba(255,255,255,0.04) !important;
-  border-color: rgba(255,255,255,0.07) !important;
+  background: rgba(255,255,255,0.07) !important;
+  border-color: rgba(45, 212, 191, 0.28) !important;
   box-shadow: none !important;
   color: rgba(255,255,255,0.9) !important;
 }
 
 .thread-row.active {
-  background: var(--gz-accent-soft) !important;
-  border-color: rgba(124,110,255,0.25) !important;
+  background:
+    linear-gradient(
+      128deg,
+      rgba(45, 212, 191, 0.16),
+      rgba(251, 113, 133, 0.12)
+    ) !important;
+  border-color: rgba(45, 212, 191, 0.5) !important;
+  box-shadow:
+    0 0 0 1px rgba(45, 212, 191, 0.2) inset,
+    0 0 14px rgba(45, 212, 191, 0.12) !important;
   color: #ffffff !important;
 }
 
@@ -1078,9 +1144,9 @@
 /* Sidebar section count pill */
 .sidebar-section-count,
 .worktree-header-count {
-  background: rgba(255,255,255,0.05) !important;
-  border-color: rgba(255,255,255,0.08) !important;
-  color: rgba(255,255,255,0.3) !important;
+  background: rgba(45, 212, 191, 0.14) !important;
+  border-color: rgba(45, 212, 191, 0.34) !important;
+  color: rgba(216, 255, 249, 0.9) !important;
   font-size: 10px !important;
 }
 
@@ -1893,4 +1959,369 @@ pre,
   border-radius: var(--gz-radius-md) !important;
   border: 1px solid rgba(255,255,255,0.07) !important;
   background: rgba(255,255,255,0.02) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GEN-Z BOLD SIDEBAR — ORANGE FLAT
+   No cards, no borders on rows — clean flat list, orange as the one accent
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.app {
+  --gz-orange:       #ff6200;
+  --gz-orange-soft:  rgba(255, 98, 0, 0.14);
+  --gz-orange-glow:  rgba(255, 98, 0, 0.35);
+}
+
+/* ── Strip ALL card chrome from workspace rows ─────────────────────────── */
+
+.workspace-row::before,
+.workspace-row::after {
+  display: none !important;
+}
+
+.workspace-row {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 6px 12px !important;
+  margin: 0 !important;
+}
+
+.workspace-row:hover {
+  background: rgba(255,255,255,0.05) !important;
+  box-shadow: none !important;
+}
+
+.workspace-row.active {
+  background: var(--gz-orange-soft) !important;
+  border: none !important;
+  box-shadow: inset 3px 0 0 var(--gz-orange) !important;
+  padding: 6px 12px !important;
+}
+
+/* Workspace name */
+.workspace-name {
+  font-size: 13px !important;
+  font-weight: var(--gz-weight-label) !important;
+  color: rgba(255,255,255,0.75) !important;
+}
+
+.workspace-row:hover .workspace-name {
+  color: rgba(255,255,255,0.95) !important;
+}
+
+.workspace-row.active .workspace-name {
+  color: var(--gz-orange) !important;
+  font-weight: var(--gz-weight-bold) !important;
+}
+
+/* Workspace path / summary */
+.workspace-summary,
+.workspace-path {
+  font-size: 10px !important;
+  color: rgba(255,255,255,0.28) !important;
+}
+
+/* ── Thread rows — flat, orange active left bar ────────────────────────── */
+
+.thread-row {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 5px 12px !important;
+  margin: 0 !important;
+}
+
+.thread-row:hover {
+  background: rgba(255,255,255,0.05) !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: rgba(255,255,255,0.9) !important;
+}
+
+.thread-row.active {
+  background: var(--gz-orange-soft) !important;
+  border: none !important;
+  box-shadow: inset 3px 0 0 var(--gz-orange) !important;
+  color: #ffffff !important;
+  padding: 5px 12px !important;
+}
+
+.thread-row.active .thread-name {
+  color: var(--gz-orange) !important;
+  font-weight: var(--gz-weight-label) !important;
+}
+
+.thread-row:hover .thread-name {
+  color: rgba(255,255,255,0.95) !important;
+}
+
+.thread-name {
+  font-size: 12px !important;
+  font-weight: 450 !important;
+  color: rgba(255,255,255,0.65) !important;
+}
+
+/* ── Worktree rows — also flat ─────────────────────────────────────────── */
+
+.worktree-row {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.worktree-row:hover {
+  background: rgba(255,255,255,0.05) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.worktree-row.active {
+  background: var(--gz-orange-soft) !important;
+  border: none !important;
+  box-shadow: inset 3px 0 0 var(--gz-orange) !important;
+}
+
+/* ── Activity bar — orange active ──────────────────────────────────────── */
+
+.sidebar-activity-bar {
+  background: #0d0d10 !important;
+  border-right: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+.sidebar-activity-btn {
+  color: rgba(255,255,255,0.3) !important;
+}
+
+.sidebar-activity-btn:hover {
+  color: rgba(255,255,255,0.85) !important;
+  background: rgba(255,255,255,0.05) !important;
+}
+
+.sidebar-activity-btn.is-active {
+  color: var(--gz-orange) !important;
+  background: var(--gz-orange-soft) !important;
+}
+
+.sidebar-activity-btn.is-active::before {
+  background: var(--gz-orange) !important;
+  width: 2px !important;
+  box-shadow: 0 0 6px var(--gz-orange-glow) !important;
+}
+
+/* ── Sidebar header — simple, orange "Projects" ────────────────────────── */
+
+.sidebar-panel .sidebar-header {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+.sidebar-header .subtitle {
+  font-size: 13px !important;
+  font-weight: var(--gz-weight-bold) !important;
+  color: var(--gz-orange) !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  /* override any gradient from base */
+  background: none !important;
+  -webkit-background-clip: unset !important;
+  background-clip: unset !important;
+  -webkit-text-fill-color: var(--gz-orange) !important;
+}
+
+/* ── New conversation button ───────────────────────────────────────────── */
+
+.sidebar-new-convo-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 4px 10px !important;
+  border-radius: var(--gz-radius-pill) !important;
+  border: 1px solid var(--gz-orange) !important;
+  background: var(--gz-orange) !important;
+  color: #ffffff !important;
+  font-size: 11px !important;
+  font-weight: var(--gz-weight-bold) !important;
+  cursor: pointer !important;
+  transition: opacity 0.15s, box-shadow 0.15s !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+.sidebar-new-convo-btn:hover {
+  opacity: 0.85 !important;
+  box-shadow: 0 2px 10px var(--gz-orange-glow) !important;
+}
+
+/* Header icon buttons — orange hover */
+.sidebar-sort-toggle:hover,
+.sidebar-search-toggle:hover,
+.sidebar-refresh-toggle:hover,
+.sidebar-title-add:hover {
+  color: var(--gz-orange) !important;
+  background: var(--gz-orange-soft) !important;
+}
+
+.sidebar-search-toggle.is-active {
+  color: var(--gz-orange) !important;
+  background: var(--gz-orange-soft) !important;
+}
+
+/* ── Section labels — orange ───────────────────────────────────────────── */
+
+.sidebar-section-title,
+.workspace-group-label,
+.worktree-header,
+.thread-bucket-label {
+  color: rgba(255, 98, 0, 0.7) !important;
+  background: none !important;
+  -webkit-background-clip: unset !important;
+  background-clip: unset !important;
+  -webkit-text-fill-color: unset !important;
+  font-size: 10px !important;
+  font-weight: var(--gz-weight-bold) !important;
+  letter-spacing: 1px !important;
+  text-transform: uppercase !important;
+}
+
+/* ── Search bar — orange focus ─────────────────────────────────────────── */
+
+.sidebar-search-input:focus {
+  border-color: rgba(255,98,0,0.5) !important;
+  box-shadow: 0 0 0 2px rgba(255,98,0,0.15) !important;
+}
+
+/* ── Section count pill — orange ───────────────────────────────────────── */
+
+.sidebar-section-count,
+.worktree-header-count {
+  background: var(--gz-orange-soft) !important;
+  border-color: rgba(255,98,0,0.35) !important;
+  color: var(--gz-orange) !important;
+  font-weight: var(--gz-weight-bold) !important;
+}
+
+/* ── Bottom rail — orange accents ──────────────────────────────────────── */
+
+.sidebar-usage-bar-fill {
+  background: var(--gz-orange) !important;
+  box-shadow: none !important;
+}
+
+.sidebar-labeled-button:hover,
+.sidebar-labeled-button.is-open {
+  background: var(--gz-orange-soft) !important;
+  border-color: rgba(255,98,0,0.25) !important;
+  color: var(--gz-orange) !important;
+}
+
+.sidebar-provider-toggle-btn.is-active {
+  background: var(--gz-orange-soft) !important;
+  color: var(--gz-orange) !important;
+  font-weight: var(--gz-weight-bold) !important;
+}
+
+/* Claude active keeps its amber */
+.sidebar-provider-toggle-btn--claude.is-active {
+  background: rgba(255,98,0,0.15) !important;
+  color: var(--gz-orange) !important;
+}
+
+/* ── Send button — orange ──────────────────────────────────────────────── */
+
+.composer-send-btn {
+  background: var(--gz-orange) !important;
+  box-shadow: 0 2px 12px var(--gz-orange-glow) !important;
+}
+
+.composer-send-btn:hover:not(:disabled) {
+  box-shadow: 0 4px 20px var(--gz-orange-glow) !important;
+}
+
+/* ── MCP / marketplace chips — orange active ───────────────────────────── */
+
+.mcp-card-badge,
+.mcp-cat-btn.is-active,
+.sidebar-marketplace-panel .marketplace-provider-chip.is-selected,
+.marketplace-cat-btn.is-active {
+  background: var(--gz-orange-soft) !important;
+  border-color: rgba(255,98,0,0.35) !important;
+  color: var(--gz-orange) !important;
+}
+
+.mcp-card-btn-connect {
+  background: var(--gz-orange-soft) !important;
+  border-color: rgba(255,98,0,0.4) !important;
+  color: var(--gz-orange) !important;
+}
+
+.sidebar-marketplace-panel .marketplace-btn--install {
+  background: var(--gz-orange) !important;
+  border-color: var(--gz-orange) !important;
+  box-shadow: none !important;
+}
+
+/* ── Plan task — orange active ─────────────────────────────────────────── */
+
+.plan-task.is-active {
+  border-left-color: var(--gz-orange) !important;
+  background: var(--gz-orange-soft) !important;
+}
+
+/* ── Thread status glows ───────────────────────────────────────────────── */
+
+.thread-status.processing { box-shadow: 0 0 0 3px rgba(255,159,67,0.25) !important; }
+.thread-status.reviewing  { box-shadow: 0 0 0 3px rgba(47,209,196,0.2) !important; }
+.thread-status.unread     { box-shadow: 0 0 0 3px rgba(255,98,0,0.3) !important; }
+.thread-status.ready      { box-shadow: 0 0 0 3px rgba(63,228,126,0.2) !important; }
+
+/* ── Workspace row right-side actions — put inline, not stacked ────────── */
+
+.workspace-actions {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding-top: 0 !important;
+  align-self: center !important;
+}
+
+/* Make the + button smaller and subtler */
+.workspace-add {
+  width: 18px !important;
+  height: 18px !important;
+  font-size: 12px !important;
+  opacity: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  color: rgba(255,255,255,0.5) !important;
+}
+
+.workspace-row:hover .workspace-add,
+.worktree-row:hover .workspace-add {
+  opacity: 1 !important;
+}
+
+/* Connect pill — smaller, inline */
+.connect {
+  font-size: 10px !important;
+  padding: 1px 7px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(255,98,0,0.3) !important;
+  color: var(--gz-orange) !important;
+  background: var(--gz-orange-soft) !important;
+  white-space: nowrap !important;
+}
+
+/* Remove extra card gap inside workspace-card */
+.workspace-card {
+  gap: 0 !important;
+}
+
+/* Remove top padding from content-inner */
+.workspace-card-content-inner {
+  padding-top: 0 !important;
+  gap: 2px !important;
 }

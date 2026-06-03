@@ -6,19 +6,23 @@ import type { CodexArgsOption } from "../../threads/utils/codexArgsProfiles";
 import { useAppSettings } from "../../settings/hooks/useAppSettings";
 import { PROVIDERS, DEFAULT_PROVIDER_ID } from "../../app/providers";
 
-function ProviderToggle({ disabled }: { disabled: boolean }) {
+function ProviderToggle({ disabled, activeProviderId, onProviderSwitch }: { disabled: boolean; activeProviderId?: string; onProviderSwitch?: (providerId: string) => void }) {
   const { settings, saveSettings } = useAppSettings();
-  const activeId = settings.localProvider ?? DEFAULT_PROVIDER_ID;
+  const activeId = activeProviderId ?? settings.localProvider ?? DEFAULT_PROVIDER_ID;
 
   const select = useCallback(
     (id: string) => {
       if (id === activeId) return;
-      void saveSettings({
-        ...settings,
-        localProvider: id as typeof settings.localProvider,
-      });
+      if (onProviderSwitch) {
+        onProviderSwitch(id);
+      } else {
+        void saveSettings({
+          ...settings,
+          localProvider: id as typeof settings.localProvider,
+        });
+      }
     },
-    [activeId, settings, saveSettings],
+    [activeId, onProviderSwitch, settings, saveSettings],
   );
 
   return (
@@ -65,6 +69,8 @@ type ComposerMetaBarProps = {
   charCount?: number;
   onSend?: () => void;
   onStop?: () => void;
+  onProviderSwitch?: (providerId: string) => void;
+  activeProviderId?: string;
 };
 
 export function ComposerMetaBar({
@@ -92,6 +98,8 @@ export function ComposerMetaBar({
   charCount = 0,
   onSend,
   onStop,
+  onProviderSwitch,
+  activeProviderId,
 }: ComposerMetaBarProps) {
   const selectedModel =
     models.find((model) => model.id === selectedModelId) ?? null;
@@ -311,7 +319,7 @@ export function ComposerMetaBar({
         </div>
       </div>
       <div className="composer-context">
-        <ProviderToggle disabled={disabled} />
+        <ProviderToggle disabled={disabled} activeProviderId={activeProviderId} onProviderSwitch={onProviderSwitch} />
         {charCount > 0 && (
           <span
             className="composer-char-count"

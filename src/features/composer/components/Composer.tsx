@@ -146,6 +146,8 @@ type ComposerProps = {
     disabled?: boolean;
     onSelect: () => void | Promise<void>;
   }[];
+  onProviderSwitch?: (providerId: string) => void;
+  activeProviderId?: string;
 };
 
 const DEFAULT_EDITOR_SETTINGS: ComposerEditorSettings = {
@@ -243,6 +245,8 @@ export const Composer = memo(function Composer({
   onReviewPromptConfirmCustom,
   onFileAutocompleteActiveChange,
   contextActions = [],
+  onProviderSwitch,
+  activeProviderId,
 }: ComposerProps) {
   const [text, setText] = useState(draftText);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
@@ -701,6 +705,8 @@ export const Composer = memo(function Composer({
           charCount={text.length}
           onSend={() => handleSend(defaultSubmitIntent)}
           onStop={onStop}
+          onProviderSwitch={onProviderSwitch}
+          activeProviderId={activeProviderId}
         />
       </div>
     </footer>

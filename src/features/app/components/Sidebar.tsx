@@ -1,6 +1,5 @@
 import type {
   AccountSnapshot,
-  ModelOption,
   RequestUserInputRequest,
   RateLimitSnapshot,
   ThreadListOrganizeMode,
@@ -18,6 +17,8 @@ import Store from "lucide-react/dist/esm/icons/store";
 import Plug from "lucide-react/dist/esm/icons/plug";
 import { MarketplaceView } from "../../marketplace/components/MarketplaceView";
 import { McpView } from "../../mcp/components/McpView";
+import { AiWebView } from "../../ai-web/components/AiWebView";
+import Bot from "lucide-react/dist/esm/icons/bot";
 import { SidebarBottomRail } from "./SidebarBottomRail";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarSearchBar } from "./SidebarSearchBar";
@@ -133,7 +134,6 @@ type SidebarProps = {
   onCancelSwitchAccount: () => void;
   accountSwitching: boolean;
   onOpenSettings: () => void;
-  onOpenMarketplace?: () => void;
   onOpenDebug: () => void;
   showDebugButton: boolean;
   onAddWorkspace: () => void;
@@ -164,8 +164,6 @@ type SidebarProps = {
   onWorkspaceDragEnter: (event: React.DragEvent<HTMLElement>) => void;
   onWorkspaceDragLeave: (event: React.DragEvent<HTMLElement>) => void;
   onWorkspaceDrop: (event: React.DragEvent<HTMLElement>) => void;
-  /** Available Codex models — already fetched and connection-aware from MainApp's useModels */
-  codexModels?: ModelOption[];
   /** Git/source-control panel to show in the Source Control view */
   gitPanelNode?: ReactNode;
   /** Plan/tasks panel to show in the Tasks view */
@@ -201,7 +199,6 @@ export const Sidebar = memo(function Sidebar({
   onCancelSwitchAccount,
   accountSwitching,
   onOpenSettings,
-  onOpenMarketplace,
   onOpenDebug,
   showDebugButton,
   onAddWorkspace,
@@ -232,11 +229,10 @@ export const Sidebar = memo(function Sidebar({
   onWorkspaceDragEnter,
   onWorkspaceDragLeave,
   onWorkspaceDrop,
-  codexModels = [],
   gitPanelNode,
   planPanelNode,
 }: SidebarProps) {
-  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "marketplace" | "mcp">("explorer");
+  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "marketplace" | "mcp" | "ai">("explorer");
   const [expandedWorkspaces, setExpandedWorkspaces] = useState(
     new Set<string>(),
   );
@@ -851,6 +847,13 @@ export const Sidebar = memo(function Sidebar({
   );
   const pinnedRootCount = useMemo(() => countRootRows(pinnedThreadRows), [pinnedThreadRows]);
 
+  const handleNewConversation = useCallback(() => {
+    const target =
+      workspaces.find((w) => w.id === activeWorkspaceId && w.connected) ??
+      workspaces.find((w) => w.connected);
+    if (target) onAddAgent(target);
+  }, [workspaces, activeWorkspaceId, onAddAgent]);
+
   useEffect(() => {
     if (!addMenuAnchor) {
       return;
@@ -956,6 +959,17 @@ export const Sidebar = memo(function Sidebar({
           >
             <Plug size={20} aria-hidden />
           </button>
+          <button
+            type="button"
+            className={`sidebar-activity-btn ds-tooltip-trigger${activeView === "ai" ? " is-active" : ""}`}
+            onClick={() => setActiveView("ai")}
+            aria-label="AI Assistants"
+            aria-pressed={activeView === "ai"}
+            data-tooltip="AI Assistants"
+            data-tooltip-placement="right"
+          >
+            <Bot size={20} aria-hidden />
+          </button>
         </div>
       </div>
 
@@ -973,11 +987,16 @@ export const Sidebar = memo(function Sidebar({
           <div className="sidebar-mcp-panel">
             <McpView />
           </div>
+        ) : activeView === "ai" ? (
+          <div className="sidebar-ai-panel" style={{ height: "100%" }}>
+            <AiWebView />
+          </div>
         ) : (
           <>
             <SidebarHeader
         onSelectHome={onSelectHome}
         onAddWorkspace={onAddWorkspace}
+        onNewConversation={handleNewConversation}
         onToggleSearch={() => setIsSearchOpen((prev) => !prev)}
         isSearchOpen={isSearchOpen}
         threadListSortKey={threadListSortKey}
@@ -1130,10 +1149,6 @@ export const Sidebar = memo(function Sidebar({
         </div>
       </div>
       <SidebarBottomRail
-        workspaceIds={workspaces.map((w) => w.id)}
-        activeWorkspaceId={activeWorkspaceId}
-        activeThreadId={activeThreadId}
-        codexModels={codexModels}
         sessionPercent={sessionPercent}
         weeklyPercent={weeklyPercent}
         sessionResetLabel={sessionResetLabel}
@@ -1141,7 +1156,6 @@ export const Sidebar = memo(function Sidebar({
         creditsLabel={creditsLabel}
         showWeekly={showWeekly}
         onOpenSettings={onOpenSettings}
-        onOpenMarketplace={onOpenMarketplace}
         onOpenDebug={onOpenDebug}
         showDebugButton={showDebugButton}
         showAccountSwitcher={showAccountSwitcher}

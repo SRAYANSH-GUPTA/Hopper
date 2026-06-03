@@ -5,6 +5,7 @@ import FolderPlus from "lucide-react/dist/esm/icons/folder-plus";
 import FolderTree from "lucide-react/dist/esm/icons/folder-tree";
 import ListFilter from "lucide-react/dist/esm/icons/list-filter";
 import ListTree from "lucide-react/dist/esm/icons/list-tree";
+import Pencil from "lucide-react/dist/esm/icons/pencil";
 import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
 import Search from "lucide-react/dist/esm/icons/search";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,6 +20,7 @@ import { useMenuController } from "../hooks/useMenuController";
 type SidebarHeaderProps = {
   onSelectHome: () => void;
   onAddWorkspace: () => void;
+  onNewConversation?: () => void;
   onToggleSearch: () => void;
   isSearchOpen: boolean;
   threadListSortKey: ThreadListSortKey;
@@ -33,6 +35,7 @@ type SidebarHeaderProps = {
 export function SidebarHeader({
   onSelectHome,
   onAddWorkspace,
+  onNewConversation,
   onToggleSearch,
   isSearchOpen,
   threadListSortKey,
@@ -147,6 +150,20 @@ export function SidebarHeader({
           </button>
         </div>
       </div>
+      {onNewConversation && (
+        <button
+          type="button"
+          className="sidebar-new-convo-btn ds-tooltip-trigger"
+          onClick={onNewConversation}
+          aria-label="New conversation"
+          data-tooltip="New conversation"
+          data-tooltip-align="end"
+          data-tooltip-placement="bottom"
+        >
+          <Pencil size={14} aria-hidden />
+          <span>New</span>
+        </button>
+      )}
       <div className="sidebar-header-actions">
         <div className="sidebar-sort-menu" ref={sortMenuRef}>
           <MenuTrigger

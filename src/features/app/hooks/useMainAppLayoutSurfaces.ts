@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { AppSettings, ComposerEditorSettings, ModelOption, WorkspaceInfo } from "@/types";
+import type { AppSettings, ComposerEditorSettings, WorkspaceInfo } from "@/types";
 import type { ThreadState } from "@/features/threads/hooks/useThreadsReducer";
 import type { WorkspaceLaunchScriptsState } from "@app/hooks/useWorkspaceLaunchScripts";
 import { REMOTE_THREAD_POLL_INTERVAL_MS } from "@app/hooks/useRemoteThreadRefreshOnFocus";
@@ -30,6 +30,7 @@ type UseMainAppLayoutSurfacesArgs = {
     | "dictationEnabled"
     | "splitChatDiffView"
     | "gitDiffIgnoreWhitespaceChanges"
+    | "localProvider"
   >;
   workspaces: WorkspaceInfo[];
   groupedWorkspaces: Array<{ id: string | null; name: string; workspaces: WorkspaceInfo[] }>;
@@ -144,8 +145,6 @@ type UseMainAppLayoutSurfacesArgs = {
   };
   launchScriptsState: WorkspaceLaunchScriptsState | undefined;
   models: ComposerProps["models"];
-  /** Full ModelOption list for the sidebar — same data as models but with all fields */
-  codexModels: ModelOption[];
   selectedModelId: ComposerProps["selectedModelId"];
   onSelectModel: ComposerProps["onSelectModel"];
   collaborationModes: ComposerProps["collaborationModes"];
@@ -230,6 +229,7 @@ type UseMainAppLayoutSurfacesArgs = {
   rightPanelCollapsed: boolean;
   expandRightPanel: () => void;
   collapseRightPanel: () => void;
+  onProviderSwitch: (providerId: string) => void;
 };
 
 type MainAppLayoutSurfacesContext = UseMainAppLayoutSurfacesArgs & {
@@ -314,7 +314,6 @@ function buildPrimarySurface({
   launchScriptState,
   launchScriptsState,
   models,
-  codexModels,
   selectedModelId,
   onSelectModel,
   collaborationModes,
@@ -386,6 +385,7 @@ function buildPrimarySurface({
   rightPanelCollapsed,
   expandRightPanel,
   collapseRightPanel,
+  onProviderSwitch,
 }: MainAppLayoutSurfacesContext): LayoutNodesOptions["primary"] {
   return {
     sidebarProps: {
@@ -417,7 +417,6 @@ function buildPrimarySurface({
       onCancelSwitchAccount,
       accountSwitching,
       onOpenSettings: sidebarHandlers.onOpenSettings,
-      onOpenMarketplace: sidebarHandlers.onOpenMarketplace,
       onOpenDebug: handleDebugClick,
       showDebugButton,
       onAddWorkspace: handleAddWorkspace,
@@ -448,7 +447,6 @@ function buildPrimarySurface({
       onWorkspaceDragEnter: workspaceDrop.onWorkspaceDragEnter,
       onWorkspaceDragLeave: workspaceDrop.onWorkspaceDragLeave,
       onWorkspaceDrop: workspaceDrop.onWorkspaceDrop,
-      codexModels,
     },
     messagesProps: {
       items: activeItems,
@@ -575,6 +573,8 @@ function buildPrimarySurface({
           onReviewPromptConfirmCommit: confirmCommit,
           onReviewPromptUpdateCustomInstructions: updateCustomInstructions,
           onReviewPromptConfirmCustom: confirmCustom,
+          onProviderSwitch,
+          activeProviderId: appSettings.localProvider,
         }
       : null,
     approvalToastsProps: {
@@ -1033,7 +1033,6 @@ export function useMainAppLayoutSurfaces({
   launchScriptState,
   launchScriptsState,
   models,
-  codexModels,
   selectedModelId,
   onSelectModel,
   collaborationModes,
@@ -1118,6 +1117,7 @@ export function useMainAppLayoutSurfaces({
   rightPanelCollapsed,
   expandRightPanel,
   collapseRightPanel,
+  onProviderSwitch,
 }: UseMainAppLayoutSurfacesArgs): LayoutNodesOptions {
   const sidebarRateLimits = activeWorkspace ? activeRateLimits : homeRateLimits;
   const sidebarAccount = activeWorkspace ? activeAccount : homeAccount;
@@ -1199,7 +1199,6 @@ export function useMainAppLayoutSurfaces({
     launchScriptState,
     launchScriptsState,
     models,
-    codexModels,
     selectedModelId,
     onSelectModel,
     collaborationModes,
@@ -1284,6 +1283,7 @@ export function useMainAppLayoutSurfaces({
     rightPanelCollapsed,
     expandRightPanel,
     collapseRightPanel,
+    onProviderSwitch,
     sidebarRateLimits,
     sidebarAccount,
   };
