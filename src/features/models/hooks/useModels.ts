@@ -12,6 +12,7 @@ type UseModelsOptions = {
   preferredModelId?: string | null;
   preferredEffort?: string | null;
   selectionKey?: string | null;
+  staticModels?: { id: string; label: string }[] | null;
 };
 
 const CONFIG_MODEL_DESCRIPTION = "Configured in CODEX_HOME/config.toml";
@@ -42,12 +43,14 @@ export function useModels({
   preferredModelId = null,
   preferredEffort = null,
   selectionKey = null,
+  staticModels = null,
 }: UseModelsOptions) {
   const [models, setModels] = useState<ModelOption[]>([]);
   const [configModel, setConfigModel] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelIdState] = useState<string | null>(null);
   const [selectedEffort, setSelectedEffortState] = useState<string | null>(null);
   const lastFetchedWorkspaceId = useRef<string | null>(null);
+  const lastFetchedStaticMode = useRef<boolean>(staticModels !== null);
   const inFlight = useRef(false);
   const hasUserSelectedModel = useRef(false);
   const hasUserSelectedEffort = useRef(false);
@@ -148,6 +151,47 @@ export function useModels({
     if (!workspaceId || !isConnected) {
       return;
     }
+    if (staticModels) {
+      const data: ModelOption[] = staticModels.map((sm, index) => ({
+        id: sm.id,
+        model: sm.id,
+        displayName: sm.label,
+        description: "",
+        supportedReasoningEfforts: [],
+        defaultReasoningEffort: null,
+        isDefault: index === 0,
+      }));
+      setModels(data);
+      lastFetchedWorkspaceId.current = workspaceId;
+      lastFetchedStaticMode.current = true;
+      const defaultModel = data[0] ?? null;
+      const existingSelection = findModelByIdOrModel(data, selectedModelId);
+      if (selectedModelId && !existingSelection) {
+        hasUserSelectedModel.current = false;
+      }
+      const preferredSelection = findModelByIdOrModel(data, preferredModelId);
+      const shouldKeepExisting =
+        hasUserSelectedModel.current && existingSelection !== null;
+      const nextSelection =
+        (shouldKeepExisting ? existingSelection : null) ??
+        preferredSelection ??
+        defaultModel ??
+        existingSelection;
+      if (nextSelection) {
+        if (nextSelection.id !== selectedModelId) {
+          setSelectedModelIdState(nextSelection.id);
+        }
+        const nextEffort = resolveEffort(
+          nextSelection,
+          hasUserSelectedEffort.current,
+        );
+        if (nextEffort !== selectedEffort) {
+          setSelectedEffortState(nextEffort);
+        }
+      }
+      return;
+    }
+
     if (inFlight.current) {
       return;
     }
@@ -226,6 +270,7 @@ export function useModels({
       })();
       setModels(data);
       lastFetchedWorkspaceId.current = workspaceId;
+      lastFetchedStaticMode.current = false;
       const defaultModel = pickDefaultModel(data, configModelFromConfig);
       const existingSelection = findModelByIdOrModel(data, selectedModelId);
       if (selectedModelId && !existingSelection) {
@@ -262,17 +307,20 @@ export function useModels({
     selectedModelId,
     resolveEffort,
     workspaceId,
+    staticModels,
   ]);
 
   useEffect(() => {
     if (!workspaceId || !isConnected) {
       return;
     }
-    if (lastFetchedWorkspaceId.current === workspaceId && models.length > 0) {
+    const isSameWorkspace = lastFetchedWorkspaceId.current === workspaceId;
+    const isSameStaticMode = lastFetchedStaticMode.current === (staticModels !== null);
+    if (isSameWorkspace && isSameStaticMode && models.length > 0) {
       return;
     }
     refreshModels();
-  }, [isConnected, models.length, refreshModels, workspaceId]);
+  }, [isConnected, models.length, refreshModels, workspaceId, staticModels]);
 
   useEffect(() => {
     if (!selectedModel) {

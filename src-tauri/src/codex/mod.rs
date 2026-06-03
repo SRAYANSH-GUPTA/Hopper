@@ -407,7 +407,7 @@ pub(crate) async fn send_user_message(
                 .map(|w| w.path.clone())
                 .unwrap_or_default()
         };
-        let model_id = state.app_settings.lock().await.claude_model_id.clone();
+        let model_id = model.or_else(|| state.app_settings.lock().await.claude_model_id.clone());
         let event_sink = TauriEventSink::new(app.clone());
         return claude::send_message_claude(
             Arc::clone(&state.claude_state),

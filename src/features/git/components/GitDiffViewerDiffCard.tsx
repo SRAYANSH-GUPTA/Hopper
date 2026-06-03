@@ -146,7 +146,7 @@ export const DiffCard = memo(function DiffCard({
       prevName: normalizedPrevName,
       oldLines: entry.oldLines,
       newLines: entry.newLines,
-    } satisfies FileDiffMetadata;
+    } as unknown as FileDiffMetadata;
   }, [displayPath, entry.diff, entry.newLines, entry.oldLines]);
 
   const placeholder = useMemo(() => {

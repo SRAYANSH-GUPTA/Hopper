@@ -7,6 +7,7 @@ import { usePullRequestComposer } from "@/features/git/hooks/usePullRequestCompo
 import { useAutoExitEmptyDiff } from "@/features/git/hooks/useAutoExitEmptyDiff";
 import { isMissingRepo } from "@/features/git/utils/repoErrors";
 import { useModels } from "@/features/models/hooks/useModels";
+import { PROVIDER_MAP } from "@/features/app/providers";
 import { useCollaborationModes } from "@/features/collaboration/hooks/useCollaborationModes";
 import { useCollaborationModeSelection } from "@/features/collaboration/hooks/useCollaborationModeSelection";
 import { useSkills } from "@/features/skills/hooks/useSkills";
@@ -281,6 +282,9 @@ export default function MainApp() {
   }, []);
 
   // Access mode is thread-scoped (best-effort persisted) and falls back to the app default.
+  
+  const activeProvider = appSettings.localProvider ?? "codex";
+  const activeProviderConfig = PROVIDER_MAP.get(activeProvider) ?? PROVIDER_MAP.get("codex")!;
 
   const {
     models,
@@ -297,6 +301,7 @@ export default function MainApp() {
     preferredModelId,
     preferredEffort,
     selectionKey: threadCodexSelectionKey,
+    staticModels: activeProviderConfig.staticModels,
   });
 
   const {
@@ -686,7 +691,7 @@ export default function MainApp() {
     activeThreadId,
     appSettings: {
       defaultAccessMode: appSettings.defaultAccessMode,
-      lastComposerModelId: appSettings.lastComposerModelId,
+      lastComposerModelId: activeProviderConfig.getModelId(appSettings) ?? appSettings.lastComposerModelId,
       lastComposerReasoningEffort: appSettings.lastComposerReasoningEffort,
     },
     threadCodexParamsVersion,

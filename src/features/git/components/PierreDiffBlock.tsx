@@ -55,7 +55,7 @@ export function PierreDiffBlock({
       prevName: normalizedPrevName,
       oldLines,
       newLines,
-    } satisfies FileDiffMetadata;
+    } as unknown as FileDiffMetadata;
   }, [diff, displayPath, oldLines, newLines]);
 
   const parsedLines = useMemo(() => {
