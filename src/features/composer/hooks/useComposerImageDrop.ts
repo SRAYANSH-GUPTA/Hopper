@@ -19,6 +19,29 @@ function isImagePath(path: string) {
   return imageExtensions.some((ext) => lower.endsWith(ext));
 }
 
+function isImageFile(file: File) {
+  if (file.type.startsWith("image/")) {
+    return true;
+  }
+  return isImagePath(file.name);
+}
+
+function getFilePath(file: File) {
+  return (file as File & { path?: string }).path?.trim() ?? "";
+}
+
+function collectFilesFromTransfer(
+  files: FileList | File[] | undefined,
+  items: DataTransferItemList | DataTransferItem[] | undefined,
+) {
+  const transferFiles = Array.from(files ?? []);
+  const itemFiles = Array.from(items ?? [])
+    .filter((item) => item.kind === "file" || item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
+  return Array.from(new Set([...transferFiles, ...itemFiles]));
+}
+
 function isDragFileTransfer(types: readonly string[] | undefined) {
   if (!types || types.length === 0) {
     return false;
@@ -43,6 +66,14 @@ function readFilesAsDataUrls(files: File[]) {
         }),
     ),
   ).then((items) => items.filter(Boolean));
+}
+
+async function resolveImageAttachments(files: File[]) {
+  const paths = files.map(getFilePath).filter(Boolean);
+  if (paths.length > 0) {
+    return paths;
+  }
+  return readFilesAsDataUrls(files);
 }
 
 function getDragPosition(position: { x: number; y: number }) {
@@ -159,29 +190,12 @@ export function useComposerImageDrop({
     event.preventDefault();
     setIsDragOver(false);
     lastClientPositionRef.current = null;
-    const files = Array.from(event.dataTransfer?.files ?? []);
-    const items = Array.from(event.dataTransfer?.items ?? []);
-    const itemFiles = items
-      .filter((item) => item.kind === "file")
-      .map((item) => item.getAsFile())
-      .filter((file): file is File => Boolean(file));
-    const filePaths = [...files, ...itemFiles]
-      .map((file) => (file as File & { path?: string }).path ?? "")
-      .filter(Boolean);
-    const imagePaths = filePaths.filter(isImagePath);
-    if (imagePaths.length > 0) {
-      onAttachImages?.(imagePaths);
-      return;
-    }
-    const fileImages = [...files, ...itemFiles].filter((file) =>
-      file.type.startsWith("image/"),
-    );
-    if (fileImages.length === 0) {
-      return;
-    }
-    const dataUrls = await readFilesAsDataUrls(fileImages);
-    if (dataUrls.length > 0) {
-      onAttachImages?.(dataUrls);
+    const files = collectFilesFromTransfer(
+      event.dataTransfer?.files,
+      event.dataTransfer?.items,
+    ).filter(isImageFile);
+    if (files.length > 0) {
+      onAttachImages?.(await resolveImageAttachments(files));
     }
   };
 
@@ -189,31 +203,15 @@ export function useComposerImageDrop({
     if (disabled) {
       return;
     }
-    const items = Array.from(event.clipboardData?.items ?? []);
-    const imageItems = items.filter((item) => item.type.startsWith("image/"));
-    if (imageItems.length === 0) {
+    const files = collectFilesFromTransfer(
+      event.clipboardData?.files,
+      event.clipboardData?.items,
+    ).filter(isImageFile);
+    if (files.length === 0) {
       return;
     }
     event.preventDefault();
-    const files = imageItems
-      .map((item) => item.getAsFile())
-      .filter((file): file is File => Boolean(file));
-    if (!files.length) {
-      return;
-    }
-    const dataUrls = await Promise.all(
-      files.map(
-        (file) =>
-          new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () =>
-              resolve(typeof reader.result === "string" ? reader.result : "");
-            reader.onerror = () => resolve("");
-            reader.readAsDataURL(file);
-          }),
-      ),
-    );
-    const valid = dataUrls.filter(Boolean);
+    const valid = await resolveImageAttachments(files);
     if (valid.length > 0) {
       onAttachImages?.(valid);
     }

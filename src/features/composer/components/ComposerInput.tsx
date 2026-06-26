@@ -23,6 +23,68 @@ import { useComposerInputLayout } from "../hooks/useComposerInputLayout";
 import { useComposerMobileActions } from "../hooks/useComposerMobileActions";
 import type { ReviewPromptState, ReviewPromptStep } from "../../threads/hooks/useReviewPrompt";
 
+const IMAGE_PATH_EXTENSIONS = [
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".bmp",
+  ".tiff",
+  ".tif",
+  ".heic",
+  ".heif",
+];
+
+function isImagePath(value: string) {
+  const lower = value.toLowerCase();
+  return IMAGE_PATH_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function isPastedImagePath(value: string) {
+  const trimmed = value.trim().replace(/^["']|["']$/g, "");
+  if (!trimmed || /[\r\n]/.test(trimmed)) {
+    return false;
+  }
+  const isAbsoluteUnixPath = trimmed.startsWith("/");
+  const isAbsoluteWindowsPath = /^[A-Za-z]:[\\/]/.test(trimmed);
+  return (isAbsoluteUnixPath || isAbsoluteWindowsPath) && isImagePath(trimmed);
+}
+
+function normalizeClipboardPath(value: string) {
+  const trimmed = value.trim().replace(/^["']|["']$/g, "");
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.startsWith("file://")) {
+    try {
+      return decodeURI(trimmed.replace(/^file:\/\//, ""));
+    } catch {
+      return trimmed.replace(/^file:\/\//, "");
+    }
+  }
+  return trimmed;
+}
+
+function extractPastedImagePath(value: string) {
+  const normalized = normalizeClipboardPath(value);
+  if (isPastedImagePath(normalized)) {
+    return normalized;
+  }
+
+  for (const line of normalized.split(/\r?\n/)) {
+    const candidate = normalizeClipboardPath(line);
+    if (isPastedImagePath(candidate)) {
+      return candidate;
+    }
+  }
+
+  const matches = normalized.match(
+    /(?:file:\/\/)?(?:[A-Za-z]:[\\/]|\/)[^\r\n]+?\.(?:png|jpe?g|gif|webp|bmp|tiff?|heic|heif)\b/gi,
+  );
+  return matches?.map(normalizeClipboardPath).find(isPastedImagePath) ?? "";
+}
+
 type ComposerInputProps = {
   text: string;
   disabled: boolean;
@@ -199,12 +261,52 @@ export function ComposerInput({
 
   const handleTextareaPaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      let pastedText = "";
+      try {
+        const cd = event.clipboardData;
+        if (cd) {
+          pastedText =
+            cd.getData("text/plain") ||
+            cd.getData("text") ||
+            cd.getData("text/uri-list") ||
+            "";
+        }
+      } catch {
+        // clipboardData may not be accessible in some WebView environments
+      }
+      const pastedPath = extractPastedImagePath(pastedText);
+      if (pastedPath && isPastedImagePath(pastedPath)) {
+        event.preventDefault();
+        onAttachImages?.([pastedPath]);
+        return;
+      }
       void handlePaste(event);
       if (!event.defaultPrevented) {
         onTextPaste?.(event);
       }
+
+      // Fallback: if clipboardData was unavailable, check the textarea
+      // after the browser inserts the pasted text
+      if (!pastedText) {
+        const textarea = event.currentTarget;
+        const valueBefore = textarea.value;
+        const selBefore = textarea.selectionStart;
+        requestAnimationFrame(() => {
+          const valueAfter = textarea.value;
+          if (valueAfter === valueBefore) return;
+          const inserted = selBefore != null
+            ? valueAfter.slice(selBefore, selBefore + (valueAfter.length - valueBefore.length))
+            : valueAfter.slice(valueBefore.length);
+          const fallbackPath = extractPastedImagePath(inserted);
+          if (fallbackPath && isPastedImagePath(fallbackPath)) {
+            const restored = valueBefore;
+            onTextChange(restored, selBefore);
+            onAttachImages?.([fallbackPath]);
+          }
+        });
+      }
     },
-    [handlePaste, onTextPaste],
+    [handlePaste, onAttachImages, onTextPaste, onTextChange],
   );
 
   const handleMobileAttachClick = useCallback(() => {

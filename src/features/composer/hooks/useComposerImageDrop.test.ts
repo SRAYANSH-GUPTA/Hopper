@@ -175,6 +175,27 @@ describe("useComposerImageDrop", () => {
     restoreFileReader();
   });
 
+  it("handles pasted clipboard files with paths", async () => {
+    const onAttachImages = vi.fn();
+    const hook = renderImageDropHook({ disabled: false, onAttachImages });
+    const preventDefault = vi.fn();
+
+    const file = new File(["data"], "clipboard.png", { type: "image/png" });
+    (file as File & { path?: string }).path = "/tmp/clipboard.png";
+
+    await act(async () => {
+      await hook.result.handlePaste({
+        clipboardData: { files: [file], items: [] },
+        preventDefault,
+      } as unknown as React.ClipboardEvent<HTMLTextAreaElement>);
+    });
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(onAttachImages).toHaveBeenCalledWith(["/tmp/clipboard.png"]);
+
+    hook.unmount();
+  });
+
   it("filters tauri drag-drop paths and respects drop target", async () => {
     const onAttachImages = vi.fn();
     const hook = renderImageDropHook({ disabled: false, onAttachImages });

@@ -144,6 +144,17 @@ function dispatchPaste(
   element.dispatchEvent(event);
 }
 
+function dispatchTextPaste(element: HTMLElement, text: string) {
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", {
+    value: {
+      getData: (type: string) => (type === "text/plain" ? text : ""),
+      items: [],
+    },
+  });
+  element.dispatchEvent(event);
+}
+
 function setMockFileReader() {
   const OriginalFileReader = window.FileReader;
   class MockFileReader {
@@ -216,6 +227,64 @@ describe("Composer attachments integration", () => {
 
     harness.unmount();
     restoreFileReader();
+  });
+
+  it("attaches a pasted image file path as an image attachment", async () => {
+    const harness = renderComposerHarness({
+      activeThreadId: "thread-1",
+      activeWorkspaceId: "ws-1",
+    });
+    const textarea = getTextarea(harness.container);
+
+    await act(async () => {
+      dispatchTextPaste(textarea, "/home/srayansh/apju.jpg");
+    });
+
+    expect(getAttachmentNames(harness.container)).toEqual(["apju.jpg"]);
+
+    harness.unmount();
+  });
+
+  it("attaches a pasted image file path with spaces as an image attachment", async () => {
+    const harness = renderComposerHarness({
+      activeThreadId: "thread-1",
+      activeWorkspaceId: "ws-1",
+    });
+    const textarea = getTextarea(harness.container);
+
+    await act(async () => {
+      dispatchTextPaste(
+        textarea,
+        "/home/srayansh/Pictures/Screenshots/Screenshot From 2026-06-27 00-26-34.png",
+      );
+    });
+
+    expect(getAttachmentNames(harness.container)).toEqual([
+      "Screenshot From 2026-06-27 00-26-34.png",
+    ]);
+
+    harness.unmount();
+  });
+
+  it("attaches a pasted file url as an image attachment", async () => {
+    const harness = renderComposerHarness({
+      activeThreadId: "thread-1",
+      activeWorkspaceId: "ws-1",
+    });
+    const textarea = getTextarea(harness.container);
+
+    await act(async () => {
+      dispatchTextPaste(
+        textarea,
+        "file:///home/srayansh/Pictures/Screenshots/Screenshot%20From%202026-06-27%2000-26-34.png",
+      );
+    });
+
+    expect(getAttachmentNames(harness.container)).toEqual([
+      "Screenshot From 2026-06-27 00-26-34.png",
+    ]);
+
+    harness.unmount();
   });
 
   it("removes attachments and clears drafts", async () => {
