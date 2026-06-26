@@ -430,6 +430,7 @@ export function useThreads({
     onReviewExited: handleReviewExited,
     approvalAllowlistRef,
     pendingInterruptsRef,
+    accessMode,
   });
 
   const handleAccountLoginCompleted = useCallback(

@@ -216,6 +216,14 @@ export function useWorkspaceDialogs() {
       if (!hasIssues) {
         return;
       }
+      // Silently open the existing workspace — no dialog needed
+      if (
+        result.skippedExisting.length > 0 &&
+        result.skippedInvalid.length === 0 &&
+        result.failures.length === 0
+      ) {
+        return;
+      }
 
       const lines: string[] = [];
       lines.push(

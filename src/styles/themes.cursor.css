@@ -1,0 +1,716 @@
+/* Cursor editor dark theme */
+/* BG: #141414  |  Sidebar: #0f0f0f  |  Accent: #10B981  |  Font: Inter + JetBrains Mono */
+
+/* ── CSS variables — higher specificity wins over plain :root ── */
+:root[data-theme="cursor"] {
+  font-family: "Inter", "Inter Variable", system-ui, -apple-system, sans-serif;
+  --ui-font-family: "Inter", "Inter Variable", system-ui, -apple-system, sans-serif;
+  --code-font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  color-scheme: dark;
+
+  /* ── Text ── */
+  --text-primary: #e8e8e2;
+  --text-strong: #f2f2ec;
+  --text-emphasis: rgba(242, 242, 236, 0.92);
+  --text-stronger: rgba(242, 242, 236, 0.85);
+  --text-quiet: rgba(232, 232, 226, 0.72);
+  --text-muted: rgba(232, 232, 226, 0.55);
+  --text-subtle: rgba(232, 232, 226, 0.42);
+  --text-faint: rgba(232, 232, 226, 0.3);
+  --text-fainter: rgba(232, 232, 226, 0.22);
+  --text-dim: rgba(232, 232, 226, 0.15);
+
+  /* ── Surfaces ── */
+  --surface-sidebar: #0f0f0f;
+  --surface-sidebar-opaque: #0f0f0f;
+  --surface-topbar: #111111;
+  --surface-right-panel: #111111;
+  --surface-composer: #1a1a1a;
+  --surface-messages: #141414;
+  --surface-card: rgba(255, 255, 255, 0.04);
+  --surface-card-strong: rgba(255, 255, 255, 0.07);
+  --surface-card-muted: rgba(255, 255, 255, 0.03);
+  --surface-item: rgba(255, 255, 255, 0.02);
+  --surface-control: rgba(255, 255, 255, 0.07);
+  --surface-control-hover: rgba(255, 255, 255, 0.12);
+  --surface-control-disabled: rgba(255, 255, 255, 0.04);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-active: rgba(16, 185, 129, 0.12);
+  --surface-approval: rgba(15, 15, 15, 0.9);
+  --surface-debug: rgba(12, 12, 12, 0.9);
+  --surface-command: rgba(10, 10, 10, 0.95);
+  --surface-diff-card: rgba(18, 18, 18, 0.8);
+  --surface-bubble: rgba(255, 255, 255, 0.06);
+  --surface-bubble-user: rgba(16, 185, 129, 0.14);
+  --surface-context-core: rgba(10, 10, 10, 0.98);
+  --surface-popover: #1e1e1e;
+  --surface-review: rgba(16, 185, 129, 0.07);
+  --border-review: rgba(16, 185, 129, 0.28);
+  --surface-review-active: rgba(16, 185, 129, 0.12);
+  --text-review-active: rgba(255, 155, 90, 0.95);
+  --surface-review-done: rgba(110, 210, 160, 0.12);
+  --text-review-done: rgba(140, 230, 190, 0.95);
+
+  /* ── Borders — very subtle hairlines ── */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-muted: rgba(255, 255, 255, 0.05);
+  --border-strong: rgba(255, 255, 255, 0.1);
+  --border-stronger: rgba(255, 255, 255, 0.14);
+  --border-quiet: rgba(255, 255, 255, 0.18);
+  --border-accent: rgba(16, 185, 129, 0.65);
+  --border-accent-soft: rgba(16, 185, 129, 0.28);
+
+  /* ── Accent / links ── */
+  --text-accent: #f96d38;
+  --message-link-color: #f96d38;
+  --shadow-accent: rgba(16, 185, 129, 0.18);
+
+  /* ── Status ── */
+  --status-success: rgba(110, 220, 170, 0.95);
+  --status-warning: rgba(16, 185, 129, 0.95);
+  --status-error: rgba(245, 80, 80, 0.95);
+  --status-unknown: rgba(232, 232, 226, 0.3);
+
+  --select-caret: rgba(232, 232, 226, 0.5);
+}
+
+/* ── Hard backgrounds — opaque dark to block Tauri window bleed ── */
+html[data-theme="cursor"],
+html[data-theme="cursor"] body,
+html[data-theme="cursor"] #root {
+  background: #141414 !important;
+  color: #e8e8e2;
+  font-family: "Inter", "Inter Variable", system-ui, sans-serif;
+}
+
+html[data-theme="cursor"] .app {
+  background: #141414 !important;
+}
+
+/* ── Sidebar — column layout with horizontal icon tabs at top ── */
+html[data-theme="cursor"] .sidebar {
+  background: #0f0f0f !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
+  backdrop-filter: none !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+/* ── Activity bar → horizontal icon tab strip ── */
+html[data-theme="cursor"] .sidebar-activity-bar {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  padding: var(--sidebar-top-padding, 36px) 8px 6px 8px !important;
+  background: #0f0f0f !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+  min-height: calc(var(--sidebar-top-padding, 36px) + 42px) !important;
+}
+
+html[data-theme="cursor"] .sidebar-activity-top {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  flex-wrap: nowrap !important;
+  width: 100% !important;
+}
+
+html[data-theme="cursor"] .sidebar-activity-btn {
+  width: 32px !important;
+  height: 30px !important;
+  border-radius: 5px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: none !important;
+  background: transparent !important;
+  color: rgba(232, 232, 226, 0.72) !important;
+  cursor: pointer !important;
+  transition: background 0.12s ease, color 0.12s ease !important;
+  position: relative !important;
+  flex-shrink: 0 !important;
+}
+
+html[data-theme="cursor"] .sidebar-activity-btn svg {
+  width: 16px !important;
+  height: 16px !important;
+  stroke: currentColor !important;
+  flex-shrink: 0 !important;
+}
+
+html[data-theme="cursor"] .sidebar-activity-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #e8e8e2 !important;
+}
+
+html[data-theme="cursor"] .sidebar-activity-btn.is-active {
+  background: rgba(16, 185, 129, 0.14) !important;
+  color: #10B981 !important;
+}
+
+html[data-theme="cursor"] .sidebar-activity-btn.is-active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  background: #10B981;
+  border-radius: 2px 2px 0 0;
+}
+
+/* ── Sidebar panel — content below the icon tabs ── */
+html[data-theme="cursor"] .sidebar-panel {
+  flex: 1 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding-top: 0 !important;
+}
+
+/* ── Workspace cards — flat full-width rows, no card radius ── */
+html[data-theme="cursor"] .workspace-card {
+  gap: 0 !important;
+}
+
+html[data-theme="cursor"] .workspace-row {
+  padding: 10px 14px !important;
+  border-radius: 0 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  background: transparent !important;
+}
+
+/* Kill the card border/bg pseudo-element */
+html[data-theme="cursor"] .workspace-row::before {
+  display: none !important;
+}
+
+html[data-theme="cursor"] .workspace-row:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+html[data-theme="cursor"] .workspace-row.active {
+  background: rgba(16, 185, 129, 0.09) !important;
+  border-left: 2px solid #10B981 !important;
+}
+
+html[data-theme="cursor"] .workspace-row.active .workspace-name {
+  color: #e8e8e2 !important;
+}
+
+/* Workspace name + subtitle */
+html[data-theme="cursor"] .workspace-name {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: rgba(232, 232, 226, 0.85) !important;
+}
+
+html[data-theme="cursor"] .workspace-subtitle,
+html[data-theme="cursor"] .workspace-card-subtitle {
+  font-size: 11px !important;
+  color: rgba(232, 232, 226, 0.38) !important;
+}
+
+/* Thread rows */
+html[data-theme="cursor"] .thread-row {
+  border-radius: 0 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
+  padding: 7px 14px 7px 20px !important;
+}
+
+html[data-theme="cursor"] .thread-row:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-left: none !important;
+}
+
+html[data-theme="cursor"] .thread-row.active {
+  background: rgba(16, 185, 129, 0.07) !important;
+  border-left: 2px solid rgba(16, 185, 129, 0.5) !important;
+}
+
+/* "New" button — orange pill */
+html[data-theme="cursor"] .sidebar-new-convo-btn {
+  background: rgba(16, 185, 129, 0.14) !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+  color: #34d399 !important;
+  border-radius: 9999px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 4px 10px !important;
+}
+
+html[data-theme="cursor"] .sidebar-new-convo-btn:hover {
+  background: rgba(16, 185, 129, 0.22) !important;
+  border-color: rgba(16, 185, 129, 0.45) !important;
+}
+
+/* Usage section */
+html[data-theme="cursor"] .sidebar-usage-kicker {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+  color: rgba(232, 232, 226, 0.35) !important;
+}
+
+html[data-theme="cursor"] .sidebar-usage-name {
+  font-size: 12px !important;
+  color: rgba(232, 232, 226, 0.6) !important;
+}
+
+html[data-theme="cursor"] .sidebar-usage-value {
+  font-size: 12px !important;
+  color: rgba(232, 232, 226, 0.6) !important;
+}
+
+html[data-theme="cursor"] .sidebar-usage-bar {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 2px !important;
+  height: 2px !important;
+}
+
+html[data-theme="cursor"] .sidebar-usage-bar-fill {
+  background: #10B981 !important;
+  border-radius: 2px !important;
+}
+
+html[data-theme="cursor"] .sidebar-usage-reset {
+  font-size: 10px !important;
+  color: rgba(232, 232, 226, 0.3) !important;
+}
+
+/* Settings button */
+html[data-theme="cursor"] .sidebar-bottom-settings-btn {
+  background: transparent !important;
+  border: none !important;
+  color: rgba(232, 232, 226, 0.5) !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+  padding: 8px 10px !important;
+  width: 100% !important;
+}
+
+html[data-theme="cursor"] .sidebar-bottom-settings-btn:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: rgba(232, 232, 226, 0.85) !important;
+}
+
+/* Header action buttons (filter/refresh/search) */
+html[data-theme="cursor"] .sidebar-sort-toggle,
+html[data-theme="cursor"] .sidebar-refresh-toggle,
+html[data-theme="cursor"] .sidebar-search-toggle {
+  color: rgba(232, 232, 226, 0.5) !important;
+  border-radius: 5px !important;
+  width: 26px !important;
+  height: 26px !important;
+}
+
+html[data-theme="cursor"] .sidebar-sort-toggle:hover,
+html[data-theme="cursor"] .sidebar-refresh-toggle:hover,
+html[data-theme="cursor"] .sidebar-search-toggle:hover,
+html[data-theme="cursor"] .sidebar-search-toggle.is-active {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #e8e8e2 !important;
+}
+
+/* Sidebar section headers */
+html[data-theme="cursor"] .sidebar-section-title {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  color: rgba(232, 232, 226, 0.3) !important;
+}
+
+/* ── Sidebar header / body padding (sidebar itself has no padding now) ── */
+html[data-theme="cursor"] .sidebar-panel .sidebar-header {
+  padding: 10px 12px 6px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+html[data-theme="cursor"] .sidebar-panel .sidebar-body {
+  padding: 4px 8px 4px 10px !important;
+}
+
+html[data-theme="cursor"] .sidebar-panel .sidebar-bottom-rail {
+  padding: 0 12px 14px !important;
+}
+
+html[data-theme="cursor"] .sidebar-git-panel,
+html[data-theme="cursor"] .sidebar-marketplace-panel,
+html[data-theme="cursor"] .sidebar-mcp-panel,
+html[data-theme="cursor"] .sidebar-ai-panel {
+  padding-top: 8px !important;
+}
+
+/* ── Top bar ── */
+html[data-theme="cursor"] .main-topbar {
+  background: #111111 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+  backdrop-filter: none !important;
+}
+
+/* ── Main content ── */
+html[data-theme="cursor"] .main {
+  background: #141414 !important;
+}
+
+/* ── Right panel ── */
+html[data-theme="cursor"] .right-panel {
+  background: #111111 !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.07) !important;
+}
+
+/* ── Messages ── */
+html[data-theme="cursor"] .messages,
+html[data-theme="cursor"] .thread-content,
+html[data-theme="cursor"] .messages-container {
+  background: #141414 !important;
+}
+
+/* ── Thread / workspace rows ── */
+html[data-theme="cursor"] .thread-row,
+html[data-theme="cursor"] .workspace-row {
+  border-radius: 5px;
+}
+
+html[data-theme="cursor"] .thread-row:hover,
+html[data-theme="cursor"] .workspace-row:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+html[data-theme="cursor"] .thread-row.active,
+html[data-theme="cursor"] .workspace-row.active {
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-left: 2px solid #10B981;
+}
+
+/* ── Panel / settings surfaces ── */
+html[data-theme="cursor"] .panel-content,
+html[data-theme="cursor"] .settings-panel {
+  background: #141414 !important;
+}
+
+html[data-theme="cursor"] .workspace-home,
+html[data-theme="cursor"] .home-container {
+  background: #141414 !important;
+}
+
+/* ── Popovers / dropdowns ── */
+html[data-theme="cursor"] .popover,
+html[data-theme="cursor"] [data-popover],
+html[data-theme="cursor"] .dropdown-menu,
+html[data-theme="cursor"] [data-ds-popover] {
+  background: #1e1e1e !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* ── Inputs ── */
+html[data-theme="cursor"] input,
+html[data-theme="cursor"] textarea,
+html[data-theme="cursor"] select {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  border-radius: 6px;
+  color: #e8e8e2 !important;
+}
+
+html[data-theme="cursor"] input:focus,
+html[data-theme="cursor"] textarea:focus,
+html[data-theme="cursor"] select:focus {
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.07);
+  outline: none;
+}
+
+/* ── Code blocks ── */
+html[data-theme="cursor"] pre,
+html[data-theme="cursor"] code {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 6px;
+  font-family: "JetBrains Mono", "Fira Code", monospace !important;
+  color: #e8e8e2 !important;
+}
+
+/* ── Marketplace cards ── */
+html[data-theme="cursor"] .marketplace-card {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 10px;
+  transition: border-color 0.15s ease;
+}
+
+html[data-theme="cursor"] .marketplace-card:hover {
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+/* ── Buttons ── */
+html[data-theme="cursor"] .btn-primary,
+html[data-theme="cursor"] button[data-variant="primary"] {
+  background: #10B981 !important;
+  color: #ffffff !important;
+  border: none;
+  font-weight: 500;
+  border-radius: 6px;
+}
+
+html[data-theme="cursor"] .btn-primary:hover,
+html[data-theme="cursor"] button[data-variant="primary"]:hover {
+  background: #0d9668 !important;
+}
+
+/* ── Composer ── */
+html[data-theme="cursor"] .composer {
+  background: #111111 !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 12px 20px 20px !important;
+}
+
+/* Hide followup-hint and queue box borders */
+html[data-theme="cursor"] .composer-followup-hint,
+html[data-theme="cursor"] .composer-queue {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: none !important;
+  border-radius: 8px !important;
+}
+
+/* Floating input card */
+html[data-theme="cursor"] .composer-box {
+  background: #1c1c1c !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4) !important;
+  transition: border-color 0.15s ease !important;
+}
+
+html[data-theme="cursor"] .composer-box:focus-within {
+  border-color: rgba(255, 255, 255, 0.11) !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4) !important;
+}
+
+html[data-theme="cursor"] .composer-input-area {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 14px 16px 8px !important;
+}
+
+/* Textarea */
+html[data-theme="cursor"] .composer textarea {
+  color: rgba(232, 232, 226, 0.92) !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+  min-height: 72px !important;
+}
+
+html[data-theme="cursor"] .composer textarea::placeholder {
+  color: rgba(232, 232, 226, 0.28) !important;
+}
+
+/* Meta bar inside the card */
+html[data-theme="cursor"] .composer-box .composer-bar {
+  border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+  padding: 8px 14px 12px !important;
+  gap: 6px !important;
+}
+
+/* Select pill chips */
+html[data-theme="cursor"] .composer-select-wrap {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 6px !important;
+  padding: 4px 8px !important;
+  transition: background 0.12s ease, border-color 0.12s ease !important;
+}
+
+html[data-theme="cursor"] .composer-select-wrap:hover {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgba(255, 255, 255, 0.11) !important;
+}
+
+html[data-theme="cursor"] .composer-select {
+  color: rgba(232, 232, 226, 0.55) !important;
+  font-size: 11px !important;
+}
+
+html[data-theme="cursor"] .composer-select:focus {
+  color: rgba(232, 232, 226, 0.85) !important;
+}
+
+/* Send button */
+html[data-theme="cursor"] .composer-send-btn {
+  background: #10B981 !important;
+  color: #000000 !important;
+  width: 32px !important;
+  height: 32px !important;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.3) !important;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease !important;
+}
+
+html[data-theme="cursor"] .composer-send-btn svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+html[data-theme="cursor"] .composer-send-btn:hover:not(:disabled) {
+  background: #0d9668 !important;
+  opacity: 1 !important;
+  transform: scale(1.05) !important;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4) !important;
+}
+
+html[data-theme="cursor"] .composer-send-btn:disabled {
+  background: rgba(16, 185, 129, 0.18) !important;
+  color: rgba(16, 185, 129, 0.5) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="cursor"] .composer-send-btn.is-stop {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(239, 68, 68, 0.35) !important;
+  color: rgba(252, 165, 165, 0.9) !important;
+  box-shadow: none !important;
+}
+
+/* Action buttons (mic, expand) */
+html[data-theme="cursor"] .composer-action {
+  background: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  color: rgba(232, 232, 226, 0.4) !important;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 6px !important;
+}
+
+html[data-theme="cursor"] .composer-action:hover {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: rgba(232, 232, 226, 0.85) !important;
+}
+
+/* Attach button */
+html[data-theme="cursor"] .composer-attach {
+  background: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  color: rgba(232, 232, 226, 0.4) !important;
+  border-radius: 6px !important;
+}
+
+html[data-theme="cursor"] .composer-attach:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: rgba(232, 232, 226, 0.85) !important;
+}
+
+/* Plan toggle */
+html[data-theme="cursor"] .composer-plan-toggle-label,
+html[data-theme="cursor"] .composer-plan-toggle-icon {
+  color: rgba(232, 232, 226, 0.38) !important;
+}
+
+html[data-theme="cursor"] .composer-plan-toggle:has(.composer-plan-toggle-input:checked) .composer-plan-toggle-label,
+html[data-theme="cursor"] .composer-plan-toggle:has(.composer-plan-toggle-input:checked) .composer-plan-toggle-icon {
+  color: #10B981 !important;
+}
+
+/* ── Provider toggle (Codex / Claude buttons) ── */
+html[data-theme="cursor"] .gz-provider-toggle {
+  display: flex !important;
+  align-items: center !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  border-radius: 6px !important;
+  padding: 2px !important;
+  gap: 2px !important;
+  height: 28px !important;
+}
+
+html[data-theme="cursor"] .gz-provider-btn {
+  display: flex !important;
+  align-items: center !important;
+  padding: 2px 10px !important;
+  border-radius: 4px !important;
+  border: none !important;
+  background: transparent !important;
+  color: rgba(232, 232, 226, 0.45) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: background 0.12s, color 0.12s !important;
+  white-space: nowrap !important;
+}
+
+html[data-theme="cursor"] .gz-provider-btn:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: rgba(232, 232, 226, 0.75) !important;
+}
+
+html[data-theme="cursor"] .gz-provider-btn.is-active {
+  background: #10B981 !important;
+  color: #000 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="cursor"] .gz-provider-btn.is-active-claude {
+  background: #10B981 !important;
+  color: #000 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="cursor"] .gz-provider-btn.is-active-antigravity {
+  background: #4285f4 !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+/* Composer context action chips */
+html[data-theme="cursor"] .composer-context-action {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  color: rgba(232, 232, 226, 0.5) !important;
+  font-size: 11px !important;
+}
+
+html[data-theme="cursor"] .composer-context-action:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(232, 232, 226, 0.85) !important;
+}
+
+/* ── Scrollbar ── */
+html[data-theme="cursor"] ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+html[data-theme="cursor"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html[data-theme="cursor"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+
+html[data-theme="cursor"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.4);
+}
+
+/* ── Selection ── */
+html[data-theme="cursor"] ::selection {
+  background: rgba(16, 185, 129, 0.22);
+  color: #f2f2ec;
+}

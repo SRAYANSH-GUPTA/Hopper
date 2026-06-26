@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 import type {
+  AccessMode,
   AppServerEvent,
   CollabAgentRef,
   ConversationItem,
@@ -55,6 +56,7 @@ type ThreadEventHandlersOptions = {
   onReviewExited?: (workspaceId: string, threadId: string) => void;
   approvalAllowlistRef: MutableRefObject<Record<string, string[][]>>;
   pendingInterruptsRef: MutableRefObject<Set<string>>;
+  accessMode?: AccessMode | null;
 };
 
 export function useThreadEventHandlers({
@@ -81,10 +83,12 @@ export function useThreadEventHandlers({
   onReviewExited,
   approvalAllowlistRef,
   pendingInterruptsRef,
+  accessMode,
 }: ThreadEventHandlersOptions) {
   const onApprovalRequest = useThreadApprovalEvents({
     dispatch,
     approvalAllowlistRef,
+    accessMode,
   });
   const onRequestUserInput = useThreadUserInputEvents({ dispatch });
   const {

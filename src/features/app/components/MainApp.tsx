@@ -286,6 +286,8 @@ export default function MainApp() {
   const activeProvider = appSettings.localProvider ?? "codex";
   const activeProviderConfig = PROVIDER_MAP.get(activeProvider) ?? PROVIDER_MAP.get("codex")!;
 
+  const [providerSwitchCount, setProviderSwitchCount] = useState(0);
+
   const {
     models,
     selectedModel,
@@ -302,6 +304,7 @@ export default function MainApp() {
     preferredEffort,
     selectionKey: threadCodexSelectionKey,
     staticModels: activeProviderConfig.staticModels,
+    refreshTrigger: providerSwitchCount,
   });
 
   const {
@@ -527,16 +530,18 @@ export default function MainApp() {
     onThreadCodexMetadataDetected: handleThreadCodexMetadataDetected,
   });
 
+
   const handleProviderSwitch = useCallback((providerId: string) => {
     if (activeWorkspaceId && activeThreadId && providerId !== appSettings.localProvider) {
       triggerHandoff(activeWorkspaceId, activeThreadId, providerId);
     }
-    void queueSaveSettings({ ...appSettings, localProvider: providerId as typeof appSettings.localProvider }).then(() => {
+    void queueSaveSettings({ ...appSettings, localProvider: providerId as typeof appSettings.localProvider }).then(async () => {
       for (const workspace of workspaces) {
         if (workspace.connected) {
-          void connectWorkspace(workspace);
+          await connectWorkspace(workspace);
         }
       }
+      setProviderSwitchCount((c) => c + 1);
     });
   }, [activeWorkspaceId, activeThreadId, appSettings.localProvider, queueSaveSettings, workspaces, connectWorkspace]);
   const { connectionState: remoteThreadConnectionState, reconnectLive } =

@@ -3,6 +3,7 @@ import type { AppServerEvent } from "../types";
 export const SUPPORTED_APP_SERVER_METHODS = [
   "app/list/updated",
   "account/login/completed",
+  "claude/requestApproval",
   "account/rateLimits/updated",
   "account/updated",
   "agent/backgroundThread",

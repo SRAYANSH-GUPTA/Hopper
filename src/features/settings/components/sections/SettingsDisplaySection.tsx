@@ -182,6 +182,8 @@ export function SettingsDisplaySection({
             })
           }
         >
+          <option value="cursor">Cursor</option>
+          <option value="gen-z">Gen-Z</option>
           <option value="system">System</option>
           <option value="light">Light</option>
           <option value="dark">Dark</option>

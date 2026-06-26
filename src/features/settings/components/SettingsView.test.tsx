@@ -163,6 +163,7 @@ const baseSettings: AppSettings = {
   globalWorktreesFolder: null,
   localProvider: "codex",
   claudeModelId: null,
+  antigravityModelId: null,
 };
 
 const createDoctorResult = () => ({

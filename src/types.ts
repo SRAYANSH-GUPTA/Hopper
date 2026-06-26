@@ -205,7 +205,7 @@ export type RemoteBackendTarget = {
   token: string | null;
   lastConnectedAtMs?: number | null;
 };
-export type ThemePreference = "system" | "light" | "dark" | "dim";
+export type ThemePreference = "system" | "light" | "dark" | "dim" | "cursor" | "gen-z";
 export type PersonalityPreference = "friendly" | "pragmatic";
 export type FollowUpMessageBehavior = "queue" | "steer";
 export type ComposerSendIntent = "default" | "queue" | "steer";
@@ -235,11 +235,12 @@ export type OpenAppTarget = {
   args: string[];
 };
 
-export type LocalAgentProvider = "codex" | "claude";
+export type LocalAgentProvider = "codex" | "claude" | "antigravity";
 
 export type AppSettings = {
   localProvider: LocalAgentProvider;
   claudeModelId: string | null;
+  antigravityModelId: string | null;
   codexBin: string | null;
   codexArgs: string | null;
   backendMode: BackendMode;

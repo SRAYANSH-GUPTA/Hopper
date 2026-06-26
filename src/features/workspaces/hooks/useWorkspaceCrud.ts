@@ -30,6 +30,7 @@ export type AddWorkspacesFromPathsFailure = {
 export type AddWorkspacesFromPathsResult = {
   added: WorkspaceInfo[];
   firstAdded: WorkspaceInfo | null;
+  firstExistingWorkspace: WorkspaceInfo | null;
   skippedExisting: string[];
   skippedInvalid: string[];
   failures: AddWorkspacesFromPathsFailure[];
@@ -219,6 +220,7 @@ export function useWorkspaceCrud({
       const skippedInvalid: string[] = [];
       const failures: AddWorkspacesFromPathsFailure[] = [];
       const added: WorkspaceInfo[] = [];
+      let firstExistingWorkspace: WorkspaceInfo | null = null;
 
       const seenSelections = new Set<string>();
       const selections = paths
@@ -282,6 +284,20 @@ export function useWorkspaceCrud({
         }
         if (hadExistingCandidate) {
           skippedExisting.push(selection);
+          if (!firstExistingWorkspace) {
+            const normalizedSelection = normalizeWorkspacePathKey(selection);
+            const existing = workspaces.find((w) =>
+              buildWorkspacePathKeyCandidates(w.path, homePrefixes).some(
+                (k) => k === normalizedSelection,
+              ),
+            ) ?? workspaces.find((w) =>
+              normalizeWorkspacePathKey(w.path) === normalizedSelection,
+            ) ?? null;
+            if (existing) {
+              firstExistingWorkspace = existing;
+              setActiveWorkspaceId(existing.id);
+            }
+          }
           continue;
         }
         if (checkFailedMessage) {
@@ -297,6 +313,7 @@ export function useWorkspaceCrud({
       return {
         added,
         firstAdded: added[0] ?? null,
+        firstExistingWorkspace,
         skippedExisting,
         skippedInvalid,
         failures,

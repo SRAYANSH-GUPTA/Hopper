@@ -21,7 +21,7 @@ import { getDefaultInterruptShortcut, isMacPlatform } from "@utils/shortcuts";
 import { isMobilePlatform } from "@utils/platformPaths";
 import { DEFAULT_COMMIT_MESSAGE_PROMPT } from "@utils/commitMessagePrompt";
 
-const allowedThemes = new Set(["system", "light", "dark", "dim"]);
+const allowedThemes = new Set(["system", "light", "dark", "dim", "cursor", "gen-z"]);
 const allowedPersonality = new Set(["friendly", "pragmatic"]);
 const allowedFollowUpMessageBehavior = new Set(["queue", "steer"]);
 const DEFAULT_REMOTE_BACKEND_HOST = "127.0.0.1:4732";
@@ -137,6 +137,7 @@ function buildDefaultSettings(): AppSettings {
   return {
     localProvider: "codex",
     claudeModelId: null,
+    antigravityModelId: null,
     codexBin: null,
     codexArgs: null,
     backendMode: isMobile ? "remote" : "local",
@@ -169,7 +170,7 @@ function buildDefaultSettings(): AppSettings {
     lastComposerModelId: null,
     lastComposerReasoningEffort: null,
     uiScale: UI_SCALE_DEFAULT,
-    theme: "system",
+    theme: "cursor",
     usageShowRemaining: false,
     showMessageFilePath: true,
     chatHistoryScrollbackItems: CHAT_SCROLLBACK_DEFAULT,

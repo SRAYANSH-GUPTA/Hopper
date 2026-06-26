@@ -17,6 +17,7 @@ use super::worktree::{
 };
 
 use crate::backend::app_server::WorkspaceSession;
+use crate::antigravity;
 use crate::claude;
 use crate::codex::spawn_workspace_session;
 use crate::event_sink::TauriEventSink;
@@ -608,6 +609,12 @@ pub(crate) async fn connect_workspace(
     if claude::is_claude_mode(&state.app_settings).await {
         let event_sink = TauriEventSink::new(app.clone());
         claude::connect_workspace_claude(&id, event_sink);
+        return Ok(());
+    }
+
+    if antigravity::is_antigravity_mode(&state.app_settings).await {
+        let event_sink = TauriEventSink::new(app.clone());
+        antigravity::connect_workspace_antigravity(&id, event_sink);
         return Ok(());
     }
 

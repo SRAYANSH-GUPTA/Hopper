@@ -13,6 +13,7 @@ type UseModelsOptions = {
   preferredEffort?: string | null;
   selectionKey?: string | null;
   staticModels?: { id: string; label: string }[] | null;
+  refreshTrigger?: number;
 };
 
 const CONFIG_MODEL_DESCRIPTION = "Configured in CODEX_HOME/config.toml";
@@ -44,6 +45,7 @@ export function useModels({
   preferredEffort = null,
   selectionKey = null,
   staticModels = null,
+  refreshTrigger = 0,
 }: UseModelsOptions) {
   const [models, setModels] = useState<ModelOption[]>([]);
   const [configModel, setConfigModel] = useState<string | null>(null);
@@ -56,6 +58,7 @@ export function useModels({
   const hasUserSelectedEffort = useRef(false);
   const lastWorkspaceId = useRef<string | null>(null);
   const lastSelectionKey = useRef<string | null>(null);
+  const lastRefreshTrigger = useRef(refreshTrigger);
 
   const workspaceId = activeWorkspace?.id ?? null;
   const isConnected = Boolean(activeWorkspace?.connected);
@@ -314,13 +317,29 @@ export function useModels({
     if (!workspaceId || !isConnected) {
       return;
     }
+    const triggerChanged = lastRefreshTrigger.current !== refreshTrigger;
+    lastRefreshTrigger.current = refreshTrigger;
+
     const isSameWorkspace = lastFetchedWorkspaceId.current === workspaceId;
     const isSameStaticMode = lastFetchedStaticMode.current === (staticModels !== null);
-    if (isSameWorkspace && isSameStaticMode && models.length > 0) {
+    if (!triggerChanged && isSameWorkspace && isSameStaticMode && models.length > 0) {
       return;
     }
+    // On explicit provider switch (trigger changed) or static-mode change,
+    // clear stale models immediately so the UI doesn't show the wrong list
+    // while the new fetch is in flight.
+    if (triggerChanged || !isSameStaticMode) {
+      setModels([]);
+      lastFetchedWorkspaceId.current = null;
+      lastFetchedStaticMode.current = staticModels !== null;
+      if (triggerChanged) {
+        // Cancel any in-flight fetch from the previous provider so it doesn't
+        // overwrite the incoming results.
+        inFlight.current = false;
+      }
+    }
     refreshModels();
-  }, [isConnected, models.length, refreshModels, workspaceId, staticModels]);
+  }, [isConnected, models.length, refreshModels, workspaceId, staticModels, refreshTrigger]);
 
   useEffect(() => {
     if (!selectedModel) {

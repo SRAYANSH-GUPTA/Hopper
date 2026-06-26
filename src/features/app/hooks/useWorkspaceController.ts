@@ -66,7 +66,7 @@ export function useWorkspaceController({
   const addWorkspacesFromPaths = useCallback(
     async (paths: string[]): Promise<WorkspaceInfo | null> => {
       const result = await runAddWorkspacesFromPaths(paths);
-      return result.firstAdded;
+      return result.firstAdded ?? result.firstExistingWorkspace;
     },
     [runAddWorkspacesFromPaths],
   );

@@ -11,6 +11,7 @@ pub(crate) mod home;
 use crate::backend::app_server::spawn_workspace_session as spawn_workspace_session_inner;
 pub(crate) use crate::backend::app_server::WorkspaceSession;
 use crate::backend::events::AppServerEvent;
+use crate::antigravity;
 use crate::claude;
 use crate::event_sink::TauriEventSink;
 use crate::remote_backend;
@@ -93,6 +94,11 @@ pub(crate) async fn start_thread(
         return claude::start_thread_claude(&state.claude_state, &workspace_id, event_sink).await;
     }
 
+    if antigravity::is_antigravity_mode(&state.app_settings).await {
+        let event_sink = TauriEventSink::new(app.clone());
+        return antigravity::start_thread_antigravity(&state.antigravity_state, &workspace_id, event_sink).await;
+    }
+
     codex_core::start_thread_core(&state.sessions, &state.workspaces, workspace_id).await
 }
 
@@ -117,6 +123,10 @@ pub(crate) async fn resume_thread(
         return claude::read_thread_claude(&state.claude_state, &workspace_id, &thread_id).await;
     }
 
+    if antigravity::is_antigravity_mode(&state.app_settings).await {
+        return antigravity::read_thread_antigravity(&state.antigravity_state, &workspace_id, &thread_id).await;
+    }
+
     codex_core::resume_thread_core(&state.sessions, workspace_id, thread_id).await
 }
 
@@ -139,6 +149,10 @@ pub(crate) async fn read_thread(
 
     if claude::is_claude_mode(&state.app_settings).await {
         return claude::read_thread_claude(&state.claude_state, &workspace_id, &thread_id).await;
+    }
+
+    if antigravity::is_antigravity_mode(&state.app_settings).await {
+        return antigravity::read_thread_antigravity(&state.antigravity_state, &workspace_id, &thread_id).await;
     }
 
     codex_core::read_thread_core(&state.sessions, workspace_id, thread_id).await
@@ -266,6 +280,10 @@ pub(crate) async fn list_threads(
 
     if claude::is_claude_mode(&state.app_settings).await {
         return claude::list_threads_claude(&state.claude_state, &workspace_id).await;
+    }
+
+    if antigravity::is_antigravity_mode(&state.app_settings).await {
+        return antigravity::list_threads_antigravity(&state.antigravity_state, &workspace_id).await;
     }
 
     codex_core::list_threads_core(&state.sessions, workspace_id, cursor, limit, sort_key).await
@@ -414,6 +432,31 @@ pub(crate) async fn send_user_message(
         let event_sink = TauriEventSink::new(app.clone());
         return claude::send_message_claude(
             Arc::clone(&state.claude_state),
+            workspace_id,
+            workspace_cwd,
+            thread_id,
+            text,
+            model_id,
+            event_sink,
+        )
+        .await;
+    }
+
+    if antigravity::is_antigravity_mode(&state.app_settings).await {
+        let workspace_cwd = {
+            let workspaces = state.workspaces.lock().await;
+            workspaces
+                .get(&workspace_id)
+                .map(|w| w.path.clone())
+                .unwrap_or_default()
+        };
+        let model_id = match model {
+            Some(m) if !m.trim().is_empty() => Some(m),
+            _ => state.app_settings.lock().await.antigravity_model_id.clone(),
+        };
+        let event_sink = TauriEventSink::new(app.clone());
+        return antigravity::send_message_antigravity(
+            Arc::clone(&state.antigravity_state),
             workspace_id,
             workspace_cwd,
             thread_id,
@@ -895,6 +938,16 @@ pub(crate) async fn respond_to_server_request(
         )
         .await?;
         return Ok(());
+    }
+
+    // Claude permission requests have string IDs prefixed with "claude-".
+    // Route them to the permission server instead of Codex.
+    if let Value::String(ref id_str) = request_id {
+        if id_str.starts_with("claude-") {
+            let approved = result.get("decision").and_then(|d| d.as_str()) == Some("accept");
+            state.claude_state.resolve_permission(id_str, approved).await;
+            return Ok(());
+        }
     }
 
     codex_core::respond_to_server_request_core(&state.sessions, workspace_id, request_id, result)

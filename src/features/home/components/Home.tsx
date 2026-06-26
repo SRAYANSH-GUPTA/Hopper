@@ -117,6 +117,7 @@ export function Home({
                     <span className="home-genz-recent-msg">{run.message}</span>
                   </span>
                   <span className="home-genz-recent-time">{relativeTime(run.timestamp)}</span>
+                  <span className="home-genz-recent-arrow" aria-hidden>›</span>
                 </button>
               </li>
             ))}

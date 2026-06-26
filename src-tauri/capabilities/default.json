@@ -8,6 +8,11 @@
       "platforms": ["macOS", "windows", "linux"],
       "permissions": [
         "core:default",
+        "core:webview:default",
+        "core:webview:allow-create-webview",
+        "core:webview:allow-set-webview-size",
+        "core:webview:allow-set-webview-position",
+        "core:webview:allow-webview-close",
         "core:webview:allow-set-webview-zoom",
         "opener:default",
         "dialog:default",

@@ -67,6 +67,20 @@ export const PROVIDERS: ProviderConfig[] = [
     supportsUsage: false,
     styleModifier: "--claude",
   },
+  {
+    id: "antigravity",
+    label: "Antigravity",
+    staticModels: [
+      { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+      { id: "gemini-3.5-pro", label: "Gemini 3.5 Pro" },
+      { id: "gemini-3.0-ultra", label: "Gemini 3.0 Ultra" },
+    ],
+    defaultModelId: "gemini-3.5-flash",
+    getModelId: (s) => s.antigravityModelId ?? "gemini-3.5-flash",
+    setModelId: (modelId) => ({ antigravityModelId: modelId }),
+    supportsUsage: false,
+    styleModifier: "--antigravity",
+  },
 ];
 
 export const DEFAULT_PROVIDER_ID = "codex";

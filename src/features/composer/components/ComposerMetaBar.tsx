@@ -31,7 +31,7 @@ function ProviderToggle({ disabled, activeProviderId, onProviderSwitch }: { disa
         <button
           key={p.id}
           type="button"
-          className={`gz-provider-btn${activeId === p.id ? ` is-active${p.id === "claude" ? " is-active-claude" : ""}` : ""}`}
+          className={`gz-provider-btn${activeId === p.id ? ` is-active${p.id === "claude" ? " is-active-claude" : p.id === "antigravity" ? " is-active-antigravity" : ""}` : ""}`}
           onClick={() => select(p.id)}
           disabled={disabled}
           title={`Switch to ${p.label}`}

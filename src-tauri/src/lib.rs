@@ -6,6 +6,7 @@ use tauri::RunEvent;
 #[cfg(target_os = "macos")]
 use tauri::WindowEvent;
 
+mod antigravity;
 mod backend;
 mod claude;
 mod marketplace;

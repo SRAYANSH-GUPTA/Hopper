@@ -324,6 +324,19 @@
   flex-shrink: 0;
 }
 
+.home-genz-recent-arrow {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+  transition: color 0.13s, transform 0.13s;
+  line-height: 1;
+}
+
+.home-genz-recent-item:hover .home-genz-recent-arrow {
+  color: rgba(255, 255, 255, 0.55);
+  transform: translateX(2px);
+}
+
 @keyframes home-recent-pulse {
   0%, 100% { opacity: 0.7; }
   50% { opacity: 1; }

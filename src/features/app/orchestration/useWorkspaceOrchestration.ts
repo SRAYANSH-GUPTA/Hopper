@@ -64,13 +64,10 @@ export function useWorkspaceInsightsOrchestration({
       const threads = threadsByWorkspace[workspace.id] ?? [];
       threads.forEach((thread) => {
         const entry = lastAgentMessageByThread[thread.id];
-        if (!entry) {
-          return;
-        }
         entries.push({
           threadId: thread.id,
-          message: entry.text,
-          timestamp: entry.timestamp,
+          message: entry?.text ?? thread.name ?? "",
+          timestamp: entry?.timestamp ?? thread.updatedAt ?? 0,
           projectName: workspace.name,
           groupName: getWorkspaceGroupName(workspace.id),
           workspaceId: workspace.id,
@@ -79,7 +76,7 @@ export function useWorkspaceInsightsOrchestration({
       });
     });
 
-    return entries.sort((a, b) => b.timestamp - a.timestamp).slice(0, 3);
+    return entries.sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
   }, [
     getWorkspaceGroupName,
     lastAgentMessageByThread,

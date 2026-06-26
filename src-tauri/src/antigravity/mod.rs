@@ -1,5 +1,3 @@
-pub(crate) mod permission_server;
-
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -12,7 +10,6 @@ use uuid::Uuid;
 
 use crate::backend::events::{AppServerEvent, EventSink};
 use crate::types::LocalAgentProvider;
-use permission_server::ClaudePermissionServer;
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -22,30 +19,26 @@ fn now_ms() -> i64 {
 }
 
 #[derive(Clone)]
-struct ClaudeThread {
+struct AntigravityThread {
     thread_id: String,
     session_id: Option<String>,
     created_at: i64,
 }
 
-pub(crate) struct ClaudeState {
-    /// workspace_id -> (thread_id -> ClaudeThread)
-    threads: Mutex<HashMap<String, HashMap<String, ClaudeThread>>>,
-    /// Shared permission server — started lazily on first Claude invocation.
-    permission_server: Mutex<Option<Arc<ClaudePermissionServer>>>,
+pub(crate) struct AntigravityState {
+    threads: Mutex<HashMap<String, HashMap<String, AntigravityThread>>>,
 }
 
-impl ClaudeState {
+impl AntigravityState {
     pub(crate) fn new() -> Arc<Self> {
         Arc::new(Self {
             threads: Mutex::new(HashMap::new()),
-            permission_server: Mutex::new(None),
         })
     }
 
     pub(crate) async fn new_thread(&self, workspace_id: &str) -> String {
         let thread_id = Uuid::new_v4().to_string();
-        let thread = ClaudeThread {
+        let thread = AntigravityThread {
             thread_id: thread_id.clone(),
             session_id: None,
             created_at: now_ms(),
@@ -78,7 +71,7 @@ impl ClaudeState {
         }
     }
 
-    pub(crate) async fn list_threads(&self, workspace_id: &str) -> Vec<ClaudeThread> {
+    pub(crate) async fn list_threads(&self, workspace_id: &str) -> Vec<AntigravityThread> {
         self.threads
             .lock()
             .await
@@ -87,7 +80,7 @@ impl ClaudeState {
             .unwrap_or_default()
     }
 
-    pub(crate) async fn get_thread(&self, workspace_id: &str, thread_id: &str) -> Option<ClaudeThread> {
+    pub(crate) async fn get_thread(&self, workspace_id: &str, thread_id: &str) -> Option<AntigravityThread> {
         self.threads
             .lock()
             .await
@@ -102,45 +95,19 @@ impl ClaudeState {
             .entry(workspace_id.to_string())
             .or_default()
             .entry(thread_id.to_string())
-            .or_insert_with(|| ClaudeThread {
+            .or_insert_with(|| AntigravityThread {
                 thread_id: thread_id.to_string(),
                 session_id: None,
                 created_at: now_ms(),
             });
     }
-
-    /// Start the permission server if it isn't running yet and return its port.
-    /// Also ensures the PreToolUse hook is written into ~/.claude/settings.json.
-    pub(crate) async fn get_or_start_permission_server<E: EventSink>(
-        &self,
-        event_sink: E,
-    ) -> u16 {
-        let mut guard = self.permission_server.lock().await;
-        if let Some(srv) = guard.as_ref() {
-            return srv.port;
-        }
-        // Ensure the global hook is installed so Claude Code can reach us.
-        permission_server::ensure_hook_installed().await;
-        let srv = ClaudePermissionServer::start(event_sink).await;
-        let port = srv.port;
-        *guard = Some(srv);
-        port
-    }
-
-    /// Resolve a pending permission request by request_id.
-    /// Called from the Tauri command when the user approves or declines.
-    pub(crate) async fn resolve_permission(&self, request_id: &str, approved: bool) {
-        if let Some(srv) = self.permission_server.lock().await.as_ref() {
-            srv.resolve(request_id, approved).await;
-        }
-    }
 }
 
-pub(crate) async fn is_claude_mode(app_settings: &Mutex<crate::types::AppSettings>) -> bool {
-    matches!(app_settings.lock().await.local_provider, LocalAgentProvider::Claude)
+pub(crate) async fn is_antigravity_mode(app_settings: &Mutex<crate::types::AppSettings>) -> bool {
+    matches!(app_settings.lock().await.local_provider, LocalAgentProvider::Antigravity)
 }
 
-pub(crate) fn connect_workspace_claude<E: EventSink>(workspace_id: &str, event_sink: E) {
+pub(crate) fn connect_workspace_antigravity<E: EventSink>(workspace_id: &str, event_sink: E) {
     event_sink.emit_app_server_event(AppServerEvent {
         workspace_id: workspace_id.to_string(),
         message: json!({
@@ -150,12 +117,12 @@ pub(crate) fn connect_workspace_claude<E: EventSink>(workspace_id: &str, event_s
     });
 }
 
-pub(crate) async fn start_thread_claude<E: EventSink>(
-    claude_state: &Arc<ClaudeState>,
+pub(crate) async fn start_thread_antigravity<E: EventSink>(
+    state: &Arc<AntigravityState>,
     workspace_id: &str,
     event_sink: E,
 ) -> Result<Value, String> {
-    let thread_id = claude_state.new_thread(workspace_id).await;
+    let thread_id = state.new_thread(workspace_id).await;
     let created_at = now_ms();
 
     event_sink.emit_app_server_event(AppServerEvent {
@@ -182,11 +149,11 @@ pub(crate) async fn start_thread_claude<E: EventSink>(
     }))
 }
 
-pub(crate) async fn list_threads_claude(
-    claude_state: &Arc<ClaudeState>,
+pub(crate) async fn list_threads_antigravity(
+    state: &Arc<AntigravityState>,
     workspace_id: &str,
 ) -> Result<Value, String> {
-    let threads = claude_state.list_threads(workspace_id).await;
+    let threads = state.list_threads(workspace_id).await;
     let mut items: Vec<Value> = threads
         .iter()
         .map(|t| {
@@ -198,7 +165,6 @@ pub(crate) async fn list_threads_claude(
             })
         })
         .collect();
-    // Most recent first
     items.sort_by(|a, b| {
         let ts_a = a.get("createdAt").and_then(|v| v.as_i64()).unwrap_or(0);
         let ts_b = b.get("createdAt").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -213,12 +179,12 @@ pub(crate) async fn list_threads_claude(
     }))
 }
 
-pub(crate) async fn read_thread_claude(
-    claude_state: &Arc<ClaudeState>,
+pub(crate) async fn read_thread_antigravity(
+    state: &Arc<AntigravityState>,
     workspace_id: &str,
     thread_id: &str,
 ) -> Result<Value, String> {
-    let thread = claude_state.get_thread(workspace_id, thread_id).await;
+    let thread = state.get_thread(workspace_id, thread_id).await;
     let (created_at, session_id) = thread
         .map(|t| (t.created_at, t.session_id))
         .unwrap_or_else(|| (now_ms(), None));
@@ -237,13 +203,9 @@ pub(crate) async fn read_thread_claude(
     }))
 }
 
-/// Resolve the absolute path of the `claude` binary by asking a login shell.
-/// GUI apps on macOS/Linux don't inherit the full user PATH (nvm, homebrew,
-/// npm global bins, etc.), so a bare `Command::new("claude")` silently fails.
-async fn resolve_claude_bin() -> String {
-    // Ask a login shell for the resolved path so we pick up nvm, homebrew, etc.
+async fn resolve_antigravity_bin() -> String {
     let out = Command::new("/bin/sh")
-        .args(["-lc", "which claude 2>/dev/null || command -v claude 2>/dev/null"])
+        .args(["-lc", "which agy 2>/dev/null || command -v agy 2>/dev/null"])
         .output()
         .await;
 
@@ -254,19 +216,17 @@ async fn resolve_claude_bin() -> String {
         }
     }
 
-    // Common fallback locations
     for candidate in &[
-        "/usr/local/bin/claude",
-        "/opt/homebrew/bin/claude",
+        "/usr/local/bin/agy",
+        "/opt/homebrew/bin/agy",
     ] {
         if std::path::Path::new(candidate).exists() {
             return candidate.to_string();
         }
     }
 
-    // Check HOME-relative paths
     if let Ok(home) = std::env::var("HOME") {
-        for suffix in &[".npm/bin/claude", ".local/bin/claude", ".yarn/bin/claude"] {
+        for suffix in &[".local/bin/agy", ".npm/bin/agy"] {
             let p = format!("{home}/{suffix}");
             if std::path::Path::new(&p).exists() {
                 return p;
@@ -274,12 +234,11 @@ async fn resolve_claude_bin() -> String {
         }
     }
 
-    // Last resort — hope it's on PATH
-    "claude".to_string()
+    "agy".to_string()
 }
 
-pub(crate) async fn send_message_claude<E: EventSink + 'static>(
-    claude_state: Arc<ClaudeState>,
+pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
+    state: Arc<AntigravityState>,
     workspace_id: String,
     workspace_cwd: String,
     thread_id: String,
@@ -287,13 +246,11 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     model_id: Option<String>,
     event_sink: E,
 ) -> Result<Value, String> {
-    // Ensure thread exists in state
-    claude_state.ensure_thread(&workspace_id, &thread_id).await;
+    state.ensure_thread(&workspace_id, &thread_id).await;
 
-    let session_id = claude_state.get_session_id(&workspace_id, &thread_id).await;
+    let session_id = state.get_session_id(&workspace_id, &thread_id).await;
     let turn_id = Uuid::new_v4().to_string();
 
-    // Emit thread/status/changed to running
     event_sink.emit_app_server_event(AppServerEvent {
         workspace_id: workspace_id.clone(),
         message: json!({
@@ -305,7 +262,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         }),
     });
 
-    // Emit turn/started
     event_sink.emit_app_server_event(AppServerEvent {
         workspace_id: workspace_id.clone(),
         message: json!({
@@ -317,7 +273,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         }),
     });
 
-    // Emit user message item
     let user_item_id = Uuid::new_v4().to_string();
     let user_item = json!({
         "type": "userMessage",
@@ -340,77 +295,52 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         }),
     });
 
-    // Start (or reuse) the permission server so hooks can route approvals to the UI.
-    let permission_port = claude_state
-        .get_or_start_permission_server(event_sink.clone())
-        .await;
+    let agy_bin = resolve_antigravity_bin().await;
 
-    // Resolve the claude binary (GUI apps don't have the full shell PATH)
-    let claude_bin = resolve_claude_bin().await;
-
-    // Build claude command
-    let mut cmd = Command::new(&claude_bin);
-    cmd.arg("--output-format").arg("stream-json");
-    // --verbose is required by the CLI when using --output-format=stream-json with -p.
-    // In stream-json mode all output (including verbose info) is valid JSON lines.
-    cmd.arg("--verbose");
+    let mut cmd = Command::new(&agy_bin);
+    cmd.arg("--output-format").arg("json");
     if let Some(ref sid) = session_id {
         cmd.arg("--resume").arg(sid);
     }
     let resolved_model = model_id
         .as_deref()
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or("claude-sonnet-4-6");
+        .unwrap_or("gemini-3.5-flash");
     cmd.arg("--model").arg(resolved_model);
     cmd.arg("-p").arg(&text);
     if !workspace_cwd.is_empty() {
         cmd.current_dir(&workspace_cwd);
     }
-    // Expose permission server port and workspace id to the hook command so it
-    // can POST approval requests back to us.
-    cmd.env("CODEXMONITOR_PERMISSION_PORT", permission_port.to_string());
-    cmd.env("CODEXMONITOR_WORKSPACE_ID", &workspace_id);
-    // Close stdin — without this, claude may block waiting for input.
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(std::process::Stdio::piped());
-    // Pipe stderr so we can consume it — leaving it un-read can deadlock
-    // the process when the OS pipe buffer fills up.
     cmd.stderr(std::process::Stdio::piped());
 
     let mut child = cmd.spawn().map_err(|e| {
         format!(
-            "Failed to spawn claude (tried '{claude_bin}'). \
-             Make sure claude-code is installed: npm install -g @anthropic-ai/claude-code\n{e}"
+            "Failed to spawn antigravity (tried '{agy_bin}'). \
+             Make sure the Antigravity CLI is installed: https://antigravity.google/docs/cli-using\n{e}"
         )
     })?;
     let stdout = child.stdout.take().ok_or("missing stdout")?;
-    // Consume stderr in a background task to prevent pipe buffer deadlock.
-    // Errors are printed to the host process stderr for debugging.
     if let Some(stderr) = child.stderr.take() {
         tokio::spawn(async move {
             use tokio::io::AsyncBufReadExt;
             let mut lines = tokio::io::BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                eprintln!("[claude stderr] {line}");
+                eprintln!("[antigravity stderr] {line}");
             }
         });
     }
 
-    // Clone before the async move so originals are available for the return value.
     let thread_id_ret = thread_id.clone();
     let turn_id_ret = turn_id.clone();
 
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
         let mut new_session_id: Option<String> = None;
-        // tool_use_id -> item_id (for tool_result matching)
         let mut tool_item_ids: HashMap<String, String> = HashMap::new();
-        // message_id -> accumulated text (deduplicates streaming assistant events)
         let mut message_texts: HashMap<String, String> = HashMap::new();
-        // message IDs that have already had item/started emitted
         let mut started_messages: HashSet<String> = HashSet::new();
-        // Track whether we received a result/error event so we can emit a
-        // fallback completion if Claude exits without one.
         let mut turn_completed = false;
 
         while let Ok(Some(line)) = lines.next_line().await {
@@ -419,14 +349,12 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                 continue;
             }
 
-            // Log every raw line for debugging — visible in the terminal that
-            // launched the Tauri app.
-            eprintln!("[claude stdout] {line}");
+            eprintln!("[antigravity stdout] {line}");
 
             let event: Value = match serde_json::from_str(&line) {
                 Ok(v) => v,
                 Err(e) => {
-                    eprintln!("[claude parse error] {e}: {line}");
+                    eprintln!("[antigravity parse error] {e}: {line}");
                     continue;
                 }
             };
@@ -440,10 +368,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                     }
                 }
                 "assistant" => {
-                    // Claude stream-json emits multiple type:"assistant" events with the
-                    // SAME message id as content streams in. We must use the message's own
-                    // id (e.g. "msg_016af8…") as the stable item_id so the frontend can
-                    // match item/started → item/agentMessage/delta → item/completed.
                     let msg_obj = event.get("message");
                     let msg_id = msg_obj
                         .and_then(|m| m.get("id"))
@@ -451,7 +375,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-                    // Collect full text and process tool_use blocks from this snapshot.
                     let mut full_text = String::new();
                     if let Some(content_arr) = msg_obj
                         .and_then(|m| m.get("content"))
@@ -465,9 +388,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                         full_text.push_str(t);
                                     }
                                 }
-                                Some("tool_use") => {
-                                    // Tool-use blocks live inside assistant message content in
-                                    // stream-json format (not as top-level type:"tool_use" events).
+                                Some("tool_use") | Some("function_call") => {
                                     let tool_use_id = block
                                         .get("id")
                                         .and_then(|id| id.as_str())
@@ -482,10 +403,12 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                             .unwrap_or("unknown")
                                             .to_string();
                                         let tool_input =
-                                            block.get("input").cloned().unwrap_or(json!({}));
+                                            block.get("input")
+                                                .or_else(|| block.get("args"))
+                                                .cloned()
+                                                .unwrap_or(json!({}));
                                         let item_id = format!("tool-{tool_use_id}");
-                                        tool_item_ids
-                                            .insert(tool_use_id.clone(), item_id.clone());
+                                        tool_item_ids.insert(tool_use_id.clone(), item_id.clone());
                                         let command_str = serde_json::to_string(&tool_input)
                                             .unwrap_or_default();
                                         event_sink.emit_app_server_event(AppServerEvent {
@@ -513,11 +436,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                         }
                     }
 
-                    // Only create an agentMessage item if this message has text.
-                    // Messages that only contain tool_use blocks must NOT get an
-                    // item/started — they would show as empty boxes in the UI.
                     if !full_text.is_empty() {
-                        // Emit item/started the first time we see text for this message.
                         if !started_messages.contains(&msg_id) {
                             started_messages.insert(msg_id.clone());
                             message_texts.insert(msg_id.clone(), String::new());
@@ -538,8 +457,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                             });
                         }
 
-                        // Emit only the *new* portion of text as a delta so the frontend
-                        // can incrementally append rather than re-render the whole message.
                         let prev_len = message_texts.get(&msg_id).map(|s| s.len()).unwrap_or(0);
                         if full_text.len() > prev_len {
                             let delta = full_text[prev_len..].to_string();
@@ -558,11 +475,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                         }
                     }
                 }
-                // Note: top-level "tool_use" events don't occur in stream-json mode —
-                // tool_use blocks arrive inside type:"assistant" content (handled above).
-                // This arm is left as a no-op safety net.
                 "tool_use" => {}
-                // type:"user" events from Claude contain tool_result blocks.
                 "user" => {
                     if let Some(content_arr) = event
                         .get("message")
@@ -570,9 +483,11 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                         .and_then(|c| c.as_array())
                     {
                         for block in content_arr {
-                            if block.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                            let block_type = block.get("type").and_then(|t| t.as_str());
+                            if block_type == Some("tool_result") || block_type == Some("function_response") {
                                 let tool_use_id = block
                                     .get("tool_use_id")
+                                    .or_else(|| block.get("id"))
                                     .and_then(|id| id.as_str())
                                     .unwrap_or("")
                                     .to_string();
@@ -583,15 +498,10 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                 let output = match block.get("content") {
                                     Some(Value::String(s)) => s.clone(),
                                     Some(Value::Array(arr)) => {
-                                        // content blocks array — extract text blocks
                                         arr.iter()
                                             .filter_map(|b| {
-                                                if b.get("type").and_then(|t| t.as_str())
-                                                    == Some("text")
-                                                {
-                                                    b.get("text")
-                                                        .and_then(|t| t.as_str())
-                                                        .map(|s| s.to_string())
+                                                if b.get("type").and_then(|t| t.as_str()) == Some("text") {
+                                                    b.get("text").and_then(|t| t.as_str()).map(|s| s.to_string())
                                                 } else {
                                                     None
                                                 }
@@ -629,7 +539,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                     }
                     turn_completed = true;
 
-                    // Complete all agent message items that were streamed.
                     for (msg_id, text) in &message_texts {
                         event_sink.emit_app_server_event(AppServerEvent {
                             workspace_id: workspace_id.clone(),
@@ -675,11 +584,10 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                         .get("error")
                         .and_then(|e| e.as_str())
                         .or_else(|| event.get("message").and_then(|m| m.as_str()))
-                        .unwrap_or("Unknown Claude error");
+                        .unwrap_or("Unknown Antigravity error");
 
                     turn_completed = true;
 
-                    // Complete any partially-streamed agent messages before erroring.
                     for (msg_id, text) in &message_texts {
                         if !text.is_empty() {
                             event_sink.emit_app_server_event(AppServerEvent {
@@ -736,12 +644,8 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
             }
         }
 
-        // Fallback: if Claude exited without emitting a result/error event
-        // (crash, unexpected output, etc.), always mark the turn as done so
-        // the UI doesn't stay stuck on "Working..." forever.
         if !turn_completed {
-            eprintln!("[claude] process exited without result event — emitting fallback completion");
-            // Complete any partially-streamed messages.
+            eprintln!("[antigravity] process exited without result event — emitting fallback completion");
             for (msg_id, text) in &message_texts {
                 event_sink.emit_app_server_event(AppServerEvent {
                     workspace_id: workspace_id.clone(),
@@ -783,7 +687,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         }
 
         if let Some(sid) = new_session_id {
-            claude_state.set_session_id(&workspace_id, &thread_id, sid).await;
+            state.set_session_id(&workspace_id, &thread_id, sid).await;
         }
 
         let _ = child.wait().await;

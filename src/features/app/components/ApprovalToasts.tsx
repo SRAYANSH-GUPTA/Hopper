@@ -3,11 +3,7 @@ import type { ApprovalRequest, WorkspaceInfo } from "../../../types";
 import { getApprovalCommandInfo } from "../../../utils/approvalRules";
 import {
   ToastActions,
-  ToastBody,
   ToastCard,
-  ToastError,
-  ToastHeader,
-  ToastTitle,
   ToastViewport,
 } from "../../design-system/components/toast/ToastPrimitives";
 
@@ -18,6 +14,47 @@ type ApprovalToastsProps = {
   onRemember?: (request: ApprovalRequest, command: string[]) => void;
 };
 
+/** Map tool names to a simple icon character */
+function toolIcon(toolName: string): string {
+  const name = toolName.toLowerCase();
+  if (name === "bash" || name === "shellexec") return "⬢";
+  if (name === "write" || name === "createfile") return "✎";
+  if (name === "edit" || name === "editfile" || name === "str_replace_editor") return "⊘";
+  if (name === "read" || name === "readfile") return "◎";
+  if (name === "glob" || name === "search" || name === "grep") return "⊙";
+  if (name === "webfetch" || name === "websearch") return "◈";
+  return "◆";
+}
+
+/** Pick a color class for the tool icon badge */
+function toolColor(toolName: string): string {
+  const name = toolName.toLowerCase();
+  if (name === "bash" || name === "shellexec") return "approval-icon--shell";
+  if (name === "write" || name === "createfile") return "approval-icon--write";
+  if (name === "edit" || name === "str_replace_editor") return "approval-icon--edit";
+  if (name === "read") return "approval-icon--read";
+  return "approval-icon--default";
+}
+
+/** Extract the most useful single-line preview from params */
+function primaryDetail(params: Record<string, unknown>): string | null {
+  // Prefer command > file_path > description > content preview
+  const candidates = ["command", "cmd", "file_path", "path", "description", "query"];
+  for (const key of candidates) {
+    const val = params[key];
+    if (typeof val === "string" && val.trim()) {
+      return val.trim();
+    }
+  }
+  // Fall back to first string value
+  for (const val of Object.values(params)) {
+    if (typeof val === "string" && val.trim() && val.length < 300) {
+      return val.trim();
+    }
+  }
+  return null;
+}
+
 export function ApprovalToasts({
   approvals,
   workspaces,
@@ -25,21 +62,17 @@ export function ApprovalToasts({
   onRemember,
 }: ApprovalToastsProps) {
   const workspaceLabels = useMemo(
-    () => new Map(workspaces.map((workspace) => [workspace.id, workspace.name])),
+    () => new Map(workspaces.map((w) => [w.id, w.name])),
     [workspaces],
   );
 
   const primaryRequest = approvals[approvals.length - 1];
 
+  // Press Enter to approve the topmost request
   useEffect(() => {
-    if (!primaryRequest) {
-      return;
-    }
-
-    const handler = (event: KeyboardEvent) => {
-      if (event.key !== "Enter") {
-        return;
-      }
+    if (!primaryRequest) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Enter") return;
       const active = document.activeElement;
       if (
         active instanceof HTMLElement &&
@@ -47,47 +80,15 @@ export function ApprovalToasts({
           active.tagName === "INPUT" ||
           active.tagName === "TEXTAREA" ||
           active.tagName === "SELECT")
-      ) {
-        return;
-      }
-      event.preventDefault();
+      ) return;
+      e.preventDefault();
       onDecision(primaryRequest, "accept");
     };
-
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onDecision, primaryRequest]);
 
-  if (!approvals.length) {
-    return null;
-  }
-
-  const formatLabel = (value: string) =>
-    value
-      .replace(/([a-z])([A-Z])/g, "$1 $2")
-      .replace(/_/g, " ")
-      .trim();
-
-  const methodLabel = (method: string) => {
-    const trimmed = method.replace(/^codex\/requestApproval\/?/, "");
-    return trimmed || method;
-  };
-
-  const renderParamValue = (value: unknown) => {
-    if (value === null || value === undefined) {
-      return { text: "None", isCode: false };
-    }
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      return { text: String(value), isCode: false };
-    }
-    if (Array.isArray(value)) {
-      if (value.every((entry) => ["string", "number", "boolean"].includes(typeof entry))) {
-        return { text: value.map(String).join(", "), isCode: false };
-      }
-      return { text: JSON.stringify(value, null, 2), isCode: true };
-    }
-    return { text: JSON.stringify(value, null, 2), isCode: true };
-  };
+  if (!approvals.length) return null;
 
   return (
     <ToastViewport className="approval-toasts" role="region" ariaLive="assertive">
@@ -95,68 +96,74 @@ export function ApprovalToasts({
         const workspaceName = workspaceLabels.get(request.workspace_id);
         const params = request.params ?? {};
         const commandInfo = getApprovalCommandInfo(params);
-        const entries = Object.entries(params);
+        const isClaude = request.method === "claude/requestApproval";
+
+        const tool = isClaude
+          ? String(params.tool ?? "Tool")
+          : request.method.replace(/^codex\/requestApproval\/?/, "") || request.method;
+
+        const detail = primaryDetail(
+          isClaude
+            ? (Object.fromEntries(Object.entries(params).filter(([k]) => k !== "tool")))
+            : params,
+        );
+
         return (
           <ToastCard
             key={`${request.workspace_id}-${request.request_id}`}
-            className="approval-toast"
+            className="approval-toast-v2"
             role="alert"
           >
-            <ToastHeader className="approval-toast-header">
-              <ToastTitle className="approval-toast-title">Approval needed</ToastTitle>
-              {workspaceName ? (
-                <div className="approval-toast-workspace">{workspaceName}</div>
-              ) : null}
-            </ToastHeader>
-            <div className="approval-toast-method">{methodLabel(request.method)}</div>
-            <div className="approval-toast-details">
-              {entries.length ? (
-                entries.map(([key, value]) => {
-                  const rendered = renderParamValue(value);
-                  return (
-                    <div key={key} className="approval-toast-detail">
-                      <div className="approval-toast-detail-label">
-                        {formatLabel(key)}
-                      </div>
-                      {rendered.isCode ? (
-                        <ToastError className="approval-toast-detail-code">
-                          {rendered.text}
-                        </ToastError>
-                      ) : (
-                        <ToastBody className="approval-toast-detail-value">
-                          {rendered.text}
-                        </ToastBody>
-                      )}
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="approval-toast-detail approval-toast-detail-empty">
-                  No extra details.
-                </div>
-              )}
+            {/* Header row */}
+            <div className="approval-v2-header">
+              <div className={`approval-v2-icon ${isClaude ? toolColor(tool) : "approval-icon--default"}`}>
+                {isClaude ? toolIcon(tool) : "◆"}
+              </div>
+              <div className="approval-v2-header-text">
+                <span className="approval-v2-label">
+                  {isClaude ? "Claude needs permission" : "Approval needed"}
+                </span>
+                {workspaceName && (
+                  <span className="approval-v2-workspace">{workspaceName}</span>
+                )}
+              </div>
             </div>
-            <ToastActions className="approval-toast-actions">
+
+            {/* Tool name pill */}
+            <div className="approval-v2-tool-row">
+              <span className="approval-v2-tool-pill">{tool}</span>
+            </div>
+
+            {/* Primary detail (command / file path) */}
+            {detail && (
+              <div className="approval-v2-detail">
+                <code className="approval-v2-code">{detail}</code>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <ToastActions className="approval-v2-actions">
               <button
-                className="secondary"
+                className="approval-v2-btn approval-v2-btn--decline"
                 onClick={() => onDecision(request, "decline")}
               >
                 Decline
               </button>
-              {commandInfo && onRemember ? (
+              {commandInfo && onRemember && (
                 <button
-                  className="ghost approval-toast-remember"
+                  className="approval-v2-btn approval-v2-btn--always"
                   onClick={() => onRemember(request, commandInfo.tokens)}
-                  title={`Allow commands that start with ${commandInfo.preview}`}
+                  title={`Always allow: ${commandInfo.preview}`}
                 >
                   Always allow
                 </button>
-              ) : null}
+              )}
               <button
-                className="primary"
+                className="approval-v2-btn approval-v2-btn--approve"
                 onClick={() => onDecision(request, "accept")}
               >
-                Approve (Enter)
+                Approve
+                <kbd className="approval-v2-kbd">↵</kbd>
               </button>
             </ToastActions>
           </ToastCard>

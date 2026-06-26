@@ -381,6 +381,8 @@ pub(crate) struct AppSettings {
     pub(crate) local_provider: LocalAgentProvider,
     #[serde(default, rename = "claudeModelId")]
     pub(crate) claude_model_id: Option<String>,
+    #[serde(default, rename = "antigravityModelId")]
+    pub(crate) antigravity_model_id: Option<String>,
     #[serde(default, rename = "codexBin")]
     pub(crate) codex_bin: Option<String>,
     #[serde(default, rename = "codexArgs")]
@@ -685,6 +687,7 @@ pub(crate) enum LocalAgentProvider {
     #[default]
     Codex,
     Claude,
+    Antigravity,
 }
 
 fn default_access_mode() -> String {
@@ -1137,6 +1140,7 @@ impl Default for AppSettings {
         Self {
             local_provider: LocalAgentProvider::Codex,
             claude_model_id: None,
+            antigravity_model_id: None,
             codex_bin: None,
             codex_args: None,
             backend_mode: default_backend_mode(),

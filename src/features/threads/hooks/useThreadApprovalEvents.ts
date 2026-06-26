@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { Dispatch, MutableRefObject } from "react";
-import type { ApprovalRequest } from "@/types";
+import type { AccessMode, ApprovalRequest } from "@/types";
 import {
   getApprovalCommandInfo,
   matchesCommandPrefix,
@@ -11,14 +11,26 @@ import type { ThreadAction } from "./useThreadsReducer";
 type UseThreadApprovalEventsOptions = {
   dispatch: Dispatch<ThreadAction>;
   approvalAllowlistRef: MutableRefObject<Record<string, string[][]>>;
+  accessMode?: AccessMode | null;
 };
 
 export function useThreadApprovalEvents({
   dispatch,
   approvalAllowlistRef,
+  accessMode,
 }: UseThreadApprovalEventsOptions) {
   return useCallback(
     (approval: ApprovalRequest) => {
+      // Full-access mode: silently approve everything without showing the UI.
+      if (accessMode === "full-access") {
+        void respondToServerRequest(
+          approval.workspace_id,
+          approval.request_id,
+          "accept",
+        );
+        return;
+      }
+
       const commandInfo = getApprovalCommandInfo(approval.params ?? {});
       const allowlist =
         approvalAllowlistRef.current[approval.workspace_id] ?? [];
@@ -32,6 +44,6 @@ export function useThreadApprovalEvents({
       }
       dispatch({ type: "addApproval", approval });
     },
-    [approvalAllowlistRef, dispatch],
+    [accessMode, approvalAllowlistRef, dispatch],
   );
 }
