@@ -12,13 +12,25 @@ function extractImageInputValue(input: Record<string, unknown>) {
   return value.trim();
 }
 
+function stripHandoffPrefix(text: string): string {
+  if (!text.startsWith("## Context Handoff")) {
+    return text;
+  }
+  const marker = "\n\n---\n\n**User:** ";
+  const idx = text.indexOf(marker);
+  if (idx !== -1) {
+    return text.slice(idx + marker.length);
+  }
+  return text;
+}
+
 function parseUserInputs(inputs: Array<Record<string, unknown>>) {
   const textParts: string[] = [];
   const images: string[] = [];
   inputs.forEach((input) => {
     const type = asString(input.type);
     if (type === "text") {
-      const text = asString(input.text);
+      const text = stripHandoffPrefix(asString(input.text));
       if (text) {
         textParts.push(text);
       }

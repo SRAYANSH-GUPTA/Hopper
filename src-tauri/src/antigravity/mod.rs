@@ -1,9 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -298,7 +297,6 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     let agy_bin = resolve_antigravity_bin().await;
 
     let mut cmd = Command::new(&agy_bin);
-    cmd.arg("--output-format").arg("json");
     if let Some(ref sid) = session_id {
         cmd.arg("--resume").arg(sid);
     }
@@ -336,359 +334,85 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     let turn_id_ret = turn_id.clone();
 
     tokio::spawn(async move {
-        let mut lines = BufReader::new(stdout).lines();
-        let mut new_session_id: Option<String> = None;
-        let mut tool_item_ids: HashMap<String, String> = HashMap::new();
-        let mut message_texts: HashMap<String, String> = HashMap::new();
-        let mut started_messages: HashSet<String> = HashSet::new();
-        let mut turn_completed = false;
+        use tokio::io::AsyncReadExt;
+        let msg_id = Uuid::new_v4().to_string();
 
-        while let Ok(Some(line)) = lines.next_line().await {
-            let line = line.trim().to_string();
-            if line.is_empty() {
-                continue;
-            }
-
-            eprintln!("[antigravity stdout] {line}");
-
-            let event: Value = match serde_json::from_str(&line) {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("[antigravity parse error] {e}: {line}");
-                    continue;
-                }
-            };
-
-            let event_type = event.get("type").and_then(|t| t.as_str()).unwrap_or("");
-
-            match event_type {
-                "system" => {
-                    if let Some(sid) = event.get("session_id").and_then(|s| s.as_str()) {
-                        new_session_id = Some(sid.to_string());
-                    }
-                }
-                "assistant" => {
-                    let msg_obj = event.get("message");
-                    let msg_id = msg_obj
-                        .and_then(|m| m.get("id"))
-                        .and_then(|id| id.as_str())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| Uuid::new_v4().to_string());
-
-                    let mut full_text = String::new();
-                    if let Some(content_arr) = msg_obj
-                        .and_then(|m| m.get("content"))
-                        .and_then(|c| c.as_array())
-                    {
-                        for block in content_arr {
-                            let block_type = block.get("type").and_then(|t| t.as_str());
-                            match block_type {
-                                Some("text") => {
-                                    if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
-                                        full_text.push_str(t);
-                                    }
-                                }
-                                Some("tool_use") | Some("function_call") => {
-                                    let tool_use_id = block
-                                        .get("id")
-                                        .and_then(|id| id.as_str())
-                                        .unwrap_or("")
-                                        .to_string();
-                                    if !tool_use_id.is_empty()
-                                        && !tool_item_ids.contains_key(&tool_use_id)
-                                    {
-                                        let tool_name = block
-                                            .get("name")
-                                            .and_then(|n| n.as_str())
-                                            .unwrap_or("unknown")
-                                            .to_string();
-                                        let tool_input =
-                                            block.get("input")
-                                                .or_else(|| block.get("args"))
-                                                .cloned()
-                                                .unwrap_or(json!({}));
-                                        let item_id = format!("tool-{tool_use_id}");
-                                        tool_item_ids.insert(tool_use_id.clone(), item_id.clone());
-                                        let command_str = serde_json::to_string(&tool_input)
-                                            .unwrap_or_default();
-                                        event_sink.emit_app_server_event(AppServerEvent {
-                                            workspace_id: workspace_id.clone(),
-                                            message: json!({
-                                                "method": "item/started",
-                                                "params": {
-                                                    "threadId": thread_id,
-                                                    "item": {
-                                                        "type": "commandExecution",
-                                                        "id": item_id,
-                                                        "turnId": turn_id,
-                                                        "toolUseId": tool_use_id,
-                                                        "name": tool_name,
-                                                        "command": command_str,
-                                                        "status": "running"
-                                                    }
-                                                }
-                                            }),
-                                        });
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-
-                    if !full_text.is_empty() {
-                        if !started_messages.contains(&msg_id) {
-                            started_messages.insert(msg_id.clone());
-                            message_texts.insert(msg_id.clone(), String::new());
-                            event_sink.emit_app_server_event(AppServerEvent {
-                                workspace_id: workspace_id.clone(),
-                                message: json!({
-                                    "method": "item/started",
-                                    "params": {
-                                        "threadId": thread_id,
-                                        "item": {
-                                            "type": "agentMessage",
-                                            "id": msg_id,
-                                            "turnId": turn_id,
-                                            "text": ""
-                                        }
-                                    }
-                                }),
-                            });
-                        }
-
-                        let prev_len = message_texts.get(&msg_id).map(|s| s.len()).unwrap_or(0);
-                        if full_text.len() > prev_len {
-                            let delta = full_text[prev_len..].to_string();
-                            event_sink.emit_app_server_event(AppServerEvent {
-                                workspace_id: workspace_id.clone(),
-                                message: json!({
-                                    "method": "item/agentMessage/delta",
-                                    "params": {
-                                        "threadId": thread_id,
-                                        "itemId": msg_id,
-                                        "delta": delta
-                                    }
-                                }),
-                            });
-                            message_texts.insert(msg_id.clone(), full_text);
-                        }
-                    }
-                }
-                "tool_use" => {}
-                "user" => {
-                    if let Some(content_arr) = event
-                        .get("message")
-                        .and_then(|m| m.get("content"))
-                        .and_then(|c| c.as_array())
-                    {
-                        for block in content_arr {
-                            let block_type = block.get("type").and_then(|t| t.as_str());
-                            if block_type == Some("tool_result") || block_type == Some("function_response") {
-                                let tool_use_id = block
-                                    .get("tool_use_id")
-                                    .or_else(|| block.get("id"))
-                                    .and_then(|id| id.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let item_id = tool_item_ids
-                                    .get(&tool_use_id)
-                                    .cloned()
-                                    .unwrap_or_else(|| format!("tool-{tool_use_id}"));
-                                let output = match block.get("content") {
-                                    Some(Value::String(s)) => s.clone(),
-                                    Some(Value::Array(arr)) => {
-                                        arr.iter()
-                                            .filter_map(|b| {
-                                                if b.get("type").and_then(|t| t.as_str()) == Some("text") {
-                                                    b.get("text").and_then(|t| t.as_str()).map(|s| s.to_string())
-                                                } else {
-                                                    None
-                                                }
-                                            })
-                                            .collect::<Vec<_>>()
-                                            .join("\n")
-                                    }
-                                    Some(v) => serde_json::to_string(v).unwrap_or_default(),
-                                    None => String::new(),
-                                };
-                                event_sink.emit_app_server_event(AppServerEvent {
-                                    workspace_id: workspace_id.clone(),
-                                    message: json!({
-                                        "method": "item/completed",
-                                        "params": {
-                                            "threadId": thread_id,
-                                            "item": {
-                                                "type": "commandExecution",
-                                                "id": item_id,
-                                                "turnId": turn_id,
-                                                "toolUseId": tool_use_id,
-                                                "status": "completed",
-                                                "output": output
-                                            }
-                                        }
-                                    }),
-                                });
-                            }
-                        }
-                    }
-                }
-                "result" => {
-                    if let Some(sid) = event.get("session_id").and_then(|s| s.as_str()) {
-                        new_session_id = Some(sid.to_string());
-                    }
-                    turn_completed = true;
-
-                    for (msg_id, text) in &message_texts {
-                        event_sink.emit_app_server_event(AppServerEvent {
-                            workspace_id: workspace_id.clone(),
-                            message: json!({
-                                "method": "item/completed",
-                                "params": {
-                                    "threadId": thread_id,
-                                    "item": {
-                                        "type": "agentMessage",
-                                        "id": msg_id,
-                                        "turnId": turn_id,
-                                        "text": text
-                                    }
-                                }
-                            }),
-                        });
-                    }
-
-                    event_sink.emit_app_server_event(AppServerEvent {
-                        workspace_id: workspace_id.clone(),
-                        message: json!({
-                            "method": "thread/status/changed",
-                            "params": {
-                                "threadId": thread_id,
-                                "status": { "type": "idle" }
-                            }
-                        }),
-                    });
-                    event_sink.emit_app_server_event(AppServerEvent {
-                        workspace_id: workspace_id.clone(),
-                        message: json!({
-                            "method": "turn/completed",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "turn": { "id": turn_id, "threadId": thread_id }
-                            }
-                        }),
-                    });
-                }
-                "error" => {
-                    let msg = event
-                        .get("error")
-                        .and_then(|e| e.as_str())
-                        .or_else(|| event.get("message").and_then(|m| m.as_str()))
-                        .unwrap_or("Unknown Antigravity error");
-
-                    turn_completed = true;
-
-                    for (msg_id, text) in &message_texts {
-                        if !text.is_empty() {
-                            event_sink.emit_app_server_event(AppServerEvent {
-                                workspace_id: workspace_id.clone(),
-                                message: json!({
-                                    "method": "item/completed",
-                                    "params": {
-                                        "threadId": thread_id,
-                                        "item": {
-                                            "type": "agentMessage",
-                                            "id": msg_id,
-                                            "turnId": turn_id,
-                                            "text": text
-                                        }
-                                    }
-                                }),
-                            });
-                        }
-                    }
-
-                    event_sink.emit_app_server_event(AppServerEvent {
-                        workspace_id: workspace_id.clone(),
-                        message: json!({
-                            "method": "error",
-                            "params": {
-                                "threadId": thread_id,
-                                "message": msg
-                            }
-                        }),
-                    });
-                    event_sink.emit_app_server_event(AppServerEvent {
-                        workspace_id: workspace_id.clone(),
-                        message: json!({
-                            "method": "thread/status/changed",
-                            "params": {
-                                "threadId": thread_id,
-                                "status": { "type": "idle" }
-                            }
-                        }),
-                    });
-                    event_sink.emit_app_server_event(AppServerEvent {
-                        workspace_id: workspace_id.clone(),
-                        message: json!({
-                            "method": "turn/completed",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "turn": { "id": turn_id, "threadId": thread_id }
-                            }
-                        }),
-                    });
-                }
-                _ => {}
-            }
-        }
-
-        if !turn_completed {
-            eprintln!("[antigravity] process exited without result event — emitting fallback completion");
-            for (msg_id, text) in &message_texts {
-                event_sink.emit_app_server_event(AppServerEvent {
-                    workspace_id: workspace_id.clone(),
-                    message: json!({
-                        "method": "item/completed",
-                        "params": {
-                            "threadId": thread_id,
-                            "item": {
-                                "type": "agentMessage",
-                                "id": msg_id,
-                                "turnId": turn_id,
-                                "text": text
-                            }
-                        }
-                    }),
-                });
-            }
-            event_sink.emit_app_server_event(AppServerEvent {
-                workspace_id: workspace_id.clone(),
-                message: json!({
-                    "method": "thread/status/changed",
-                    "params": {
-                        "threadId": thread_id,
-                        "status": { "type": "idle" }
-                    }
-                }),
-            });
-            event_sink.emit_app_server_event(AppServerEvent {
-                workspace_id: workspace_id.clone(),
-                message: json!({
-                    "method": "turn/completed",
-                    "params": {
-                        "threadId": thread_id,
+        // Emit item/started so the UI knows a message is incoming
+        event_sink.emit_app_server_event(AppServerEvent {
+            workspace_id: workspace_id.clone(),
+            message: json!({
+                "method": "item/started",
+                "params": {
+                    "threadId": thread_id,
+                    "item": {
+                        "type": "agentMessage",
+                        "id": msg_id,
                         "turnId": turn_id,
-                        "turn": { "id": turn_id, "threadId": thread_id }
+                        "text": ""
+                    }
+                }
+            }),
+        });
+
+        // agy -p outputs plain text; read all stdout at once
+        let mut raw = Vec::new();
+        let mut reader = tokio::io::BufReader::new(stdout);
+        let _ = reader.read_to_end(&mut raw).await;
+        let full_text = String::from_utf8_lossy(&raw).trim().to_string();
+
+        eprintln!("[antigravity stdout] {full_text}");
+
+        if !full_text.is_empty() {
+            event_sink.emit_app_server_event(AppServerEvent {
+                workspace_id: workspace_id.clone(),
+                message: json!({
+                    "method": "item/agentMessage/delta",
+                    "params": {
+                        "threadId": thread_id,
+                        "itemId": msg_id,
+                        "delta": full_text
                     }
                 }),
             });
         }
 
-        if let Some(sid) = new_session_id {
-            state.set_session_id(&workspace_id, &thread_id, sid).await;
-        }
+        event_sink.emit_app_server_event(AppServerEvent {
+            workspace_id: workspace_id.clone(),
+            message: json!({
+                "method": "item/completed",
+                "params": {
+                    "threadId": thread_id,
+                    "item": {
+                        "type": "agentMessage",
+                        "id": msg_id,
+                        "turnId": turn_id,
+                        "text": full_text
+                    }
+                }
+            }),
+        });
+
+        event_sink.emit_app_server_event(AppServerEvent {
+            workspace_id: workspace_id.clone(),
+            message: json!({
+                "method": "thread/status/changed",
+                "params": {
+                    "threadId": thread_id,
+                    "status": { "type": "idle" }
+                }
+            }),
+        });
+        event_sink.emit_app_server_event(AppServerEvent {
+            workspace_id: workspace_id.clone(),
+            message: json!({
+                "method": "turn/completed",
+                "params": {
+                    "threadId": thread_id,
+                    "turnId": turn_id,
+                    "turn": { "id": turn_id, "threadId": thread_id }
+                }
+            }),
+        });
 
         let _ = child.wait().await;
     });

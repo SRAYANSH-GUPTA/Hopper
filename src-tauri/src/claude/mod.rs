@@ -405,6 +405,8 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         let mut new_session_id: Option<String> = None;
         // tool_use_id -> item_id (for tool_result matching)
         let mut tool_item_ids: HashMap<String, String> = HashMap::new();
+        // tool_use_id -> (tool_name, command_display) so completion events can include them
+        let mut tool_details: HashMap<String, (String, String)> = HashMap::new();
         // message_id -> accumulated text (deduplicates streaming assistant events)
         let mut message_texts: HashMap<String, String> = HashMap::new();
         // message IDs that have already had item/started emitted
@@ -486,8 +488,20 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                         let item_id = format!("tool-{tool_use_id}");
                                         tool_item_ids
                                             .insert(tool_use_id.clone(), item_id.clone());
-                                        let command_str = serde_json::to_string(&tool_input)
-                                            .unwrap_or_default();
+                                        // Extract a human-readable command string from the tool
+                                        // input. For the Bash tool the field is "command"; for
+                                        // other tools fall back to tool name.
+                                        let command_str = tool_input
+                                            .get("command")
+                                            .and_then(|c| c.as_str())
+                                            .map(|s| s.to_string())
+                                            .or_else(|| {
+                                                tool_input
+                                                    .get("query")
+                                                    .and_then(|q| q.as_str())
+                                                    .map(|s| s.to_string())
+                                            })
+                                            .unwrap_or_else(|| tool_name.clone());
                                         event_sink.emit_app_server_event(AppServerEvent {
                                             workspace_id: workspace_id.clone(),
                                             message: json!({
@@ -614,7 +628,8 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                                 "turnId": turn_id,
                                                 "toolUseId": tool_use_id,
                                                 "status": "completed",
-                                                "output": output
+                                                // TypeScript reads `aggregatedOutput` for this type
+                                                "aggregatedOutput": output
                                             }
                                         }
                                     }),
