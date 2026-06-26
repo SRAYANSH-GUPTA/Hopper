@@ -298,7 +298,7 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
 
     let mut cmd = Command::new(&agy_bin);
     if let Some(ref sid) = session_id {
-        cmd.arg("--resume").arg(sid);
+        cmd.arg("--conversation").arg(sid);
     }
     let resolved_model = model_id
         .as_deref()
@@ -307,6 +307,7 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     cmd.arg("--model").arg(resolved_model);
     cmd.arg("-p").arg(&text);
     if !workspace_cwd.is_empty() {
+        cmd.arg("--add-dir").arg(&workspace_cwd);
         cmd.current_dir(&workspace_cwd);
     }
     cmd.stdin(std::process::Stdio::null());
@@ -320,15 +321,177 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
         )
     })?;
     let stdout = child.stdout.take().ok_or("missing stdout")?;
-    if let Some(stderr) = child.stderr.take() {
-        tokio::spawn(async move {
-            use tokio::io::AsyncBufReadExt;
-            let mut lines = tokio::io::BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                eprintln!("[antigravity stderr] {line}");
+    let stderr = child.stderr.take().ok_or("missing stderr")?;
+    
+    let thread_id_clone = thread_id.clone();
+    let workspace_id_clone = workspace_id.clone();
+    let turn_id_clone = turn_id.clone();
+    let state_clone = state.clone();
+    let event_sink_clone = event_sink.clone();
+    let mut current_session = session_id.clone();
+    let mut current_session_clone_for_stderr = current_session.clone();
+
+    tokio::spawn(async move {
+        use tokio::io::AsyncBufReadExt;
+        let mut lines = tokio::io::BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            eprintln!("[antigravity stderr] {line}");
+            if current_session_clone_for_stderr.is_none() {
+                if let Some(captures) = regex::Regex::new(r"Created conversation ([a-f0-9\-]{36})").unwrap().captures(&line) {
+                    let sid = captures.get(1).unwrap().as_str().to_string();
+                    current_session_clone_for_stderr = Some(sid.clone());
+                    state_clone.set_session_id(&workspace_id_clone, &thread_id_clone, sid.clone()).await;
+                }
             }
-        });
-    }
+        }
+    });
+
+    let current_session_clone = current_session.clone();
+    let thread_id_t = thread_id.clone();
+    let turn_id_t = turn_id.clone();
+    let workspace_id_t = workspace_id.clone();
+    let event_sink_t = event_sink.clone();
+
+    tokio::spawn(async move {
+        let mut sid = current_session_clone;
+        for _ in 0..50 {
+            if sid.is_none() {
+                sid = state.get_session_id(&workspace_id_t, &thread_id_t).await;
+            }
+            if sid.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+
+        if let Some(session) = sid {
+            let path = dirs::home_dir()
+                .unwrap()
+                .join(format!(".gemini/antigravity-cli/brain/{}/.system_generated/logs/transcript.jsonl", session));
+            
+            let mut pos = 0;
+            let mut seen_steps = std::collections::HashSet::new();
+            
+            // Loop for up to 2 minutes waiting for process
+            for _ in 0..1200 {
+                if let Ok(mut file) = std::fs::File::open(&path) {
+                    use std::io::{Read, Seek, SeekFrom};
+                    let _ = file.seek(SeekFrom::Start(pos));
+                    let mut buf = String::new();
+                    if let Ok(n) = file.read_to_string(&mut buf) {
+                        if n > 0 {
+                            pos += n as u64;
+                            for line in buf.lines() {
+                                if let Ok(val) = serde_json::from_str::<Value>(line) {
+                                    let step_index = val.get("step_index").and_then(|v| v.as_i64()).unwrap_or(0);
+                                    if !seen_steps.insert(step_index) { continue; }
+                                    
+                                    if let Some(t) = val.get("type").and_then(|v| v.as_str()) {
+                                        if t == "PLANNER_RESPONSE" {
+                                            if let Some(thinking) = val.get("thinking").and_then(|v| v.as_str()) {
+                                                let item_id = format!("reasoning-{}", step_index);
+                                                event_sink_t.emit_app_server_event(AppServerEvent {
+                                                    workspace_id: workspace_id_t.clone(),
+                                                    message: json!({
+                                                        "method": "item/started",
+                                                        "params": {
+                                                            "threadId": thread_id_t,
+                                                            "item": {
+                                                                "type": "reasoning",
+                                                                "id": item_id,
+                                                                "turnId": turn_id_t,
+                                                                "summary": "Thinking...",
+                                                                "content": ""
+                                                            }
+                                                        }
+                                                    }),
+                                                });
+                                                event_sink_t.emit_app_server_event(AppServerEvent {
+                                                    workspace_id: workspace_id_t.clone(),
+                                                    message: json!({
+                                                        "method": "item/reasoning/textDelta",
+                                                        "params": {
+                                                            "threadId": thread_id_t,
+                                                            "itemId": item_id,
+                                                            "delta": thinking
+                                                        }
+                                                    }),
+                                                });
+                                                event_sink_t.emit_app_server_event(AppServerEvent {
+                                                    workspace_id: workspace_id_t.clone(),
+                                                    message: json!({
+                                                        "method": "item/completed",
+                                                        "params": {
+                                                            "threadId": thread_id_t,
+                                                            "item": {
+                                                                "type": "reasoning",
+                                                                "id": item_id,
+                                                                "turnId": turn_id_t,
+                                                                "summary": "Thinking...",
+                                                                "content": thinking
+                                                            }
+                                                        }
+                                                    }),
+                                                });
+                                            }
+                                        } else if t != "USER_INPUT" && t != "CONVERSATION_HISTORY" && t != "EPHEMERAL_MESSAGE" && t != "CHECKPOINT" {
+                                            let item_id = format!("tool-{}", step_index);
+                                            let content = val.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                                            event_sink_t.emit_app_server_event(AppServerEvent {
+                                                workspace_id: workspace_id_t.clone(),
+                                                message: json!({
+                                                    "method": "item/started",
+                                                    "params": {
+                                                        "threadId": thread_id_t,
+                                                        "item": {
+                                                            "type": "commandExecution",
+                                                            "id": item_id,
+                                                            "turnId": turn_id_t,
+                                                            "command": t,
+                                                            "status": "in_progress"
+                                                        }
+                                                    }
+                                                }),
+                                            });
+                                            event_sink_t.emit_app_server_event(AppServerEvent {
+                                                workspace_id: workspace_id_t.clone(),
+                                                message: json!({
+                                                    "method": "item/commandExecution/outputDelta",
+                                                    "params": {
+                                                        "threadId": thread_id_t,
+                                                        "itemId": item_id,
+                                                        "delta": content
+                                                    }
+                                                }),
+                                            });
+                                            event_sink_t.emit_app_server_event(AppServerEvent {
+                                                workspace_id: workspace_id_t.clone(),
+                                                message: json!({
+                                                    "method": "item/completed",
+                                                    "params": {
+                                                        "threadId": thread_id_t,
+                                                        "item": {
+                                                            "type": "commandExecution",
+                                                            "id": item_id,
+                                                            "turnId": turn_id_t,
+                                                            "command": t,
+                                                            "status": "completed",
+                                                            "output": content
+                                                        }
+                                                    }
+                                                }),
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+    });
 
     let thread_id_ret = thread_id.clone();
     let turn_id_ret = turn_id.clone();
@@ -354,27 +517,39 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
             }),
         });
 
-        // agy -p outputs plain text; read all stdout at once
-        let mut raw = Vec::new();
+        // Stream stdout in chunks to emit live deltas
         let mut reader = tokio::io::BufReader::new(stdout);
-        let _ = reader.read_to_end(&mut raw).await;
-        let full_text = String::from_utf8_lossy(&raw).trim().to_string();
+        let mut buffer = [0u8; 128];
+        let mut full_text_buf = String::new();
 
-        eprintln!("[antigravity stdout] {full_text}");
+        loop {
+            match reader.read(&mut buffer).await {
+                Ok(0) => break, // EOF
+                Ok(n) => {
+                    let chunk = String::from_utf8_lossy(&buffer[..n]).to_string();
+                    full_text_buf.push_str(&chunk);
 
-        if !full_text.is_empty() {
-            event_sink.emit_app_server_event(AppServerEvent {
-                workspace_id: workspace_id.clone(),
-                message: json!({
-                    "method": "item/agentMessage/delta",
-                    "params": {
-                        "threadId": thread_id,
-                        "itemId": msg_id,
-                        "delta": full_text
-                    }
-                }),
-            });
+                    event_sink.emit_app_server_event(AppServerEvent {
+                        workspace_id: workspace_id.clone(),
+                        message: json!({
+                            "method": "item/agentMessage/delta",
+                            "params": {
+                                "threadId": thread_id,
+                                "itemId": msg_id,
+                                "delta": chunk
+                            }
+                        }),
+                    });
+                }
+                Err(e) => {
+                    eprintln!("[antigravity stdout stream error] {}", e);
+                    break;
+                }
+            }
         }
+
+        let full_text = full_text_buf.trim().to_string();
+        eprintln!("[antigravity stdout complete] length: {}", full_text.len());
 
         event_sink.emit_app_server_event(AppServerEvent {
             workspace_id: workspace_id.clone(),

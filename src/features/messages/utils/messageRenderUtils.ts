@@ -14,6 +14,7 @@ export type ParsedReasoning = {
   summaryTitle: string;
   bodyText: string;
   hasBody: boolean;
+  hasAnyText: boolean;
   workingLabel: string | null;
 };
 
@@ -198,6 +199,7 @@ export function parseReasoning(
     summaryTitle,
     bodyText,
     hasBody,
+    hasAnyText,
     workingLabel,
   };
 }

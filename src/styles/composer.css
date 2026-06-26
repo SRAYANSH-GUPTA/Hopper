@@ -142,7 +142,7 @@
 
 /* Unified composer card — wraps the textarea and the meta bar */
 .composer-box {
-  border: 1px solid var(--cm-border-heavy);
+  border: none;
   background: var(--cm-surface-panel-elevated);
   border-radius: 24px;
   box-shadow:
@@ -166,7 +166,7 @@
 .composer-input-area {
   position: relative;
   min-width: 0;
-  border: 1px solid var(--cm-border-heavy);
+  border: none;
   background: var(--cm-surface-panel-elevated);
   border-radius: 20px;
   padding: 10px 12px 10px 10px;
@@ -368,7 +368,7 @@
 }
 
 .composer-action {
-  border: 1px solid var(--cm-border-emphasis);
+  border: none;
   background: var(--cm-surface-panel-strong);
   color: var(--text-strong);
   padding: 0;
@@ -848,7 +848,8 @@
   gap: 6px;
   padding: 5px 10px;
   border-radius: 999px;
-  background: var(--cm-surface-panel-strong);
+  background: transparent;
+  border: 1px solid transparent;
   width: max-content;
 }
 

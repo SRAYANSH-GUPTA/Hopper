@@ -748,7 +748,7 @@
 
   .composer-action {
     border-radius: 10px !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
+    border: none !important;
     background: rgba(255,255,255,0.04) !important;
     color: rgba(255,255,255,0.45) !important;
     width: 32px !important;
@@ -758,13 +758,13 @@
 
   .composer-action:hover:not(:disabled) {
     background: rgba(255,255,255,0.08) !important;
-    border-color: rgba(255,255,255,0.14) !important;
+    border: none !important;
     color: rgba(255,255,255,0.9) !important;
   }
 
-  .composer-action.is-stop { border-color: rgba(255,107,107,0.35) !important; background: rgba(255,107,107,0.08) !important; color: rgba(255,140,140,0.85) !important; }
+  .composer-action.is-stop { border: none !important; background: rgba(255,107,107,0.08) !important; color: rgba(255,140,140,0.85) !important; }
   .composer-action.is-stop:hover { background: rgba(255,107,107,0.15) !important; }
-  .composer-action--mic.is-active { border-color: rgba(255,98,0,0.4) !important; background: rgba(255,98,0,0.12) !important; color: var(--gz-orange) !important; }
+  .composer-action--mic.is-active { border: none !important; background: rgba(255,98,0,0.12) !important; color: var(--gz-orange) !important; }
 
   .composer-attach {
     border-radius: 10px !important;

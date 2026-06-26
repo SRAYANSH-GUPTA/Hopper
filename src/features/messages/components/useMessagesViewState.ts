@@ -203,6 +203,23 @@ export function useMessagesViewState({
     return null;
   }, [items, reasoningMetaById]);
 
+  const latestReasoningText = useMemo(() => {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index];
+      if (item.kind === "message") {
+        break;
+      }
+      if (item.kind !== "reasoning") {
+        continue;
+      }
+      const parsed = reasoningMetaById.get(item.id);
+      if (parsed?.bodyText) {
+        return parsed.bodyText;
+      }
+    }
+    return null;
+  }, [items, reasoningMetaById]);
+
   const visibleItems = useMemo(
     () =>
       items.filter((item) => {
@@ -216,32 +233,50 @@ export function useMessagesViewState({
         if (item.kind !== "reasoning") {
           return true;
         }
-        return reasoningMetaById.get(item.id)?.hasBody ?? false;
+        const parsed = reasoningMetaById.get(item.id);
+        return parsed?.hasBody ?? parsed?.hasAnyText ?? false;
       }),
     [items, reasoningMetaById],
   );
 
   useEffect(() => {
+    const autoExpandIds: string[] = [];
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
       const item = visibleItems[index];
+      // Auto-expand plan items with output
       if (
         item.kind === "tool" &&
         item.toolType === "plan" &&
         (item.output ?? "").trim().length > 0
       ) {
-        if (manuallyToggledExpandedRef.current.has(item.id)) {
-          return;
+        if (!manuallyToggledExpandedRef.current.has(item.id)) {
+          autoExpandIds.push(item.id);
         }
-        setExpandedItems((prev) => {
-          if (prev.has(item.id)) {
-            return prev;
-          }
-          const next = new Set(prev);
-          next.add(item.id);
-          return next;
-        });
-        return;
+        break;
       }
+      // Auto-expand in-progress command items so live output is visible
+      if (
+        item.kind === "tool" &&
+        item.toolType === "commandExecution" &&
+        /in[_\s-]*progress|running|started/i.test(item.status ?? "")
+      ) {
+        if (!manuallyToggledExpandedRef.current.has(item.id)) {
+          autoExpandIds.push(item.id);
+        }
+      }
+    }
+    if (autoExpandIds.length > 0) {
+      setExpandedItems((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const id of autoExpandIds) {
+          if (!next.has(id)) {
+            next.add(id);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
     }
   }, [visibleItems]);
 
@@ -300,6 +335,7 @@ export function useMessagesViewState({
     handleQuoteMessage,
     reasoningMetaById,
     latestReasoningLabel,
+    latestReasoningText,
     groupedItems,
     planFollowup,
     dismissPlanFollowup,

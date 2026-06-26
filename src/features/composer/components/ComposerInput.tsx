@@ -7,7 +7,6 @@ import type {
   SyntheticEvent,
 } from "react";
 import type { AutocompleteItem } from "../hooks/useComposerAutocomplete";
-import ImagePlus from "lucide-react/dist/esm/icons/image-plus";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
 import Mic from "lucide-react/dist/esm/icons/mic";
@@ -346,16 +345,6 @@ export function ComposerInput({
           onRemoveAttachment={onRemoveAttachment}
         />
         <div className="composer-input-row">
-          <button
-            type="button"
-            className="composer-attach"
-            onClick={onAddAttachment}
-            disabled={disabled || !onAddAttachment}
-            aria-label="Add image"
-            title="Add image"
-          >
-            <ImagePlus size={14} aria-hidden />
-          </button>
           <ComposerMobileActionsMenu
             disabled={disabled}
             handleMobileAttachClick={handleMobileAttachClick}

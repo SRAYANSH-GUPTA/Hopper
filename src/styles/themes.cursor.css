@@ -492,14 +492,14 @@ html[data-theme="cursor"] .composer-queue {
 /* Floating input card */
 html[data-theme="cursor"] .composer-box {
   background: #1c1c1c !important;
-  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border: none !important;
   border-radius: 10px !important;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4) !important;
   transition: border-color 0.15s ease !important;
 }
 
 html[data-theme="cursor"] .composer-box:focus-within {
-  border-color: rgba(255, 255, 255, 0.11) !important;
+  border: none !important;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4) !important;
 }
 
@@ -531,16 +531,15 @@ html[data-theme="cursor"] .composer-box .composer-bar {
 
 /* Select pill chips */
 html[data-theme="cursor"] .composer-select-wrap {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
   border-radius: 6px !important;
   padding: 4px 8px !important;
-  transition: background 0.12s ease, border-color 0.12s ease !important;
+  transition: background 0.12s ease !important;
 }
 
 html[data-theme="cursor"] .composer-select-wrap:hover {
-  background: rgba(255, 255, 255, 0.07) !important;
-  border-color: rgba(255, 255, 255, 0.11) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
 }
 
 html[data-theme="cursor"] .composer-select {
@@ -590,7 +589,7 @@ html[data-theme="cursor"] .composer-send-btn.is-stop {
 /* Action buttons (mic, expand) */
 html[data-theme="cursor"] .composer-action {
   background: transparent !important;
-  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border: none !important;
   color: rgba(232, 232, 226, 0.4) !important;
   width: 28px !important;
   height: 28px !important;
@@ -599,7 +598,7 @@ html[data-theme="cursor"] .composer-action {
 
 html[data-theme="cursor"] .composer-action:hover {
   background: rgba(255, 255, 255, 0.07) !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
+  border: none !important;
   color: rgba(232, 232, 226, 0.85) !important;
 }
 

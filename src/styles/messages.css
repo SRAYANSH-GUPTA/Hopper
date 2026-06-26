@@ -1461,3 +1461,109 @@
   color: var(--message-link-color);
   font-size: 0.97em;
 }
+
+/* ── Live thinking stream ── */
+
+.reasoning-inline.reasoning-streaming {
+  border-color: color-mix(in srgb, var(--status-warning) 30%, transparent);
+  background: color-mix(in srgb, var(--cm-surface-panel) 92%, var(--status-warning));
+}
+
+.reasoning-inline.reasoning-streaming .tool-inline-icon {
+  animation: reasoning-pulse 1.6s ease-in-out infinite;
+}
+
+.reasoning-streaming-text {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.reasoning-streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--text-stronger);
+  border-radius: 1px;
+  animation: cursor-blink 0.9s steps(2) infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes reasoning-pulse {
+  0%, 100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  50% {
+    opacity: 0.7;
+    filter: drop-shadow(0 0 4px var(--status-warning));
+  }
+}
+
+/* ── Live command execution ── */
+
+.tool-inline-row.tool-streaming {
+  border-color: color-mix(in srgb, var(--status-success) 25%, transparent);
+}
+
+.tool-inline-row.tool-streaming .tool-inline-icon {
+  animation: tool-exec-spin 1.2s linear infinite;
+}
+
+@keyframes tool-exec-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.tool-inline-terminal.tool-terminal-live {
+  border-color: color-mix(in srgb, var(--status-success) 30%, var(--cm-border-heavy));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-success) 10%, transparent);
+}
+
+/* ── Working indicator thinking preview ── */
+
+.working-thinking-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-top: 4px;
+  background: var(--cm-surface-panel);
+  border: 1px solid var(--cm-border-default);
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  max-height: 120px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 12px);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 12px);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.working-thinking-preview:empty {
+  display: none;
+}
+
+.working-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.working-expanded .working {
+  margin: 0;
+}

@@ -116,6 +116,7 @@ export const Messages = memo(function Messages({
     handleQuoteMessage,
     reasoningMetaById,
     latestReasoningLabel,
+    latestReasoningText,
     groupedItems,
     planFollowup,
     dismissPlanFollowup,
@@ -166,12 +167,15 @@ export const Messages = memo(function Messages({
     if (item.kind === "reasoning") {
       const isExpanded = expandedItems.has(item.id);
       const parsed = reasoningMetaById.get(item.id) ?? parseReasoning(item);
+      const isLastItem = items[items.length - 1]?.id === item.id;
+      const isStreaming = isThinking && isLastItem;
       return (
         <ReasoningRow
           key={item.id}
           item={item}
           parsed={parsed}
           isExpanded={isExpanded}
+          isStreaming={isStreaming}
           onToggle={toggleExpanded}
           showMessageFilePath={showMessageFilePath}
           workspacePath={workspacePath}
@@ -289,6 +293,7 @@ export const Messages = memo(function Messages({
           lastDurationMs={lastDurationMs}
           hasItems={items.length > 0}
           reasoningLabel={latestReasoningLabel}
+          thinkingText={latestReasoningText}
           showPollingFetchStatus={showPollingFetchStatus}
           pollingIntervalMs={pollingIntervalMs}
         />

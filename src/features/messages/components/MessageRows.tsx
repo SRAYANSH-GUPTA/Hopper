@@ -51,6 +51,7 @@ type WorkingIndicatorProps = {
   lastDurationMs?: number | null;
   hasItems: boolean;
   reasoningLabel?: string | null;
+  thinkingText?: string | null;
   showPollingFetchStatus?: boolean;
   pollingIntervalMs?: number;
 };
@@ -67,6 +68,7 @@ type ReasoningRowProps = MarkdownFileLinkProps & {
   item: Extract<ConversationItem, { kind: "reasoning" }>;
   parsed: ParsedReasoning;
   isExpanded: boolean;
+  isStreaming?: boolean;
   onToggle: (id: string) => void;
 };
 
@@ -304,6 +306,7 @@ export const WorkingIndicator = memo(function WorkingIndicator({
   lastDurationMs = null,
   hasItems,
   reasoningLabel = null,
+  thinkingText = null,
   showPollingFetchStatus = false,
   pollingIntervalMs = 12000,
 }: WorkingIndicatorProps) {
@@ -311,6 +314,7 @@ export const WorkingIndicator = memo(function WorkingIndicator({
   const [pollCountdownSeconds, setPollCountdownSeconds] = useState(() =>
     Math.max(1, Math.ceil(pollingIntervalMs / 1000)),
   );
+  const thinkingPreviewRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!isThinking || !processingStartedAt) {
@@ -340,15 +344,34 @@ export const WorkingIndicator = memo(function WorkingIndicator({
     };
   }, [isThinking, pollingIntervalMs, showPollingFetchStatus]);
 
+  useEffect(() => {
+    const node = thinkingPreviewRef.current;
+    if (node && thinkingText) {
+      node.scrollTop = node.scrollHeight;
+    }
+  }, [thinkingText]);
+
   return (
     <>
       {isThinking && (
-        <div className="working">
-          <span className="working-spinner" aria-hidden />
-          <div className="working-timer">
-            <span className="working-timer-clock">{formatDurationMs(elapsedMs)}</span>
+        <div className={thinkingText ? "working-expanded" : undefined}>
+          <div className="working">
+            <span className="working-spinner" aria-hidden />
+            <div className="working-timer">
+              <span className="working-timer-clock">{formatDurationMs(elapsedMs)}</span>
+            </div>
+            <span className="working-text">{reasoningLabel || "Working\u2026"}</span>
           </div>
-          <span className="working-text">{reasoningLabel || "Working…"}</span>
+          {thinkingText && (
+            <div
+              className="working-thinking-preview"
+              ref={thinkingPreviewRef}
+              aria-live="polite"
+            >
+              {thinkingText}
+              <span className="reasoning-streaming-cursor" aria-hidden />
+            </div>
+          )}
         </div>
       )}
       {!isThinking && lastDurationMs !== null && hasItems && (
@@ -511,6 +534,7 @@ export const ReasoningRow = memo(function ReasoningRow({
   item,
   parsed,
   isExpanded,
+  isStreaming = false,
   onToggle,
   showMessageFilePath,
   workspacePath,
@@ -520,13 +544,14 @@ export const ReasoningRow = memo(function ReasoningRow({
 }: ReasoningRowProps) {
   const { summaryTitle, bodyText, hasBody } = parsed;
   const reasoningTone: StatusTone = hasBody ? "completed" : "processing";
+  const streamingClass = isStreaming ? " reasoning-streaming" : "";
   return (
-    <div className="tool-inline reasoning-inline">
+    <div className={`tool-inline reasoning-inline${streamingClass}`}>
       <button
         type="button"
         className="tool-inline-bar-toggle"
         onClick={() => onToggle(item.id)}
-        aria-expanded={isExpanded}
+        aria-expanded={isExpanded || isStreaming}
         aria-label="Toggle reasoning details"
       />
       <div className="tool-inline-content">
@@ -534,7 +559,7 @@ export const ReasoningRow = memo(function ReasoningRow({
           type="button"
           className="tool-inline-summary tool-inline-toggle"
           onClick={() => onToggle(item.id)}
-          aria-expanded={isExpanded}
+          aria-expanded={isExpanded || isStreaming}
         >
           <Brain
             className={`tool-inline-icon ${reasoningTone}`}
@@ -542,8 +567,9 @@ export const ReasoningRow = memo(function ReasoningRow({
             aria-hidden
           />
           <span className="tool-inline-value">{summaryTitle}</span>
+          {isStreaming && <span className="reasoning-streaming-cursor" aria-hidden />}
         </button>
-        {hasBody && (
+        {hasBody && !isStreaming && (
           <Markdown
             value={bodyText}
             className={`reasoning-inline-detail markdown ${
@@ -555,6 +581,12 @@ export const ReasoningRow = memo(function ReasoningRow({
             onOpenFileLinkMenu={onOpenFileLinkMenu}
             onOpenThreadLink={onOpenThreadLink}
           />
+        )}
+        {isStreaming && bodyText && (
+          <div className="reasoning-streaming-text">
+            {bodyText}
+            <span className="reasoning-streaming-cursor" aria-hidden />
+          </div>
         )}
       </div>
     </div>
@@ -780,7 +812,7 @@ export const ToolRow = memo(function ToolRow({
   );
 
   return (
-    <div className={`tool-inline tool-inline-row ${isExpanded ? "tool-inline-expanded" : ""}`}>
+    <div className={`tool-inline tool-inline-row ${isExpanded ? "tool-inline-expanded" : ""}${isCommandRunning ? " tool-streaming" : ""}`}>
       <button
         type="button"
         className="tool-inline-bar-toggle"

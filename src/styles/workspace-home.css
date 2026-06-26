@@ -76,11 +76,10 @@
 }
 
 .workspace-home .composer {
-  gap: 0;
   padding: 14px 18px 18px;
   border-top: none;
   border-radius: 22px;
-  border: 1px solid var(--cm-border-default);
+  border: none;
   background: var(--cm-surface-panel);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
