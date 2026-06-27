@@ -716,7 +716,7 @@
   .composer-box .composer-input-area { padding: 16px 16px 8px !important; }
 
   .composer-bar {
-    border-top: 1px solid rgba(255,255,255,0.06) !important;
+    border-top: none !important;
     padding: 10px 16px 14px !important;
     gap: 6px !important;
     background: transparent !important;
@@ -753,7 +753,7 @@
     color: rgba(255,255,255,0.45) !important;
     width: 32px !important;
     height: 32px !important;
-    transition: background 0.13s, border-color 0.13s, color 0.13s !important;
+    transition: background 0.13s, color 0.13s !important;
   }
 
   .composer-action:hover:not(:disabled) {
@@ -768,12 +768,12 @@
 
   .composer-attach {
     border-radius: 10px !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
+    border: none !important;
     background: rgba(255,255,255,0.04) !important;
     color: rgba(255,255,255,0.4) !important;
   }
 
-  .composer-attach:hover:not(:disabled) { background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.85) !important; }
+  .composer-attach:hover:not(:disabled) { border: none !important; background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.85) !important; }
 
   .composer .open-app-button, .composer-bar .open-app-button {
     border-radius: 8px !important;
@@ -795,7 +795,7 @@
   }
 
   .composer .open-app-toggle, .composer-bar .open-app-toggle {
-    border-left: 1px solid rgba(255,255,255,0.07) !important;
+    border-left: none !important;
     color: rgba(255,255,255,0.3) !important;
     padding: 6px 7px !important;
   }
@@ -914,7 +914,6 @@
     margin-bottom: 2px;
   }
 
-  .workspace-home .composer { border-radius: var(--gz-radius-lg) !important; border: 1px solid rgba(255,255,255,0.08) !important; background: rgba(255,255,255,0.03) !important; box-shadow: 0 0 0 1px rgba(255,255,255,0.03), 0 8px 32px rgba(0,0,0,0.4) !important; padding: 16px 20px 20px !important; }
   .workspace-home .composer-input-area { background: transparent !important; }
   .workspace-home-section-title { font-size: 10px !important; font-weight: var(--gz-weight-bold) !important; letter-spacing: 1px !important; color: rgba(255,255,255,0.28) !important; text-transform: uppercase !important; }
   .workspace-home-section-meta { font-size: 11px !important; color: rgba(255,255,255,0.25) !important; }

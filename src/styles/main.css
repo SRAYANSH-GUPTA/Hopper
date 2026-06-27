@@ -154,7 +154,6 @@
 .open-app-toggle {
   padding: 7px 8px;
   border-radius: 0;
-  border-left: 1px solid var(--border-subtle);
 }
 
 .open-app-dropdown {
@@ -722,6 +721,65 @@
   background: var(--cm-surface-panel-solid);
   border-color: var(--cm-border-contrast);
   color: var(--text-stronger);
+}
+
+.workspace-breadcrumb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  background: var(--cm-surface-panel-elevated);
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--text-muted);
+  max-width: min(50vw, 520px);
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.workspace-breadcrumb-pill:hover {
+  background: var(--cm-surface-panel-solid);
+  border-color: transparent;
+  color: var(--text-stronger);
+}
+
+.workspace-pill-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.workspace-pill-name {
+  font-weight: 600;
+  color: var(--text-stronger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-pill-separator {
+  color: var(--text-faint);
+  font-size: 10px;
+  opacity: 0.7;
+  margin: 0 1px;
+}
+
+.workspace-pill-branch {
+  color: var(--text-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-pill-caret {
+  color: var(--text-faint);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
 }
 
 .workspace-branch-caret {

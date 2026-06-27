@@ -20,7 +20,9 @@ import {
   interruptTurn as interruptTurnService,
   getAppsList as getAppsListService,
   listMcpServerStatus as listMcpServerStatusService,
+  getModelList as getModelListService,
 } from "@services/tauri";
+import { parseModelListResponse } from "@/features/models/utils/modelListResponse";
 import { expandCustomPromptText } from "@utils/customPrompts";
 import { consumePendingHandoff } from "@/features/context/contextStore";
 import {
@@ -879,6 +881,56 @@ export function useThreadMessaging({
     ],
   );
 
+  const startModels = useCallback(
+    async (_text: string) => {
+      if (!activeWorkspace) {
+        return;
+      }
+      const threadId = await ensureThreadForActiveWorkspace();
+      if (!threadId) {
+        return;
+      }
+
+      try {
+        const response = await getModelListService(activeWorkspace.id);
+        const modelsList = parseModelListResponse(response);
+        const lines = ["Available models:"];
+        if (modelsList.length === 0) {
+          lines.push("- No models available");
+        } else {
+          for (const m of modelsList) {
+            lines.push(`- **${m.displayName}** (\`${m.model}\`): ${m.description || "No description"}`);
+          }
+        }
+
+        const timestamp = Date.now();
+        recordThreadActivity(activeWorkspace.id, threadId, timestamp);
+        dispatch({
+          type: "addAssistantMessage",
+          threadId,
+          text: lines.join("\n"),
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to load models.";
+        dispatch({
+          type: "addAssistantMessage",
+          threadId,
+          text: `Models:\n- ${message}`,
+        });
+      } finally {
+        safeMessageActivity();
+      }
+    },
+    [
+      activeWorkspace,
+      dispatch,
+      ensureThreadForActiveWorkspace,
+      recordThreadActivity,
+      safeMessageActivity,
+    ],
+  );
+
   const startFork = useCallback(
     async (text: string) => {
       if (!activeWorkspace || !activeThreadId) {
@@ -971,6 +1023,7 @@ export function useThreadMessaging({
     startCompact,
     startApps,
     startMcp,
+    startModels,
     startFast,
     startStatus,
     reviewPrompt,

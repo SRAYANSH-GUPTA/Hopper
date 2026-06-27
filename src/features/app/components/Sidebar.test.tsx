@@ -71,7 +71,7 @@ const baseProps = {
 
 describe("Sidebar", () => {
   it("toggles the search bar from the header icon", () => {
-    render(<Sidebar {...baseProps} />);
+    render(<Sidebar activeProviderLabel="Anthropic" {...baseProps} />);
 
     const toggleButton = screen.getByRole("button", { name: "Toggle search" });
     expect(screen.queryByLabelText("Search conversations")).toBeNull();
@@ -94,7 +94,7 @@ describe("Sidebar", () => {
   it("opens thread sort menu from the header filter button", () => {
     const onSetThreadListSortKey = vi.fn();
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         threadListSortKey="updated_at"
         onSetThreadListSortKey={onSetThreadListSortKey}
@@ -115,7 +115,7 @@ describe("Sidebar", () => {
   it("changes organize mode from the header filter menu", () => {
     const onSetThreadListOrganizeMode = vi.fn();
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         threadListOrganizeMode="by_project"
         onSetThreadListOrganizeMode={onSetThreadListOrganizeMode}
@@ -130,7 +130,7 @@ describe("Sidebar", () => {
 
   it("renders available credits in the footer when present", () => {
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         accountRateLimits={{
           primary: {
@@ -153,31 +153,11 @@ describe("Sidebar", () => {
     expect(creditsLabel.textContent ?? "").toContain("120");
   });
 
-  it("opens the account menu from the bottom rail", () => {
-    render(
-      <Sidebar
-        {...baseProps}
-        activeWorkspaceId="ws-1"
-        accountInfo={{
-          email: "dimillian@example.com",
-          type: "chatgpt",
-          planType: "pro",
-          requiresOpenaiAuth: false,
-        }}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Account" }));
-
-    expect(screen.getByText("dimillian@example.com")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Switch account" })).toBeTruthy();
-  });
-
   it("renders threads-only mode as a global chronological list", () => {
     const older = Date.now() - 10_000;
     const newer = Date.now();
     const { container } = render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         threadListOrganizeMode="threads_only"
         workspaces={[
@@ -237,7 +217,7 @@ describe("Sidebar", () => {
 
   it("keeps a project visible when its thread matches the search query", async () => {
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         workspaces={[
           {
@@ -299,7 +279,7 @@ describe("Sidebar", () => {
 
   it("searches across loaded root threads before collapsed truncation", async () => {
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         workspaces={[
           {
@@ -351,7 +331,7 @@ describe("Sidebar", () => {
 
   it("keeps a project visible during search when only older pages may contain matches", async () => {
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         workspaces={[
           {
@@ -398,7 +378,7 @@ describe("Sidebar", () => {
 
   it("keeps the parent project visible when only a worktree thread matches search", async () => {
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         workspaces={[
           {
@@ -456,7 +436,7 @@ describe("Sidebar", () => {
 
   it("keeps clone agents visible when their thread matches search", async () => {
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         workspaces={[
           {
@@ -526,7 +506,7 @@ describe("Sidebar", () => {
   it("creates a new thread from the all-threads project picker", () => {
     const onAddAgent = vi.fn();
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         threadListOrganizeMode="threads_only"
         onAddAgent={onAddAgent}
@@ -581,7 +561,7 @@ describe("Sidebar", () => {
   it("refreshes all workspace threads from the header button", () => {
     const onRefreshAllThreads = vi.fn();
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         workspaces={[
           {
@@ -617,7 +597,7 @@ describe("Sidebar", () => {
 
   it("spins the refresh icon while workspace threads are refreshing", () => {
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         workspaces={[
           {
@@ -687,7 +667,7 @@ describe("Sidebar", () => {
       onSelectWorkspace,
     };
 
-    render(<Sidebar {...props} />);
+    render(<Sidebar activeProviderLabel="Anthropic" {...props} />);
 
     const draftRow = screen.getByRole("button", { name: /new agent/i });
     expect(draftRow).toBeTruthy();
@@ -700,7 +680,7 @@ describe("Sidebar", () => {
 
   it("renders clone agents nested under their source project", () => {
     const { container } = render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         workspaces={[
           {
@@ -757,7 +737,7 @@ describe("Sidebar", () => {
 
   it("sorts by project activity using clone-thread activity for the source project", () => {
     const { container } = render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         threadListOrganizeMode="by_project_activity"
         workspaces={[
@@ -837,7 +817,7 @@ describe("Sidebar", () => {
 
   it("does not show a workspace activity indicator when a thread is processing", () => {
     render(
-      <Sidebar
+      <Sidebar activeProviderLabel="Anthropic"
         {...baseProps}
         workspaces={[
           {

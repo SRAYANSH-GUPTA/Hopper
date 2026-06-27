@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::Engine as _;
 use serde_json::{json, Value};
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -236,6 +237,27 @@ async fn resolve_antigravity_bin() -> String {
     "agy".to_string()
 }
 
+fn data_url_to_temp_file(data_url: &str) -> Option<String> {
+    let comma = data_url.find(',')?;
+    let header = &data_url[..comma];
+    let data = &data_url[comma + 1..];
+    let ext = if header.contains("image/png") {
+        "png"
+    } else if header.contains("image/jpeg") || header.contains("image/jpg") {
+        "jpg"
+    } else if header.contains("image/gif") {
+        "gif"
+    } else if header.contains("image/webp") {
+        "webp"
+    } else {
+        "png"
+    };
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
+    let path = format!("/tmp/hopper-img-{}.{}", Uuid::new_v4(), ext);
+    std::fs::write(&path, bytes).ok()?;
+    Some(path)
+}
+
 pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     state: Arc<AntigravityState>,
     workspace_id: String,
@@ -243,6 +265,7 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     thread_id: String,
     text: String,
     model_id: Option<String>,
+    images: Option<Vec<String>>,
     event_sink: E,
 ) -> Result<Value, String> {
     state.ensure_thread(&workspace_id, &thread_id).await;
@@ -272,12 +295,34 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
         }),
     });
 
+    let mut final_text = text.clone();
+    let mut content_blocks = vec![json!({ "type": "text", "text": text })];
+    let mut temp_files: Vec<String> = Vec::new();
+
+    if let Some(ref image_list) = images {
+        for image in image_list {
+            let file_path = if image.starts_with("data:") {
+                match data_url_to_temp_file(image) {
+                    Some(p) => {
+                        temp_files.push(p.clone());
+                        p
+                    }
+                    None => continue,
+                }
+            } else {
+                image.clone()
+            };
+            final_text.push_str(&format!(" @{}", file_path));
+            content_blocks.push(json!({ "type": "localImage", "path": file_path }));
+        }
+    }
+
     let user_item_id = Uuid::new_v4().to_string();
     let user_item = json!({
         "type": "userMessage",
         "id": user_item_id,
         "turnId": turn_id,
-        "content": [{ "type": "text", "text": text }]
+        "content": content_blocks
     });
     event_sink.emit_app_server_event(AppServerEvent {
         workspace_id: workspace_id.clone(),
@@ -303,9 +348,9 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     let resolved_model = model_id
         .as_deref()
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or("gemini-3.5-flash");
+        .unwrap_or("Gemini 3.5 Flash (Medium)");
     cmd.arg("--model").arg(resolved_model);
-    cmd.arg("-p").arg(&text);
+    cmd.arg("-p").arg(&final_text);
     if !workspace_cwd.is_empty() {
         cmd.arg("--add-dir").arg(&workspace_cwd);
         cmd.current_dir(&workspace_cwd);
@@ -590,6 +635,9 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
         });
 
         let _ = child.wait().await;
+        for tmp in &temp_files {
+            let _ = std::fs::remove_file(tmp);
+        }
     });
 
     Ok(json!({

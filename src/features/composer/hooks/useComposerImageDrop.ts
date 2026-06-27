@@ -34,12 +34,39 @@ function collectFilesFromTransfer(
   files: FileList | File[] | undefined,
   items: DataTransferItemList | DataTransferItem[] | undefined,
 ) {
-  const transferFiles = Array.from(files ?? []);
-  const itemFiles = Array.from(items ?? [])
-    .filter((item) => item.kind === "file" || item.type.startsWith("image/"))
-    .map((item) => item.getAsFile())
-    .filter((file): file is File => Boolean(file));
-  return Array.from(new Set([...transferFiles, ...itemFiles]));
+  const transferFiles: File[] = [];
+  if (files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file) {
+        transferFiles.push(file);
+      }
+    }
+  }
+
+  const itemFiles: File[] = [];
+  if (items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item && (item.kind === "file" || item.type?.startsWith("image/"))) {
+        const file = item.getAsFile();
+        if (file) {
+          itemFiles.push(file);
+        }
+      }
+    }
+  }
+
+  const uniqueFiles: File[] = [];
+  const seen = new Set<string>();
+  for (const file of [...transferFiles, ...itemFiles]) {
+    const key = `${file.name}-${file.size}-${file.type}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueFiles.push(file);
+    }
+  }
+  return uniqueFiles;
 }
 
 function isDragFileTransfer(types: readonly string[] | undefined) {
@@ -203,14 +230,45 @@ export function useComposerImageDrop({
     if (disabled) {
       return;
     }
-    const files = collectFilesFromTransfer(
+    let files = collectFilesFromTransfer(
       event.clipboardData?.files,
       event.clipboardData?.items,
     ).filter(isImageFile);
+
+    if (files.length === 0) {
+      // Fallback: Webviews (like WebKitGTK in Tauri on Linux) sometimes do not populate
+      // event.clipboardData.files/items synchronously for pasted images.
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.read === "function"
+      ) {
+        try {
+          const clipboardItems = await navigator.clipboard.read();
+          const clipboardFiles: File[] = [];
+          for (const item of clipboardItems) {
+            for (const type of item.types) {
+              if (type.startsWith("image/")) {
+                const blob = await item.getType(type);
+                const file = new File([blob], "Pasted image", { type });
+                clipboardFiles.push(file);
+              }
+            }
+          }
+          files = clipboardFiles.filter(isImageFile);
+        } catch (err) {
+          console.warn("Failed to read clipboard using navigator.clipboard.read:", err);
+        }
+      }
+    }
+
     if (files.length === 0) {
       return;
     }
-    event.preventDefault();
+
+    if (event.cancelable) {
+      event.preventDefault();
+    }
     const valid = await resolveImageAttachments(files);
     if (valid.length > 0) {
       onAttachImages?.(valid);

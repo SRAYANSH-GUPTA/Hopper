@@ -2,10 +2,6 @@ import { memo } from "react";
 import AlignLeft from "lucide-react/dist/esm/icons/align-left";
 import Columns2 from "lucide-react/dist/esm/icons/columns-2";
 import type { SidebarToggleProps } from "../../layout/components/SidebarToggleControls";
-import {
-  RightPanelCollapseButton,
-  RightPanelExpandButton,
-} from "../../layout/components/SidebarToggleControls";
 
 type MainHeaderActionsProps = {
   centerMode: "chat" | "diff";
@@ -20,9 +16,9 @@ export const MainHeaderActions = memo(function MainHeaderActions({
   centerMode,
   gitDiffViewStyle,
   onSelectDiffViewStyle,
-  isCompact,
-  rightPanelCollapsed,
-  sidebarToggleProps,
+  isCompact: _isCompact,
+  rightPanelCollapsed: _rightPanelCollapsed,
+  sidebarToggleProps: _sidebarToggleProps,
 }: MainHeaderActionsProps) {
   return (
     <>
@@ -58,13 +54,6 @@ export const MainHeaderActions = memo(function MainHeaderActions({
           </button>
         </div>
       )}
-      {!isCompact ? (
-        rightPanelCollapsed ? (
-          <RightPanelExpandButton {...sidebarToggleProps} />
-        ) : (
-          <RightPanelCollapseButton {...sidebarToggleProps} />
-        )
-      ) : null}
     </>
   );
 });

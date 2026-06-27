@@ -66,6 +66,13 @@ struct GithubOwner {
 fn provider_install_path(home: &PathBuf, provider: &str, name: &str) -> Option<PathBuf> {
     match provider {
         "claude-code" => Some(home.join(".claude").join("skills").join(name).join("SKILL.md")),
+        "codex" => Some(home.join(".codex").join("skills").join(name).join("SKILL.md")),
+        "antigravity" => Some(
+            home.join(".gemini")
+                .join("antigravity-cli")
+                .join("skills")
+                .join(format!("{}.md", name)),
+        ),
         "cursor" => Some(home.join(".cursor").join("rules").join(format!("{}.mdc", name))),
         "windsurf" => Some(
             home.join(".codeium")

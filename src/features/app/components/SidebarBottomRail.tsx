@@ -1,23 +1,17 @@
 import Settings from "lucide-react/dist/esm/icons/settings";
 
+import type { LocalUsageSnapshot } from "../../../types";
+
 type SidebarBottomRailProps = {
   sessionPercent: number | null;
   weeklyPercent: number | null;
   sessionResetLabel: string | null;
   weeklyResetLabel: string | null;
-  creditsLabel: string | null;
   showWeekly: boolean;
+  activeProviderLabel: string;
+  localUsageSnapshot?: LocalUsageSnapshot | null;
+  isLoadingLocalUsage?: boolean;
   onOpenSettings: () => void;
-  onOpenDebug: () => void;
-  showDebugButton: boolean;
-  showAccountSwitcher: boolean;
-  accountLabel: string;
-  accountActionLabel: string;
-  accountDisabled: boolean;
-  accountSwitching: boolean;
-  accountCancelDisabled: boolean;
-  onSwitchAccount: () => void;
-  onCancelSwitchAccount: () => void;
 };
 
 type UsageRowProps = {
@@ -43,36 +37,48 @@ function UsageRow({ label, percent, resetLabel }: UsageRowProps) {
   );
 }
 
+
 export function SidebarBottomRail({
   sessionPercent,
   weeklyPercent,
   sessionResetLabel,
   weeklyResetLabel,
-  creditsLabel,
   showWeekly,
+  activeProviderLabel,
+  localUsageSnapshot,
+  isLoadingLocalUsage,
   onOpenSettings,
-  onOpenDebug: _onOpenDebug,
-  showDebugButton: _showDebugButton,
-  showAccountSwitcher: _showAccountSwitcher,
-  accountLabel: _accountLabel,
-  accountActionLabel: _accountActionLabel,
-  accountDisabled: _accountDisabled,
-  accountSwitching: _accountSwitching,
-  accountCancelDisabled: _accountCancelDisabled,
-  onSwitchAccount: _onSwitchAccount,
-  onCancelSwitchAccount: _onCancelSwitchAccount,
 }: SidebarBottomRailProps) {
-
-
-
   return (
     <div className="sidebar-bottom-rail">
       <div className="sidebar-usage-panel">
-        <div className="sidebar-usage-header">
-          <div className="sidebar-usage-kicker">
-            Usage
+        {(localUsageSnapshot || isLoadingLocalUsage) && (
+          <div className="sidebar-cli-usage-section">
+            <div className="sidebar-cli-usage-header">
+              <div className="sidebar-usage-kicker">Local Usage</div>
+              <div className="sidebar-cli-usage-period">7d</div>
+            </div>
+            {isLoadingLocalUsage && !localUsageSnapshot ? (
+              <div className="sidebar-cli-usage-skeleton">
+                <div className="sidebar-cli-usage-skeleton-line" />
+                <div className="sidebar-cli-usage-skeleton-line" />
+              </div>
+            ) : localUsageSnapshot ? (
+              <div className="sidebar-cli-usage-grid" style={{ gridTemplateColumns: '1fr' }}>
+                <div className="sidebar-cli-usage-stat" style={{ justifyContent: 'center' }}>
+                  <span className="sidebar-cli-usage-value" style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Run <code>agy usage</code> for details
+                  </span>
+                </div>
+              </div>
+            ) : null}
           </div>
-          {creditsLabel && <div className="sidebar-usage-credits">{creditsLabel}</div>}
+        )}
+
+        <div className="sidebar-usage-header" style={localUsageSnapshot || isLoadingLocalUsage ? { marginTop: '8px' } : undefined}>
+          <div className="sidebar-usage-kicker">
+            {activeProviderLabel} Usage
+          </div>
         </div>
         {sessionPercent === null ? (
           <div className="sidebar-usage-unavailable">
@@ -81,7 +87,7 @@ export function SidebarBottomRail({
         ) : (
           <div className="sidebar-usage-list">
             <UsageRow
-              label="Session"
+              label="Session (5h)"
               percent={sessionPercent}
               resetLabel={sessionResetLabel}
             />
@@ -95,8 +101,6 @@ export function SidebarBottomRail({
           </div>
         )}
       </div>
-
-
 
       <div className="sidebar-bottom-actions is-compact">
         <div className="sidebar-utility-actions">

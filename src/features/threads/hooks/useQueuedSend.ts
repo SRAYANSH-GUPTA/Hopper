@@ -41,6 +41,7 @@ type UseQueuedSendOptions = {
   startCompact: (text: string) => Promise<void>;
   startApps: (text: string) => Promise<void>;
   startMcp: (text: string) => Promise<void>;
+  startModels: (text: string) => Promise<void>;
   startFast: (text: string) => Promise<void>;
   startStatus: (text: string) => Promise<void>;
   clearActiveImages: () => void;
@@ -69,6 +70,7 @@ type SlashCommandKind =
   | "fast"
   | "fork"
   | "mcp"
+  | "models"
   | "new"
   | "resume"
   | "review"
@@ -86,6 +88,9 @@ function parseSlashCommand(text: string, appsEnabled: boolean): SlashCommandKind
   }
   if (/^\/mcp\b/i.test(text)) {
     return "mcp";
+  }
+  if (/^\/models\b/i.test(text)) {
+    return "models";
   }
   if (/^\/review\b/i.test(text)) {
     return "review";
@@ -125,6 +130,7 @@ export function useQueuedSend({
   startCompact,
   startApps,
   startMcp,
+  startModels,
   startFast,
   startStatus,
   clearActiveImages,
@@ -207,6 +213,10 @@ export function useQueuedSend({
         await startMcp(trimmed);
         return;
       }
+      if (command === "models") {
+        await startModels(trimmed);
+        return;
+      }
       if (command === "fast") {
         await startFast(trimmed);
         return;
@@ -232,6 +242,7 @@ export function useQueuedSend({
       startCompact,
       startApps,
       startMcp,
+      startModels,
       startFast,
       startStatus,
       startThreadForWorkspace,

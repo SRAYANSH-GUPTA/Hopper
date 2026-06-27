@@ -1,5 +1,4 @@
 import type {
-  AccountSnapshot,
   RequestUserInputRequest,
   RateLimitSnapshot,
   ThreadListOrganizeMode,
@@ -7,7 +6,10 @@ import type {
   ThreadSummary,
   WorkspaceInfo,
 } from "../../../types";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import FileText from "lucide-react/dist/esm/icons/file-text";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import type { MouseEvent, ReactNode, RefObject } from "react";
 import { FolderOpen } from "lucide-react";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch";
@@ -43,6 +45,8 @@ import { useCollapsedGroups } from "../hooks/useCollapsedGroups";
 import { useMenuController } from "../hooks/useMenuController";
 import { useSidebarMenus } from "../hooks/useSidebarMenus";
 import { useSidebarScrollFade } from "../hooks/useSidebarScrollFade";
+import { useSidebarLocalUsage } from "../hooks/useSidebarLocalUsage";
+
 import { useThreadRows } from "../hooks/useThreadRows";
 import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
 import { getUsageLabels } from "../utils/usageLabels";
@@ -129,13 +133,8 @@ type SidebarProps = {
   userInputRequests?: RequestUserInputRequest[];
   accountRateLimits: RateLimitSnapshot | null;
   usageShowRemaining: boolean;
-  accountInfo: AccountSnapshot | null;
-  onSwitchAccount: () => void;
-  onCancelSwitchAccount: () => void;
-  accountSwitching: boolean;
+  activeProviderLabel: string;
   onOpenSettings: () => void;
-  onOpenDebug: () => void;
-  showDebugButton: boolean;
   onAddWorkspace: () => void;
   onSelectHome: () => void;
   onSelectWorkspace: (id: string) => void;
@@ -168,6 +167,16 @@ type SidebarProps = {
   gitPanelNode?: ReactNode;
   /** Plan/tasks panel to show in the Tasks view */
   planPanelNode?: ReactNode;
+  agentMd?: {
+    content: string;
+    exists: boolean;
+    isLoading: boolean;
+    isSaving: boolean;
+    isDirty: boolean;
+    error: string | null;
+    onChange: (value: string) => void;
+    onSave: () => void;
+  };
 };
 
 export const Sidebar = memo(function Sidebar({
@@ -194,13 +203,8 @@ export const Sidebar = memo(function Sidebar({
   userInputRequests = [],
   accountRateLimits,
   usageShowRemaining,
-  accountInfo,
-  onSwitchAccount,
-  onCancelSwitchAccount,
-  accountSwitching,
+  activeProviderLabel,
   onOpenSettings,
-  onOpenDebug,
-  showDebugButton,
   onAddWorkspace,
   onSelectHome,
   onSelectWorkspace,
@@ -231,12 +235,15 @@ export const Sidebar = memo(function Sidebar({
   onWorkspaceDrop,
   gitPanelNode,
   planPanelNode,
+  agentMd,
 }: SidebarProps) {
   const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "marketplace" | "mcp" | "ai">("explorer");
   const [expandedWorkspaces, setExpandedWorkspaces] = useState(
     new Set<string>(),
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const [agentMdOpen, setAgentMdOpen] = useState(false);
+  const agentMdTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [addMenuAnchor, setAddMenuAnchor] =
     useState<SidebarWorkspaceAddMenuAnchor | null>(null);
@@ -269,12 +276,12 @@ export const Sidebar = memo(function Sidebar({
       onDeleteWorkspace,
       onDeleteWorktree,
     });
+  const { snapshot: localUsageSnapshot, isLoading: isLoadingLocalUsage } = useSidebarLocalUsage();
   const {
     sessionPercent,
     weeklyPercent,
     sessionResetLabel,
     weeklyResetLabel,
-    creditsLabel,
     showWeekly,
   } = getUsageLabels(accountRateLimits, usageShowRemaining);
   const debouncedQuery = useDebouncedValue(searchQuery, 150);
@@ -370,16 +377,7 @@ export const Sidebar = memo(function Sidebar({
     [normalizedQuery],
   );
 
-  const accountEmail = accountInfo?.email?.trim() ?? "";
-  const accountButtonLabel = accountEmail
-    ? accountEmail
-    : accountInfo?.type === "apikey"
-      ? "API key"
-      : "Sign in to Codex";
-  const accountActionLabel = accountEmail ? "Switch account" : "Sign in";
-  const showAccountSwitcher = Boolean(activeWorkspaceId);
-  const accountSwitchDisabled = accountSwitching || !activeWorkspaceId;
-  const accountCancelDisabled = !accountSwitching || !activeWorkspaceId;
+
   const refreshDisabled = workspaces.length === 0 || workspaces.every((workspace) => !workspace.connected);
   const refreshInProgress = workspaces.some(
     (workspace) => threadListLoadingByWorkspace[workspace.id] ?? false,
@@ -1148,24 +1146,64 @@ export const Sidebar = memo(function Sidebar({
             )}
         </div>
       </div>
+      {agentMd && (
+        <div className="sidebar-agents-md-bar">
+          <button
+            type="button"
+            className="sidebar-agents-md-toggle"
+            onClick={() => {
+              setAgentMdOpen((prev) => !prev);
+              if (!agentMdOpen) {
+                requestAnimationFrame(() => agentMdTextareaRef.current?.focus());
+              }
+            }}
+            aria-expanded={agentMdOpen}
+          >
+            <FileText size={13} aria-hidden />
+            <span className="sidebar-agents-md-label">AGENTS.md</span>
+            <span className="sidebar-agents-md-badge">
+              {agentMd.exists ? "Edit" : "Create"}
+            </span>
+            {agentMdOpen ? <ChevronDown size={13} aria-hidden /> : <ChevronUp size={13} aria-hidden />}
+          </button>
+          {agentMdOpen && (
+            <div className="sidebar-agents-md-popup">
+              {agentMd.error && (
+                <div className="sidebar-agents-md-error">{agentMd.error}</div>
+              )}
+              <textarea
+                ref={agentMdTextareaRef}
+                className="sidebar-agents-md-textarea"
+                value={agentMd.content}
+                onChange={(e) => agentMd.onChange(e.target.value)}
+                placeholder="Add workspace instructions for the agent…"
+                disabled={agentMd.isLoading}
+                rows={8}
+              />
+              <div className="sidebar-agents-md-actions">
+                <button
+                  type="button"
+                  className="sidebar-agents-md-save"
+                  onClick={() => agentMd.onSave()}
+                  disabled={agentMd.isLoading || agentMd.isSaving || !agentMd.isDirty}
+                >
+                  {agentMd.isSaving ? "Saving…" : agentMd.exists ? "Save" : "Create"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <SidebarBottomRail
         sessionPercent={sessionPercent}
         weeklyPercent={weeklyPercent}
         sessionResetLabel={sessionResetLabel}
         weeklyResetLabel={weeklyResetLabel}
-        creditsLabel={creditsLabel}
         showWeekly={showWeekly}
+        activeProviderLabel={activeProviderLabel}
+        localUsageSnapshot={localUsageSnapshot}
+        isLoadingLocalUsage={isLoadingLocalUsage}
         onOpenSettings={onOpenSettings}
-        onOpenDebug={onOpenDebug}
-        showDebugButton={showDebugButton}
-        showAccountSwitcher={showAccountSwitcher}
-        accountLabel={accountButtonLabel}
-        accountActionLabel={accountActionLabel}
-        accountDisabled={accountSwitchDisabled}
-        accountSwitching={accountSwitching}
-        accountCancelDisabled={accountCancelDisabled}
-        onSwitchAccount={onSwitchAccount}
-        onCancelSwitchAccount={onCancelSwitchAccount}
       />
           </>
         )}

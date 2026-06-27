@@ -71,6 +71,6 @@ export function getUsageLabels(
     sessionResetLabel: formatResetLabel(accountRateLimits?.primary?.resetsAt),
     weeklyResetLabel: formatResetLabel(accountRateLimits?.secondary?.resetsAt),
     creditsLabel: formatCreditsLabel(accountRateLimits),
-    showWeekly: Boolean(accountRateLimits?.secondary),
+    showWeekly: true,
   };
 }

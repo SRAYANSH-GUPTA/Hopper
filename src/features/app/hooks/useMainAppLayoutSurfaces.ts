@@ -10,6 +10,7 @@ import type { useMainAppPromptActions } from "@app/hooks/useMainAppPromptActions
 import type { useMainAppSidebarMenuOrchestration } from "@app/hooks/useMainAppSidebarMenuOrchestration";
 import type { useMainAppWorktreeState } from "@app/hooks/useMainAppWorktreeState";
 import type { LayoutNodesOptions } from "@/features/layout/hooks/layoutNodes/types";
+import { DEFAULT_PROVIDER_ID, PROVIDER_MAP } from "@app/providers";
 
 type SidebarProps = LayoutNodesOptions["primary"]["sidebarProps"];
 type ComposerProps = NonNullable<LayoutNodesOptions["primary"]["composerProps"]>;
@@ -58,12 +59,8 @@ type UseMainAppLayoutSurfacesArgs = {
   userInputRequests: SidebarProps["userInputRequests"];
   approvals: LayoutNodesOptions["primary"]["approvalToastsProps"]["approvals"];
   activeRateLimits: SidebarProps["accountRateLimits"];
-  activeAccount: SidebarProps["accountInfo"];
   homeRateLimits: LayoutNodesOptions["primary"]["homeProps"]["accountRateLimits"];
   homeAccount: LayoutNodesOptions["primary"]["homeProps"]["accountInfo"];
-  accountSwitching: SidebarProps["accountSwitching"];
-  onSwitchAccount: SidebarProps["onSwitchAccount"];
-  onCancelSwitchAccount: SidebarProps["onCancelSwitchAccount"];
   onDecision: LayoutNodesOptions["primary"]["approvalToastsProps"]["onDecision"];
   onRemember: LayoutNodesOptions["primary"]["approvalToastsProps"]["onRemember"];
   onUserInputSubmit: LayoutNodesOptions["primary"]["messagesProps"]["onUserInputSubmit"];
@@ -234,7 +231,6 @@ type UseMainAppLayoutSurfacesArgs = {
 
 type MainAppLayoutSurfacesContext = UseMainAppLayoutSurfacesArgs & {
   sidebarRateLimits: SidebarProps["accountRateLimits"];
-  sidebarAccount: SidebarProps["accountInfo"];
   rightPanelCollapsed: boolean;
   expandRightPanel: () => void;
   collapseRightPanel: () => void;
@@ -268,12 +264,8 @@ function buildPrimarySurface({
   userInputRequests,
   approvals,
   sidebarRateLimits,
-  sidebarAccount,
   homeRateLimits,
   homeAccount,
-  accountSwitching,
-  onSwitchAccount,
-  onCancelSwitchAccount,
   onDecision,
   onRemember,
   onUserInputSubmit,
@@ -380,8 +372,6 @@ function buildPrimarySurface({
   dismissPostUpdateNotice,
   errorToasts,
   dismissErrorToast,
-  showDebugButton,
-  handleDebugClick,
   rightPanelCollapsed,
   expandRightPanel,
   collapseRightPanel,
@@ -412,13 +402,8 @@ function buildPrimarySurface({
       userInputRequests,
       accountRateLimits: sidebarRateLimits,
       usageShowRemaining: appSettings.usageShowRemaining,
-      accountInfo: sidebarAccount,
-      onSwitchAccount,
-      onCancelSwitchAccount,
-      accountSwitching,
+      activeProviderLabel: PROVIDER_MAP.get(appSettings.localProvider ?? DEFAULT_PROVIDER_ID)?.label ?? "Codex",
       onOpenSettings: sidebarHandlers.onOpenSettings,
-      onOpenDebug: handleDebugClick,
-      showDebugButton,
       onAddWorkspace: handleAddWorkspace,
       onSelectHome: sidebarHandlers.onSelectHome,
       onSelectWorkspace: sidebarHandlers.onSelectWorkspace,
@@ -447,6 +432,20 @@ function buildPrimarySurface({
       onWorkspaceDragEnter: workspaceDrop.onWorkspaceDragEnter,
       onWorkspaceDragLeave: workspaceDrop.onWorkspaceDragLeave,
       onWorkspaceDrop: workspaceDrop.onWorkspaceDrop,
+      ...(activeWorkspace
+        ? {
+            agentMd: {
+              content: composerWorkspaceState.agentMdState.content,
+              exists: composerWorkspaceState.agentMdState.exists,
+              isLoading: composerWorkspaceState.agentMdState.isLoading,
+              isSaving: composerWorkspaceState.agentMdState.isSaving,
+              isDirty: composerWorkspaceState.agentMdState.isDirty,
+              error: composerWorkspaceState.agentMdState.error,
+              onChange: composerWorkspaceState.agentMdState.setContent,
+              onSave: () => { void composerWorkspaceState.agentMdState.save(); },
+            },
+          }
+        : {}),
     },
     messagesProps: {
       items: activeItems,
@@ -983,12 +982,8 @@ export function useMainAppLayoutSurfaces({
   userInputRequests,
   approvals,
   activeRateLimits,
-  activeAccount,
   homeRateLimits,
   homeAccount,
-  accountSwitching,
-  onSwitchAccount,
-  onCancelSwitchAccount,
   onDecision,
   onRemember,
   onUserInputSubmit,
@@ -1120,7 +1115,6 @@ export function useMainAppLayoutSurfaces({
   onProviderSwitch,
 }: UseMainAppLayoutSurfacesArgs): LayoutNodesOptions {
   const sidebarRateLimits = activeWorkspace ? activeRateLimits : homeRateLimits;
-  const sidebarAccount = activeWorkspace ? activeAccount : homeAccount;
   const context: MainAppLayoutSurfacesContext = {
     appSettings,
     workspaces,
@@ -1149,12 +1143,8 @@ export function useMainAppLayoutSurfaces({
     userInputRequests,
     approvals,
     activeRateLimits,
-    activeAccount,
     homeRateLimits,
     homeAccount,
-    accountSwitching,
-    onSwitchAccount,
-    onCancelSwitchAccount,
     onDecision,
     onRemember,
     onUserInputSubmit,
@@ -1285,7 +1275,6 @@ export function useMainAppLayoutSurfaces({
     collapseRightPanel,
     onProviderSwitch,
     sidebarRateLimits,
-    sidebarAccount,
   };
 
   return {

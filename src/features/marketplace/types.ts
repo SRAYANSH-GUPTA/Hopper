@@ -31,6 +31,8 @@ export interface InstallSkillArgs {
 
 export const SKILL_PROVIDERS: { id: string; label: string; icon: string }[] = [
   { id: "claude-code", label: "Claude Code", icon: "🤖" },
+  { id: "codex", label: "Codex", icon: "✨" },
+  { id: "antigravity", label: "Antigravity", icon: "🪐" },
   { id: "cursor", label: "Cursor", icon: "⬛" },
   { id: "windsurf", label: "Windsurf", icon: "🌊" },
   { id: "continue", label: "Continue", icon: "▶️" },

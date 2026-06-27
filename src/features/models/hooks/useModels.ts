@@ -59,9 +59,26 @@ export function useModels({
   const lastWorkspaceId = useRef<string | null>(null);
   const lastSelectionKey = useRef<string | null>(null);
   const lastRefreshTrigger = useRef(refreshTrigger);
+  const lastLoadedSelectionKeyRef = useRef<string | null>(null);
 
   const workspaceId = activeWorkspace?.id ?? null;
   const isConnected = Boolean(activeWorkspace?.connected);
+
+  const isStale = selectionKey !== lastLoadedSelectionKeyRef.current;
+  const currentModels = useMemo(() => {
+    if (staticModels) {
+      return staticModels.map((sm, index) => ({
+        id: sm.id,
+        model: sm.id,
+        displayName: sm.label,
+        description: "",
+        supportedReasoningEfforts: [],
+        defaultReasoningEffort: null,
+        isDefault: index === 0,
+      }));
+    }
+    return isStale ? [] : models;
+  }, [staticModels, isStale, models]);
 
   useEffect(() => {
     if (selectionKey === lastSelectionKey.current) {
@@ -104,8 +121,8 @@ export function useModels({
   }, []);
 
   const selectedModel = useMemo(
-    () => models.find((model) => model.id === selectedModelId) ?? null,
-    [models, selectedModelId],
+    () => currentModels.find((model) => model.id === selectedModelId) ?? null,
+    [currentModels, selectedModelId],
   );
 
   const reasoningSupported = useMemo(() => {
@@ -165,6 +182,7 @@ export function useModels({
         isDefault: index === 0,
       }));
       setModels(data);
+      lastLoadedSelectionKeyRef.current = selectionKey;
       lastFetchedWorkspaceId.current = workspaceId;
       lastFetchedStaticMode.current = true;
       const defaultModel = data[0] ?? null;
@@ -272,6 +290,7 @@ export function useModels({
         return [configOption, ...dataFromServer];
       })();
       setModels(data);
+      lastLoadedSelectionKeyRef.current = selectionKey;
       lastFetchedWorkspaceId.current = workspaceId;
       lastFetchedStaticMode.current = false;
       const defaultModel = pickDefaultModel(data, configModelFromConfig);
@@ -311,6 +330,7 @@ export function useModels({
     resolveEffort,
     workspaceId,
     staticModels,
+    selectionKey,
   ]);
 
   useEffect(() => {
@@ -322,13 +342,14 @@ export function useModels({
 
     const isSameWorkspace = lastFetchedWorkspaceId.current === workspaceId;
     const isSameStaticMode = lastFetchedStaticMode.current === (staticModels !== null);
-    if (!triggerChanged && isSameWorkspace && isSameStaticMode && models.length > 0) {
+    const isSameSelectionKey = lastLoadedSelectionKeyRef.current === selectionKey;
+    if (!triggerChanged && isSameWorkspace && isSameStaticMode && isSameSelectionKey && currentModels.length > 0) {
       return;
     }
     // On explicit provider switch (trigger changed) or static-mode change,
     // clear stale models immediately so the UI doesn't show the wrong list
     // while the new fetch is in flight.
-    if (triggerChanged || !isSameStaticMode) {
+    if (triggerChanged || !isSameStaticMode || !isSameSelectionKey) {
       setModels([]);
       lastFetchedWorkspaceId.current = null;
       lastFetchedStaticMode.current = staticModels !== null;
@@ -339,7 +360,7 @@ export function useModels({
       }
     }
     refreshModels();
-  }, [isConnected, models.length, refreshModels, workspaceId, staticModels, refreshTrigger]);
+  }, [isConnected, currentModels.length, refreshModels, workspaceId, staticModels, refreshTrigger, selectionKey]);
 
   useEffect(() => {
     if (!selectedModel) {
@@ -358,12 +379,12 @@ export function useModels({
   }, [selectedEffort, selectedModel]);
 
   useEffect(() => {
-    if (!models.length) {
+    if (!currentModels.length) {
       return;
     }
-    const preferredSelection = findModelByIdOrModel(models, preferredModelId);
-    const defaultModel = pickDefaultModel(models, configModel);
-    const existingSelection = findModelByIdOrModel(models, selectedModelId);
+    const preferredSelection = findModelByIdOrModel(currentModels, preferredModelId);
+    const defaultModel = pickDefaultModel(currentModels, configModel);
+    const existingSelection = findModelByIdOrModel(currentModels, selectedModelId);
     if (selectedModelId && !existingSelection) {
       hasUserSelectedModel.current = false;
     }
@@ -386,7 +407,7 @@ export function useModels({
     }
   }, [
     configModel,
-    models,
+    currentModels,
     preferredModelId,
     selectedEffort,
     selectedModelId,
@@ -394,7 +415,7 @@ export function useModels({
   ]);
 
   return {
-    models,
+    models: currentModels,
     selectedModel,
     reasoningSupported,
     selectedModelId,

@@ -844,6 +844,7 @@ describe("useThreads UX integration", () => {
         startCompact: threads.startCompact,
         startApps: threads.startApps,
         startMcp: threads.startMcp,
+        startModels: threads.startModels,
         startFast: threads.startFast,
         startStatus: threads.startStatus,
         clearActiveImages,

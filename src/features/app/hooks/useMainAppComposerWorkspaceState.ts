@@ -84,6 +84,7 @@ type UseMainAppComposerWorkspaceStateArgs = {
     startCompact: Parameters<typeof useComposerController>[0]["startCompact"];
     startApps: Parameters<typeof useComposerController>[0]["startApps"];
     startMcp: Parameters<typeof useComposerController>[0]["startMcp"];
+    startModels: Parameters<typeof useComposerController>[0]["startModels"];
     startFast: Parameters<typeof useComposerController>[0]["startFast"];
     startStatus: Parameters<typeof useComposerController>[0]["startStatus"];
     handleWorktreeCreated?: Parameters<typeof useWorkspaceHome>[0]["onWorktreeCreated"];
@@ -144,6 +145,7 @@ export function useMainAppComposerWorkspaceState({
     startCompact,
     startApps,
     startMcp,
+    startModels,
     startFast,
     startStatus,
     handleWorktreeCreated,
@@ -243,6 +245,7 @@ export function useMainAppComposerWorkspaceState({
     startCompact,
     startApps,
     startMcp,
+    startModels,
     startFast,
     startStatus,
   });

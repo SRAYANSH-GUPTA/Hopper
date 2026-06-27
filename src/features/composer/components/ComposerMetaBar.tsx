@@ -6,7 +6,7 @@ import type { CodexArgsOption } from "../../threads/utils/codexArgsProfiles";
 import { useAppSettings } from "../../settings/hooks/useAppSettings";
 import { PROVIDERS, DEFAULT_PROVIDER_ID } from "../../app/providers";
 
-function ProviderToggle({ disabled, activeProviderId, onProviderSwitch }: { disabled: boolean; activeProviderId?: string; onProviderSwitch?: (providerId: string) => void }) {
+export function ProviderToggle({ disabled, activeProviderId, onProviderSwitch }: { disabled: boolean; activeProviderId?: string; onProviderSwitch?: (providerId: string) => void }) {
   const { settings, saveSettings } = useAppSettings();
   const activeId = activeProviderId ?? settings.localProvider ?? DEFAULT_PROVIDER_ID;
 

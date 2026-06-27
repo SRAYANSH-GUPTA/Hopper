@@ -340,6 +340,7 @@ html[data-theme="cursor"] .sidebar-panel .sidebar-header {
 
 html[data-theme="cursor"] .sidebar-panel .sidebar-body {
   padding: 4px 8px 4px 10px !important;
+  margin-right: 0 !important;
 }
 
 html[data-theme="cursor"] .sidebar-panel .sidebar-bottom-rail {
@@ -356,8 +357,168 @@ html[data-theme="cursor"] .sidebar-ai-panel {
 /* ── Top bar ── */
 html[data-theme="cursor"] .main-topbar {
   background: #111111 !important;
+  border: none !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  padding: 8px 16px !important;
+  box-shadow: none !important;
   backdrop-filter: none !important;
+  top: 0 !important;
+}
+
+html[data-theme="cursor"] .app.sidebar-collapsed .main-topbar {
+  margin-left: calc(
+    var(--titlebar-inset-left, 0px)
+    + var(--titlebar-collapsed-left-extra, 0px)
+    + var(--titlebar-toggle-size, 28px)
+    + var(--titlebar-toggle-title-offset, -6px)
+  ) !important;
+  width: calc(
+    100%
+    - (
+      var(--titlebar-inset-left, 0px)
+      + var(--titlebar-collapsed-left-extra, 0px)
+      + var(--titlebar-toggle-size, 28px)
+      + var(--titlebar-toggle-title-offset, -6px)
+    )
+  ) !important;
+}
+
+html[data-theme="cursor"] .main-topbar .actions {
+  align-items: center !important;
+}
+
+/* Header action buttons in Cursor Theme */
+html[data-theme="cursor"] .main-header-action {
+  background: transparent !important;
+  border: none !important;
+  color: rgba(232, 232, 226, 0.55) !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  padding: 4px !important;
+  border-radius: 5px !important;
+}
+
+html[data-theme="cursor"] .main-header-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #e8e8e2 !important;
+}
+
+html[data-theme="cursor"] .main-header-action.is-active {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #e8e8e2 !important;
+}
+
+/* Workspace & branch breadcrumb pill in Cursor Theme */
+html[data-theme="cursor"] .workspace-breadcrumb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid transparent !important;
+  padding: 4px 10px !important;
+  border-radius: 6px !important;
+  cursor: pointer;
+  color: rgba(232, 232, 226, 0.8) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  transition: background 120ms ease, border-color 120ms ease;
+  max-width: min(45vw, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-theme="cursor"] .workspace-breadcrumb-pill:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: transparent !important;
+  color: #e8e8e2 !important;
+}
+
+html[data-theme="cursor"] .workspace-pill-icon {
+  color: rgba(232, 232, 226, 0.7) !important;
+  flex-shrink: 0;
+}
+
+html[data-theme="cursor"] .workspace-pill-name {
+  font-weight: 600 !important;
+  color: #e8e8e2 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html[data-theme="cursor"] .workspace-pill-separator {
+  color: rgba(232, 232, 226, 0.3) !important;
+  margin: 0 1px;
+}
+
+html[data-theme="cursor"] .workspace-pill-branch {
+  color: rgba(232, 232, 226, 0.6) !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html[data-theme="cursor"] .workspace-pill-caret {
+  color: rgba(232, 232, 226, 0.4) !important;
+  flex-shrink: 0;
+}
+
+/* Open editor button pill in Cursor Theme */
+html[data-theme="cursor"] .open-app-button {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 6px !important;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+}
+
+html[data-theme="cursor"] .open-app-button:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+html[data-theme="cursor"] .open-app-action,
+html[data-theme="cursor"] .open-app-toggle {
+  background: transparent !important;
+  border: none !important;
+  color: rgba(232, 232, 226, 0.8) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  height: 100% !important;
+  padding: 4px 8px !important;
+}
+
+html[data-theme="cursor"] .open-app-action {
+  padding-right: 2px !important;
+}
+
+html[data-theme="cursor"] .open-app-toggle {
+  padding-left: 2px !important;
+}
+
+html[data-theme="cursor"] .open-app-action:hover,
+html[data-theme="cursor"] .open-app-toggle:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #e8e8e2 !important;
+}
+
+html[data-theme="cursor"] .open-app-label {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #e8e8e2 !important;
+  display: inline-flex;
+  align-items: center;
+}
+
+html[data-theme="cursor"] .open-app-icon {
+  width: 13px !important;
+  height: 13px !important;
+  margin-right: 6px;
 }
 
 /* ── Main content ── */
@@ -492,14 +653,14 @@ html[data-theme="cursor"] .composer-queue {
 /* Floating input card */
 html[data-theme="cursor"] .composer-box {
   background: #1c1c1c !important;
-  border: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
   border-radius: 10px !important;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4) !important;
   transition: border-color 0.15s ease !important;
 }
 
 html[data-theme="cursor"] .composer-box:focus-within {
-  border: none !important;
+  border-color: rgba(255, 255, 255, 0.11) !important;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4) !important;
 }
 
@@ -524,22 +685,22 @@ html[data-theme="cursor"] .composer textarea::placeholder {
 
 /* Meta bar inside the card */
 html[data-theme="cursor"] .composer-box .composer-bar {
-  border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-top: none !important;
   padding: 8px 14px 12px !important;
   gap: 6px !important;
 }
 
 /* Select pill chips */
 html[data-theme="cursor"] .composer-select-wrap {
-  background: transparent !important;
-  border: 1px solid transparent !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: none !important;
   border-radius: 6px !important;
   padding: 4px 8px !important;
   transition: background 0.12s ease !important;
 }
 
 html[data-theme="cursor"] .composer-select-wrap:hover {
-  background: rgba(255, 255, 255, 0.05) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
 }
 
 html[data-theme="cursor"] .composer-select {
@@ -605,13 +766,14 @@ html[data-theme="cursor"] .composer-action:hover {
 /* Attach button */
 html[data-theme="cursor"] .composer-attach {
   background: transparent !important;
-  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border: none !important;
   color: rgba(232, 232, 226, 0.4) !important;
   border-radius: 6px !important;
 }
 
 html[data-theme="cursor"] .composer-attach:hover {
   background: rgba(255, 255, 255, 0.06) !important;
+  border: none !important;
   color: rgba(232, 232, 226, 0.85) !important;
 }
 

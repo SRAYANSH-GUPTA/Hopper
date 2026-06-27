@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Search, Star, Download, Check, ExternalLink, Package } from "lucide-react";
 import type { InstalledSkill, MarketplaceSkill } from "../types";
 import { SKILL_CATEGORIES, SKILL_PROVIDERS } from "../types";
+import { ModalShell } from "../../design-system/components/modal/ModalShell";
 import {
   marketplaceInstall,
   marketplaceInstalled,
@@ -17,7 +18,12 @@ export function MarketplaceView() {
   const [loading, setLoading] = useState(true);
   const [installing, setInstalling] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<MarketplaceSkill | null>(null);
-  const [selectedProviders, setSelectedProviders] = useState<string[]>(["claude-code"]);
+  const [pendingInstallSkill, setPendingInstallSkill] = useState<MarketplaceSkill | null>(null);
+  const [selectedProviders, setSelectedProviders] = useState<string[]>([
+    "claude-code",
+    "codex",
+    "antigravity",
+  ]);
   const [searchError, setSearchError] = useState<string | null>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -104,6 +110,21 @@ export function MarketplaceView() {
     },
     [selectedProviders, loadInstalled],
   );
+
+  const handleInstallRequest = useCallback(
+    (skill: MarketplaceSkill) => {
+      if (selectedProviders.length === 0) return;
+      setPendingInstallSkill(skill);
+    },
+    [selectedProviders],
+  );
+
+  const handleConfirmInstall = useCallback(() => {
+    if (!pendingInstallSkill) return;
+    const skill = pendingInstallSkill;
+    setPendingInstallSkill(null);
+    void handleInstall(skill);
+  }, [handleInstall, pendingInstallSkill]);
 
   const handleUninstall = useCallback(
     async (skill: MarketplaceSkill) => {
@@ -274,12 +295,12 @@ export function MarketplaceView() {
                         disabled={isBusy || selectedProviders.length === 0}
                         onClick={(e) => {
                           e.stopPropagation();
-                          void handleInstall(skill);
+                          handleInstallRequest(skill);
                         }}
                         title={
                           selectedProviders.length === 0
                             ? "Select at least one provider above"
-                            : `Install for: ${selectedProviders.join(", ")}`
+                            : `Review install for: ${selectedProviders.join(", ")}`
                         }
                       >
                         {isBusy ? (
@@ -308,6 +329,53 @@ export function MarketplaceView() {
             );
           })}
         </div>
+      )}
+
+      {pendingInstallSkill && (
+        <ModalShell
+          className="marketplace-install-modal"
+          ariaLabel={`Confirm install for ${pendingInstallSkill.displayName}`}
+          onBackdropClick={() => setPendingInstallSkill(null)}
+        >
+          <div className="ds-modal-title marketplace-install-modal-title">
+            Confirm installation
+          </div>
+          <div className="ds-modal-subtitle marketplace-install-modal-subtitle">
+            Install <strong>{pendingInstallSkill.displayName}</strong> to the selected
+            providers below?
+          </div>
+          <div className="marketplace-install-modal-providers">
+            {selectedProviders.map((providerId) => {
+              const provider = SKILL_PROVIDERS.find((entry) => entry.id === providerId);
+              return provider ? (
+                <span key={provider.id} className="marketplace-install-modal-provider">
+                  <span className="marketplace-provider-icon" aria-hidden>
+                    {provider.icon}
+                  </span>
+                  <span>{provider.label}</span>
+                </span>
+              ) : null;
+            })}
+          </div>
+          <div className="ds-modal-actions">
+            <button
+              type="button"
+              className="ghost ds-modal-button"
+              onClick={() => setPendingInstallSkill(null)}
+              disabled={installing === pendingInstallSkill.id}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="primary ds-modal-button"
+              onClick={handleConfirmInstall}
+              disabled={installing === pendingInstallSkill.id}
+            >
+              Install
+            </button>
+          </div>
+        </ModalShell>
       )}
 
       {/* Detail drawer */}

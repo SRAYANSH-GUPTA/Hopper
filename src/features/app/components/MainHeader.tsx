@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Check from "lucide-react/dist/esm/icons/check";
 import Copy from "lucide-react/dist/esm/icons/copy";
 import Terminal from "lucide-react/dist/esm/icons/terminal";
+import AppWindow from "lucide-react/dist/esm/icons/app-window";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { BranchInfo, OpenAppTarget, WorkspaceInfo } from "../../../types";
 import type { ReactNode } from "react";
@@ -188,23 +190,21 @@ export function MainHeader({
     <header className="main-header" data-tauri-drag-region>
       <div className="workspace-header">
         <div className="workspace-title-line">
-          <span className="workspace-title">
-            {parentName ? parentName : workspace.name}
-          </span>
-          <span className="workspace-separator" aria-hidden>
-            ›
-          </span>
           {disableBranchMenu ? (
             <div className="workspace-branch-static-row" ref={infoRef}>
               <MenuTrigger
                 isOpen={infoOpen}
                 popupRole="dialog"
-                className="workspace-branch-static-button"
+                className="workspace-breadcrumb-pill"
                 onClick={infoMenu.toggle}
                 data-tauri-drag-region="false"
                 title="Worktree info"
               >
-                {worktreeLabel || branchName}
+                <AppWindow size={13} className="workspace-pill-icon" aria-hidden />
+                <span className="workspace-pill-name">{parentName ? parentName : workspace.name}</span>
+                <span className="workspace-pill-separator">›</span>
+                <span className="workspace-pill-branch">{worktreeLabel || branchName}</span>
+                <ChevronDown size={12} className="workspace-pill-caret" aria-hidden />
               </MenuTrigger>
               {infoOpen && (
                 <PopoverSurface className="worktree-info-popover" role="dialog">
@@ -340,14 +340,15 @@ export function MainHeader({
             <div className="workspace-branch-menu" ref={menuRef}>
               <MenuTrigger
                 isOpen={menuOpen}
-                className="workspace-branch-button"
+                className="workspace-breadcrumb-pill"
                 onClick={branchMenu.toggle}
                 data-tauri-drag-region="false"
               >
-                <span className="workspace-branch">{branchName}</span>
-                <span className="workspace-branch-caret" aria-hidden>
-                  ›
-                </span>
+                <AppWindow size={13} className="workspace-pill-icon" aria-hidden />
+                <span className="workspace-pill-name">{parentName ? parentName : workspace.name}</span>
+                <span className="workspace-pill-separator">›</span>
+                <span className="workspace-pill-branch">{branchName}</span>
+                <ChevronDown size={12} className="workspace-pill-caret" aria-hidden />
               </MenuTrigger>
               {menuOpen && (
                 <PopoverSurface

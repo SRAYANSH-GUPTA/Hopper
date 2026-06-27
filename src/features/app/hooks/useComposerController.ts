@@ -31,6 +31,7 @@ export function useComposerController({
   startCompact,
   startApps,
   startMcp,
+  startModels,
   startFast,
   startStatus,
 }: {
@@ -67,6 +68,7 @@ export function useComposerController({
   startCompact: (text: string) => Promise<void>;
   startApps: (text: string) => Promise<void>;
   startMcp: (text: string) => Promise<void>;
+  startModels: (text: string) => Promise<void>;
   startFast: (text: string) => Promise<void>;
   startStatus: (text: string) => Promise<void>;
 }) {
@@ -113,6 +115,7 @@ export function useComposerController({
     startCompact,
     startApps,
     startMcp,
+    startModels,
     startFast,
     startStatus,
     clearActiveImages,

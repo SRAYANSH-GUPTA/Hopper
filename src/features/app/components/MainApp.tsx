@@ -481,6 +481,7 @@ export default function MainApp() {
     startCompact,
     startApps,
     startMcp,
+    startModels,
     startFast,
     startStatus,
     reviewPrompt,
@@ -740,12 +741,7 @@ export default function MainApp() {
     onDebug: addDebugEntry,
   });
 
-  const {
-    activeAccount,
-    accountSwitching,
-    handleSwitchAccount,
-    handleCancelSwitchAccount,
-  } = useAccountSwitching({
+  useAccountSwitching({
     activeWorkspaceId,
     accountByWorkspace,
     refreshAccountInfo,
@@ -765,6 +761,13 @@ export default function MainApp() {
     activeWorkspaceId,
     activeThreadId,
   });
+
+  // Auto-enter chat mode when workspace selected with no active thread
+  useEffect(() => {
+    if (activeWorkspace && !activeThreadId) {
+      startNewAgentDraft(activeWorkspace.id);
+    }
+  }, [activeWorkspace?.id, activeThreadId, startNewAgentDraft]);
   const { getThreadRows } = useThreadRows(threadParentById);
 
   useTrayRecentThreads({
@@ -1175,6 +1178,7 @@ export default function MainApp() {
       startCompact,
       startApps,
       startMcp,
+      startModels,
       startFast,
       startStatus,
       addWorktreeAgent,
@@ -1599,6 +1603,8 @@ export default function MainApp() {
           onAgentMdSave: () => {
             void saveAgentMd();
           },
+          activeProviderId: appSettings.localProvider ?? null,
+          onProviderSwitch: handleProviderSwitch,
         }
       : null,
   });
@@ -1646,12 +1652,8 @@ export default function MainApp() {
     userInputRequests,
     approvals,
     activeRateLimits,
-    activeAccount,
     homeRateLimits,
     homeAccount,
-    accountSwitching,
-    onSwitchAccount: handleSwitchAccount,
-    onCancelSwitchAccount: handleCancelSwitchAccount,
     onDecision: handleApprovalDecision,
     onRemember: handleApprovalRemember,
     onUserInputSubmit: handleUserInputSubmit,

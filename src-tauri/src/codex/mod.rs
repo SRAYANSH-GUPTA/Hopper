@@ -462,6 +462,7 @@ pub(crate) async fn send_user_message(
             thread_id,
             text,
             model_id,
+            images,
             event_sink,
         )
         .await;
