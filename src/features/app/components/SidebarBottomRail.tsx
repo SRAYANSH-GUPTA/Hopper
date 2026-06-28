@@ -52,54 +52,38 @@ export function SidebarBottomRail({
   return (
     <div className="sidebar-bottom-rail">
       <div className="sidebar-usage-panel">
-        {(localUsageSnapshot || isLoadingLocalUsage) && (
-          <div className="sidebar-cli-usage-section">
-            <div className="sidebar-cli-usage-header">
-              <div className="sidebar-usage-kicker">Local Usage</div>
-              <div className="sidebar-cli-usage-period">7d</div>
+        <div className="sidebar-cli-usage-section">
+          <div className="sidebar-cli-usage-header">
+            <div className="sidebar-usage-kicker">
+              {localUsageSnapshot || isLoadingLocalUsage ? "Local Usage" : `${activeProviderLabel} Usage`}
             </div>
-            {isLoadingLocalUsage && !localUsageSnapshot ? (
-              <div className="sidebar-cli-usage-skeleton">
-                <div className="sidebar-cli-usage-skeleton-line" />
-                <div className="sidebar-cli-usage-skeleton-line" />
-              </div>
-            ) : localUsageSnapshot ? (
-              <div className="sidebar-cli-usage-grid" style={{ gridTemplateColumns: '1fr' }}>
-                <div className="sidebar-cli-usage-stat" style={{ justifyContent: 'center' }}>
-                  <span className="sidebar-cli-usage-value" style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Run <code>agy usage</code> for details
-                  </span>
-                </div>
-              </div>
-            ) : null}
           </div>
-        )}
-
-        <div className="sidebar-usage-header" style={localUsageSnapshot || isLoadingLocalUsage ? { marginTop: '8px' } : undefined}>
-          <div className="sidebar-usage-kicker">
-            {activeProviderLabel} Usage
-          </div>
-        </div>
-        {sessionPercent === null ? (
-          <div className="sidebar-usage-unavailable">
-            Not reported by CLI
-          </div>
-        ) : (
-          <div className="sidebar-usage-list">
-            <UsageRow
-              label="Session (5h)"
-              percent={sessionPercent}
-              resetLabel={sessionResetLabel}
-            />
-            {showWeekly && (
+          {isLoadingLocalUsage && !localUsageSnapshot ? (
+            <div className="sidebar-cli-usage-skeleton">
+              <div className="sidebar-cli-usage-skeleton-line" />
+              <div className="sidebar-cli-usage-skeleton-line" />
+            </div>
+          ) : sessionPercent === null ? (
+            <div className="sidebar-usage-unavailable">
+              Not reported by CLI
+            </div>
+          ) : (
+            <div className="sidebar-usage-list" style={{ marginTop: '8px' }}>
               <UsageRow
-                label="Weekly"
-                percent={weeklyPercent}
-                resetLabel={weeklyResetLabel}
+                label="Session (5h)"
+                percent={sessionPercent}
+                resetLabel={sessionResetLabel}
               />
-            )}
-          </div>
-        )}
+              {showWeekly && (
+                <UsageRow
+                  label="Weekly"
+                  percent={weeklyPercent}
+                  resetLabel={weeklyResetLabel}
+                />
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="sidebar-bottom-actions is-compact">

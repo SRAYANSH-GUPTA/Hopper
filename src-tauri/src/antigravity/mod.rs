@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+extern crate libc;
+
 use base64::Engine as _;
 use serde_json::{json, Value};
 use tokio::process::Command;
@@ -27,13 +29,33 @@ struct AntigravityThread {
 
 pub(crate) struct AntigravityState {
     threads: Mutex<HashMap<String, HashMap<String, AntigravityThread>>>,
+    /// "workspace_id:thread_id" -> child PID for interrupt support
+    running_pids: Mutex<HashMap<String, u32>>,
 }
 
 impl AntigravityState {
     pub(crate) fn new() -> Arc<Self> {
         Arc::new(Self {
             threads: Mutex::new(HashMap::new()),
+            running_pids: Mutex::new(HashMap::new()),
         })
+    }
+
+    async fn register_pid(&self, workspace_id: &str, thread_id: &str, pid: u32) {
+        let key = format!("{workspace_id}:{thread_id}");
+        self.running_pids.lock().await.insert(key, pid);
+    }
+
+    async fn deregister_pid(&self, workspace_id: &str, thread_id: &str) {
+        let key = format!("{workspace_id}:{thread_id}");
+        self.running_pids.lock().await.remove(&key);
+    }
+
+    pub(crate) async fn kill_running_turn(&self, workspace_id: &str, thread_id: &str) {
+        let key = format!("{workspace_id}:{thread_id}");
+        if let Some(pid) = self.running_pids.lock().await.remove(&key) {
+            unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM); }
+        }
     }
 
     pub(crate) async fn new_thread(&self, workspace_id: &str) -> String {
@@ -279,7 +301,7 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
             "method": "thread/status/changed",
             "params": {
                 "threadId": thread_id,
-                "status": { "type": "running" }
+                "status": { "type": "active" }
             }
         }),
     });
@@ -365,6 +387,12 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
              Make sure the Antigravity CLI is installed: https://antigravity.google/docs/cli-using\n{e}"
         )
     })?;
+
+    // Register child PID so kill_running_turn can interrupt it.
+    if let Some(pid) = child.id() {
+        state.register_pid(&workspace_id, &thread_id, pid).await;
+    }
+
     let stdout = child.stdout.take().ok_or("missing stdout")?;
     let stderr = child.stderr.take().ok_or("missing stderr")?;
     
@@ -372,9 +400,12 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     let workspace_id_clone = workspace_id.clone();
     let turn_id_clone = turn_id.clone();
     let state_clone = state.clone();
+    let state_for_deregister = state.clone();
     let event_sink_clone = event_sink.clone();
     let mut current_session = session_id.clone();
     let mut current_session_clone_for_stderr = current_session.clone();
+    let workspace_id_for_deregister = workspace_id.clone();
+    let thread_id_for_deregister = thread_id.clone();
 
     tokio::spawn(async move {
         use tokio::io::AsyncBufReadExt;
@@ -635,6 +666,7 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
         });
 
         let _ = child.wait().await;
+        state_for_deregister.deregister_pid(&workspace_id_for_deregister, &thread_id_for_deregister).await;
         for tmp in &temp_files {
             let _ = std::fs::remove_file(tmp);
         }

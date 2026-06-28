@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { Fragment, memo, useCallback } from "react";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
 import type {
@@ -14,6 +14,7 @@ import { formatCount, parseReasoning } from "../utils/messageRenderUtils";
 import {
   DiffRow,
   ExploreRow,
+  HandoffRow,
   MessageRow,
   ReasoningRow,
   ReviewRow,
@@ -148,7 +149,7 @@ export const Messages = memo(function Messages({
   const renderItem = (item: ConversationItem) => {
     if (item.kind === "message") {
       const isCopied = copiedMessageId === item.id;
-      return (
+      const messageRow = (
         <MessageRow
           key={item.id}
           item={item}
@@ -163,6 +164,15 @@ export const Messages = memo(function Messages({
           onOpenThreadLink={handleOpenThreadLink}
         />
       );
+      if (item.role === "user" && item.handoffFrom) {
+        return (
+          <Fragment key={item.id}>
+            <HandoffRow fromProvider={item.handoffFrom} />
+            {messageRow}
+          </Fragment>
+        );
+      }
+      return messageRow;
     }
     if (item.kind === "reasoning") {
       const isExpanded = expandedItems.has(item.id);

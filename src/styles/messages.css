@@ -136,6 +136,39 @@
   white-space: nowrap;
 }
 
+.handoff-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.handoff-banner-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border-accent-soft, var(--cm-border-heavy));
+  opacity: 0.6;
+}
+
+.handoff-banner-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border-accent-soft, var(--cm-border-heavy));
+  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+.handoff-banner-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
 @keyframes working-spin {
   to {
     transform: rotate(360deg);

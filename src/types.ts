@@ -104,6 +104,7 @@ export type ConversationItem =
       role: "user" | "assistant";
       text: string;
       images?: string[];
+      handoffFrom?: string;
     }
   | {
       id: string;

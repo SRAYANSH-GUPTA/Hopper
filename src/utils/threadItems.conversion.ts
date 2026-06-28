@@ -12,7 +12,7 @@ function extractImageInputValue(input: Record<string, unknown>) {
   return value.trim();
 }
 
-function stripHandoffPrefix(text: string): string {
+export function stripHandoffPrefix(text: string): string {
   if (!text.startsWith("## Context Handoff")) {
     return text;
   }
@@ -24,13 +24,24 @@ function stripHandoffPrefix(text: string): string {
   return text;
 }
 
+function extractHandoffProvider(text: string): string | undefined {
+  if (!text.startsWith("## Context Handoff")) return undefined;
+  const match = text.match(/switched from (\S+) to/);
+  return match?.[1];
+}
+
 function parseUserInputs(inputs: Array<Record<string, unknown>>) {
   const textParts: string[] = [];
   const images: string[] = [];
+  let handoffFrom: string | undefined;
   inputs.forEach((input) => {
     const type = asString(input.type);
     if (type === "text") {
-      const text = stripHandoffPrefix(asString(input.text));
+      const raw = asString(input.text);
+      if (!handoffFrom) {
+        handoffFrom = extractHandoffProvider(raw);
+      }
+      const text = stripHandoffPrefix(raw);
       if (text) {
         textParts.push(text);
       }
@@ -50,7 +61,7 @@ function parseUserInputs(inputs: Array<Record<string, unknown>>) {
       }
     }
   });
-  return { text: textParts.join(" ").trim(), images };
+  return { text: textParts.join(" ").trim(), images, handoffFrom };
 }
 
 export function buildConversationItem(
@@ -66,13 +77,14 @@ export function buildConversationItem(
   }
   if (type === "userMessage") {
     const content = Array.isArray(item.content) ? item.content : [];
-    const { text, images } = parseUserInputs(content as Array<Record<string, unknown>>);
+    const { text, images, handoffFrom } = parseUserInputs(content as Array<Record<string, unknown>>);
     return {
       id,
       kind: "message",
       role: "user",
       text,
       images: images.length > 0 ? images : undefined,
+      handoffFrom,
     };
   }
   if (type === "reasoning") {
@@ -228,13 +240,14 @@ export function buildConversationItemFromThreadItem(
   }
   if (type === "userMessage") {
     const content = Array.isArray(item.content) ? item.content : [];
-    const { text, images } = parseUserInputs(content as Array<Record<string, unknown>>);
+    const { text, images, handoffFrom } = parseUserInputs(content as Array<Record<string, unknown>>);
     return {
       id,
       kind: "message",
       role: "user",
       text,
       images: images.length > 0 ? images : undefined,
+      handoffFrom,
     };
   }
   if (type === "agentMessage") {

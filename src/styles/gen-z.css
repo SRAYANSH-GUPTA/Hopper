@@ -38,9 +38,9 @@
     --gz-project-accent-2: #fb7185;
     --gz-project-accent-soft: rgba(45, 212, 191, 0.18);
     --gz-project-accent-glow: rgba(45, 212, 191, 0.32);
-    --gz-orange: #ff6200;
-    --gz-orange-soft: rgba(255, 98, 0, 0.14);
-    --gz-orange-glow: rgba(255, 98, 0, 0.35);
+    --gz-green: #22c55e;
+    --gz-green-soft: rgba(34, 197, 94, 0.14);
+    --gz-green-glow: rgba(34, 197, 94, 0.35);
     font-family: var(--gz-font);
     background-color: #0a0a0e !important;
     background-image: radial-gradient(circle, rgba(255,255,255,0.045) 1px, transparent 1px) !important;
@@ -112,8 +112,8 @@
   }
 
   .sidebar-activity-btn.is-active {
-    color: var(--gz-orange) !important;
-    background: var(--gz-orange-soft) !important;
+    color: var(--gz-green) !important;
+    background: var(--gz-green-soft) !important;
   }
 
   .sidebar-activity-btn.is-active::before {
@@ -123,9 +123,9 @@
     top: 10px;
     bottom: 10px;
     width: 2px;
-    background: var(--gz-orange) !important;
+    background: var(--gz-green) !important;
     border-radius: 0 2px 2px 0;
-    box-shadow: 0 0 6px var(--gz-orange-glow) !important;
+    box-shadow: 0 0 6px var(--gz-green-glow) !important;
   }
 
   .sidebar-panel {
@@ -213,9 +213,9 @@
   }
 
   .sidebar-marketplace-panel .marketplace-provider-chip.is-selected {
-    background: var(--gz-orange-soft) !important;
-    border-color: rgba(255,98,0,0.35) !important;
-    color: var(--gz-orange) !important;
+    background: var(--gz-green-soft) !important;
+    border-color: rgba(34, 197, 94,0.35) !important;
+    color: var(--gz-green) !important;
   }
 
   .sidebar-marketplace-panel .marketplace-cats {
@@ -256,8 +256,8 @@
   }
 
   .sidebar-marketplace-panel .marketplace-card:hover {
-    border-color: rgba(255,98,0,0.25) !important;
-    background: rgba(255,98,0,0.04) !important;
+    border-color: rgba(34, 197, 94,0.25) !important;
+    background: rgba(34, 197, 94,0.04) !important;
   }
 
   .sidebar-marketplace-panel .marketplace-card-name {
@@ -279,8 +279,8 @@
     font-size: 10px !important;
     padding: 4px 10px !important;
     border-radius: var(--gz-radius-pill) !important;
-    background: var(--gz-orange) !important;
-    border-color: var(--gz-orange) !important;
+    background: var(--gz-green) !important;
+    border-color: var(--gz-green) !important;
   }
 
   .sidebar-marketplace-panel .marketplace-btn--uninstall {
@@ -326,7 +326,7 @@
     font-weight: var(--gz-weight-bold) !important;
     letter-spacing: 0.9px !important;
     text-transform: uppercase !important;
-    color: rgba(255, 98, 0, 0.7) !important;
+    color: rgba(34, 197, 94, 0.7) !important;
     background: none !important;
     -webkit-background-clip: unset !important;
     background-clip: unset !important;
@@ -338,13 +338,13 @@
   .sidebar-header .subtitle {
     font-size: 13px !important;
     font-weight: var(--gz-weight-bold) !important;
-    color: var(--gz-orange) !important;
+    color: var(--gz-green) !important;
     text-transform: none !important;
     letter-spacing: 0 !important;
     background: none !important;
     -webkit-background-clip: unset !important;
     background-clip: unset !important;
-    -webkit-text-fill-color: var(--gz-orange) !important;
+    -webkit-text-fill-color: var(--gz-green) !important;
   }
 
   .sidebar-sort-toggle,
@@ -359,13 +359,13 @@
   .sidebar-search-toggle:hover,
   .sidebar-refresh-toggle:hover,
   .sidebar-title-add:hover {
-    color: var(--gz-orange) !important;
-    background: var(--gz-orange-soft) !important;
+    color: var(--gz-green) !important;
+    background: var(--gz-green-soft) !important;
   }
 
   .sidebar-search-toggle.is-active {
-    color: var(--gz-orange) !important;
-    background: var(--gz-orange-soft) !important;
+    color: var(--gz-green) !important;
+    background: var(--gz-green-soft) !important;
   }
 
   .sidebar-search-input {
@@ -378,13 +378,13 @@
   }
 
   .sidebar-search-input:focus {
-    border-color: rgba(255,98,0,0.5) !important;
-    box-shadow: 0 0 0 2px rgba(255,98,0,0.15) !important;
+    border-color: rgba(34, 197, 94,0.5) !important;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94,0.15) !important;
   }
 
   .sidebar-search-input::placeholder { color: rgba(255,255,255,0.22) !important; }
 
-  /* Workspace rows — flat list, orange active */
+  /* Workspace rows — flat list, green active */
   .workspace-row::before,
   .workspace-row::after {
     display: none !important;
@@ -405,9 +405,9 @@
   }
 
   .workspace-row.active {
-    background: var(--gz-orange-soft) !important;
+    background: var(--gz-green-soft) !important;
     border: none !important;
-    box-shadow: inset 3px 0 0 var(--gz-orange) !important;
+    box-shadow: inset 3px 0 0 var(--gz-green) !important;
     padding: 6px 12px !important;
   }
 
@@ -420,7 +420,7 @@
   .workspace-row:hover .workspace-name { color: rgba(255,255,255,0.95) !important; }
 
   .workspace-row.active .workspace-name {
-    color: var(--gz-orange) !important;
+    color: var(--gz-green) !important;
     font-weight: var(--gz-weight-bold) !important;
   }
 
@@ -464,9 +464,9 @@
     font-size: 10px !important;
     padding: 1px 7px !important;
     border-radius: 999px !important;
-    border: 1px solid rgba(255,98,0,0.3) !important;
-    color: var(--gz-orange) !important;
-    background: var(--gz-orange-soft) !important;
+    border: 1px solid rgba(34, 197, 94,0.3) !important;
+    color: var(--gz-green) !important;
+    background: var(--gz-green-soft) !important;
     white-space: nowrap !important;
   }
 
@@ -488,9 +488,9 @@
   }
 
   .worktree-row.active {
-    background: var(--gz-orange-soft) !important;
+    background: var(--gz-green-soft) !important;
     border: none !important;
-    box-shadow: inset 3px 0 0 var(--gz-orange) !important;
+    box-shadow: inset 3px 0 0 var(--gz-green) !important;
   }
 
   .worktree-label {
@@ -501,7 +501,7 @@
 
   .worktree-meta { color: rgba(255,255,255,0.28) !important; }
 
-  /* Thread rows — flat, orange active left bar */
+  /* Thread rows — flat, green active left bar */
   .thread-row {
     background: transparent !important;
     border: none !important;
@@ -520,9 +520,9 @@
   }
 
   .thread-row.active {
-    background: var(--gz-orange-soft) !important;
+    background: var(--gz-green-soft) !important;
     border: none !important;
-    box-shadow: inset 3px 0 0 var(--gz-orange) !important;
+    box-shadow: inset 3px 0 0 var(--gz-green) !important;
     color: #ffffff !important;
     padding: 5px 12px !important;
   }
@@ -536,15 +536,15 @@
   .thread-row:hover .thread-name { color: rgba(255,255,255,0.95) !important; }
 
   .thread-row.active .thread-name {
-    color: var(--gz-orange) !important;
+    color: var(--gz-green) !important;
     font-weight: var(--gz-weight-label) !important;
   }
 
   .thread-time { color: rgba(255,255,255,0.25) !important; font-size: 10px !important; }
 
-  .thread-status.processing { box-shadow: 0 0 0 3px rgba(255,159,67,0.25) !important; }
+  .thread-status.processing { box-shadow: 0 0 0 3px rgba(34, 197, 94,0.25) !important; }
   .thread-status.reviewing  { box-shadow: 0 0 0 3px rgba(47,209,196,0.2) !important; }
-  .thread-status.unread     { box-shadow: 0 0 0 3px rgba(255,98,0,0.3) !important; }
+  .thread-status.unread     { box-shadow: 0 0 0 3px rgba(34, 197, 94,0.3) !important; }
   .thread-status.ready      { box-shadow: 0 0 0 3px rgba(63,228,126,0.2) !important; }
 
   .thread-state-chip {
@@ -555,9 +555,9 @@
 
   .sidebar-section-count,
   .worktree-header-count {
-    background: var(--gz-orange-soft) !important;
-    border-color: rgba(255,98,0,0.35) !important;
-    color: var(--gz-orange) !important;
+    background: var(--gz-green-soft) !important;
+    border-color: rgba(34, 197, 94,0.35) !important;
+    color: var(--gz-green) !important;
     font-size: 10px !important;
     font-weight: var(--gz-weight-bold) !important;
   }
@@ -580,7 +580,7 @@
   .sidebar-usage-name, .sidebar-usage-value { font-size: 11px !important; color: rgba(255,255,255,0.7) !important; }
   .sidebar-usage-credits, .sidebar-usage-reset { color: rgba(255,255,255,0.25) !important; }
   .sidebar-usage-bar { background: rgba(255,255,255,0.06) !important; height: 3px !important; border-radius: 99px !important; }
-  .sidebar-usage-bar-fill { background: var(--gz-orange) !important; box-shadow: none !important; }
+  .sidebar-usage-bar-fill { background: var(--gz-green) !important; box-shadow: none !important; }
 
   .sidebar-labeled-button {
     border-radius: var(--gz-radius-sm) !important;
@@ -591,23 +591,23 @@
 
   .sidebar-labeled-button:hover,
   .sidebar-labeled-button.is-open {
-    background: var(--gz-orange-soft) !important;
-    border-color: rgba(255,98,0,0.25) !important;
-    color: var(--gz-orange) !important;
+    background: var(--gz-green-soft) !important;
+    border-color: rgba(34, 197, 94,0.25) !important;
+    color: var(--gz-green) !important;
     box-shadow: none !important;
   }
 
   .sidebar-labeled-button span:last-child { font-size: 11px !important; font-weight: var(--gz-weight-label) !important; }
   .sidebar-account-trigger-label { font-size: 11px !important; font-weight: var(--gz-weight-label) !important; color: rgba(255,255,255,0.5) !important; }
-  .sidebar-account-avatar { background: linear-gradient(135deg, rgba(255,98,0,0.3), rgba(255,98,0,0.15)) !important; }
+  .sidebar-account-avatar { background: linear-gradient(135deg, rgba(34, 197, 94,0.3), rgba(34, 197, 94,0.15)) !important; }
 
   .sidebar-provider-switcher { border-top-color: var(--gz-sidebar-border) !important; padding: 8px 0 6px !important; }
   .sidebar-provider-switcher-label { font-size: 9px !important; font-weight: var(--gz-weight-bold) !important; letter-spacing: 0.8px !important; color: rgba(255,255,255,0.25) !important; }
   .sidebar-provider-toggle { border-radius: var(--gz-radius-sm) !important; border-color: rgba(255,255,255,0.08) !important; background: rgba(255,255,255,0.03) !important; overflow: hidden !important; }
   .sidebar-provider-toggle-btn { font-size: 11px !important; font-weight: var(--gz-weight-label) !important; color: rgba(255,255,255,0.35) !important; }
   .sidebar-provider-toggle-btn:hover:not(.is-active) { background: rgba(255,255,255,0.05) !important; color: rgba(255,255,255,0.75) !important; }
-  .sidebar-provider-toggle-btn.is-active { background: var(--gz-orange-soft) !important; color: var(--gz-orange) !important; font-weight: var(--gz-weight-bold) !important; }
-  .sidebar-provider-toggle-btn--claude.is-active { background: rgba(255,98,0,0.15) !important; color: var(--gz-orange) !important; }
+  .sidebar-provider-toggle-btn.is-active { background: var(--gz-green-soft) !important; color: var(--gz-green) !important; font-weight: var(--gz-weight-bold) !important; }
+  .sidebar-provider-toggle-btn--claude.is-active { background: rgba(34, 197, 94,0.15) !important; color: var(--gz-green) !important; }
   .sidebar-provider-toggle-btn--antigravity.is-active { background: rgba(66,133,244,0.15) !important; color: #4285f4 !important; }
   .sidebar-provider-model-select { border-radius: var(--gz-radius-sm) !important; border-color: rgba(255,255,255,0.08) !important; background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.7) !important; font-size: 11px !important; }
 
@@ -636,8 +636,8 @@
     color: rgba(255,255,255,0.85);
   }
 
-  .sidebar-bottom-marketplace-btn { color: var(--gz-orange); }
-  .sidebar-bottom-marketplace-btn:hover { background: var(--gz-orange-soft); color: var(--gz-orange); }
+  .sidebar-bottom-marketplace-btn { color: var(--gz-green); }
+  .sidebar-bottom-marketplace-btn:hover { background: var(--gz-green-soft); color: var(--gz-green); }
 
   /* New conversation button */
   .sidebar-new-convo-btn {
@@ -646,8 +646,8 @@
     gap: 5px !important;
     padding: 4px 10px !important;
     border-radius: var(--gz-radius-pill) !important;
-    border: 1px solid var(--gz-orange) !important;
-    background: var(--gz-orange) !important;
+    border: 1px solid var(--gz-green) !important;
+    background: var(--gz-green) !important;
     color: #ffffff !important;
     font-size: 11px !important;
     font-weight: var(--gz-weight-bold) !important;
@@ -659,7 +659,7 @@
 
   .sidebar-new-convo-btn:hover {
     opacity: 0.85 !important;
-    box-shadow: 0 2px 10px var(--gz-orange-glow) !important;
+    box-shadow: 0 2px 10px var(--gz-green-glow) !important;
   }
 
   /* ── Main topbar ── */
@@ -688,13 +688,15 @@
     background: rgba(8, 8, 12, 0.88) !important;
     backdrop-filter: blur(24px) saturate(1.2) !important;
     -webkit-backdrop-filter: blur(24px) saturate(1.2) !important;
-    border-top: 1px solid rgba(255,255,255,0.055) !important;
+    border: 1px solid rgba(255,255,255,0.055) !important;
+    border-radius: var(--gz-radius-lg) !important;
+    margin: 0 16px 16px !important;
     padding: 14px var(--main-panel-padding) 24px !important;
     gap: 10px !important;
   }
 
   .composer-box {
-    border-radius: 0 !important;
+    border-radius: 14px !important;
     border: none !important;
     background: transparent !important;
     box-shadow: none !important;
@@ -727,7 +729,7 @@
   .open-app-button,
   .workspace-home-control .open-app-button {
     border-radius: 8px !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
+    border: none !important;
     background: rgba(255,255,255,0.04) !important;
     color: rgba(255,255,255,0.55) !important;
     transition: background 0.13s, border-color 0.13s, color 0.13s !important;
@@ -764,7 +766,7 @@
 
   .composer-action.is-stop { border: none !important; background: rgba(255,107,107,0.08) !important; color: rgba(255,140,140,0.85) !important; }
   .composer-action.is-stop:hover { background: rgba(255,107,107,0.15) !important; }
-  .composer-action--mic.is-active { border: none !important; background: rgba(255,98,0,0.12) !important; color: var(--gz-orange) !important; }
+  .composer-action--mic.is-active { border: none !important; background: rgba(34, 197, 94,0.12) !important; color: var(--gz-green) !important; }
 
   .composer-attach {
     border-radius: 10px !important;
@@ -777,7 +779,7 @@
 
   .composer .open-app-button, .composer-bar .open-app-button {
     border-radius: 8px !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
+    border: none !important;
     background: rgba(255,255,255,0.04) !important;
     overflow: hidden !important;
   }
@@ -820,7 +822,7 @@
     display: flex;
     align-items: center;
     background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.10);
+    border: none;
     border-radius: var(--gz-radius-pill);
     padding: 2px;
     gap: 0;
@@ -844,22 +846,22 @@
     letter-spacing: 0.1px;
   }
 
-  .gz-provider-btn.is-active { background: var(--gz-orange); color: #fff; box-shadow: 0 1px 6px var(--gz-orange-glow); }
+  .gz-provider-btn.is-active { background: var(--gz-green); color: #fff; box-shadow: 0 1px 6px var(--gz-green-glow); }
   .gz-provider-btn.is-active-claude { background: linear-gradient(135deg, #d97706, #f59e0b); color: #fff; box-shadow: 0 1px 6px rgba(245,158,11,0.4); }
   .gz-provider-btn.is-active-antigravity { background: linear-gradient(135deg, #4285f4, #34a853); color: #fff; box-shadow: 0 1px 6px rgba(66,133,244,0.4); }
   .gz-provider-btn:not(.is-active):hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.06); }
 
-  /* Send button — orange */
+  /* Send button — green */
   .composer-send-btn {
     width: 36px !important;
     height: 36px !important;
     border-radius: 10px !important;
-    background: var(--gz-orange) !important;
-    box-shadow: 0 2px 12px var(--gz-orange-glow) !important;
+    background: var(--gz-green) !important;
+    box-shadow: 0 2px 12px var(--gz-green-glow) !important;
     transition: transform 0.12s, box-shadow 0.12s !important;
   }
 
-  .composer-send-btn:hover:not(:disabled) { transform: translateY(-1px) !important; box-shadow: 0 4px 20px var(--gz-orange-glow) !important; }
+  .composer-send-btn:hover:not(:disabled) { transform: translateY(-1px) !important; box-shadow: 0 4px 20px var(--gz-green-glow) !important; }
   .composer-send-btn:active:not(:disabled) { transform: scale(0.94) !important; }
   .composer-send-btn.is-stop { background: rgba(255,255,255,0.12) !important; box-shadow: none !important; }
 
@@ -867,7 +869,7 @@
 
   .message-text { font-size: 14px !important; font-weight: var(--gz-weight-body) !important; line-height: 1.7 !important; }
   .message-bubble { border-radius: var(--gz-radius-md) !important; }
-  .message-bubble.is-user { background: var(--gz-orange-soft) !important; border: 1px solid rgba(255,98,0,0.2) !important; }
+  .message-bubble.is-user { background: var(--gz-green-soft) !important; border: 1px solid rgba(34, 197, 94,0.2) !important; }
 
   /* Code blocks */
   pre, .code-block { border-radius: var(--gz-radius-md) !important; border: 1px solid rgba(255,255,255,0.07) !important; font-size: 12.5px !important; }
@@ -893,8 +895,8 @@
 
   .marketplace-title { font-weight: var(--gz-weight-bold) !important; letter-spacing: -0.4px !important; }
   .marketplace-card-name { font-weight: var(--gz-weight-label) !important; }
-  .marketplace-cat-btn.is-active { background: var(--gz-orange-soft) !important; border-color: var(--gz-orange) !important; color: var(--gz-orange) !important; }
-  .marketplace-btn--install { background: var(--gz-orange) !important; border-color: var(--gz-orange) !important; }
+  .marketplace-cat-btn.is-active { background: var(--gz-green-soft) !important; border-color: var(--gz-green) !important; color: var(--gz-green) !important; }
+  .marketplace-btn--install { background: var(--gz-green) !important; border-color: var(--gz-green) !important; }
 
   /* ── Workspace Home ── */
 
@@ -910,7 +912,7 @@
     font-size: 10px;
     font-weight: var(--gz-weight-bold);
     letter-spacing: 1.2px;
-    color: var(--gz-orange);
+    color: var(--gz-green);
     margin-bottom: 2px;
   }
 
@@ -921,13 +923,13 @@
   .workspace-home-icon-button:hover { background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.8) !important; }
   .workspace-home-agent-card { border-radius: var(--gz-radius-md) !important; border: 1px solid rgba(255,255,255,0.07) !important; background: rgba(255,255,255,0.02) !important; padding: 14px !important; }
   .workspace-home-agent-textarea { background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.07) !important; border-radius: var(--gz-radius-sm) !important; color: rgba(255,255,255,0.75) !important; font-size: 13px !important; line-height: 1.6 !important; }
-  .workspace-home-agent-textarea:focus { border-color: rgba(255,98,0,0.4) !important; box-shadow: 0 0 0 3px rgba(255,98,0,0.1) !important; }
+  .workspace-home-agent-textarea:focus { border-color: rgba(34, 197, 94,0.4) !important; box-shadow: 0 0 0 3px rgba(34, 197, 94,0.1) !important; }
   .workspace-home-run-card { border-radius: var(--gz-radius-md) !important; border: 1px solid rgba(255,255,255,0.07) !important; background: rgba(255,255,255,0.025) !important; box-shadow: none !important; padding: 14px 16px !important; }
   .workspace-home-run-title { font-size: 14px !important; font-weight: var(--gz-weight-label) !important; color: rgba(255,255,255,0.9) !important; }
   .workspace-home-run-meta, .workspace-home-run-time { font-size: 11px !important; color: rgba(255,255,255,0.28) !important; }
   .workspace-home-instance { border-radius: var(--gz-radius-sm) !important; border: 1px solid rgba(255,255,255,0.07) !important; background: rgba(255,255,255,0.025) !important; transition: border-color 0.15s, background 0.15s !important; }
-  .workspace-home-instance:hover { border-color: rgba(255,98,0,0.3) !important; background: rgba(255,98,0,0.04) !important; }
-  .workspace-home-instance.is-active { border-color: var(--gz-orange) !important; background: var(--gz-orange-soft) !important; box-shadow: none !important; }
+  .workspace-home-instance:hover { border-color: rgba(34, 197, 94,0.3) !important; background: rgba(34, 197, 94,0.04) !important; }
+  .workspace-home-instance.is-active { border-color: var(--gz-green) !important; background: var(--gz-green-soft) !important; box-shadow: none !important; }
   .workspace-home-instance.is-running { border-color: rgba(34,211,238,0.5) !important; box-shadow: none !important; }
   .workspace-home-instance-title { font-size: 12.5px !important; font-weight: var(--gz-weight-label) !important; color: rgba(255,255,255,0.85) !important; }
   .workspace-home-instance-status { font-size: 11px !important; color: rgba(255,255,255,0.3) !important; }

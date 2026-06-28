@@ -4,6 +4,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+extern crate libc;
+
+use base64::Engine;
+
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -33,6 +37,8 @@ pub(crate) struct ClaudeState {
     threads: Mutex<HashMap<String, HashMap<String, ClaudeThread>>>,
     /// Shared permission server — started lazily on first Claude invocation.
     permission_server: Mutex<Option<Arc<ClaudePermissionServer>>>,
+    /// "workspace_id:thread_id" -> child PID for interrupt support
+    running_pids: Mutex<HashMap<String, u32>>,
 }
 
 impl ClaudeState {
@@ -40,7 +46,25 @@ impl ClaudeState {
         Arc::new(Self {
             threads: Mutex::new(HashMap::new()),
             permission_server: Mutex::new(None),
+            running_pids: Mutex::new(HashMap::new()),
         })
+    }
+
+    async fn register_pid(&self, workspace_id: &str, thread_id: &str, pid: u32) {
+        let key = format!("{workspace_id}:{thread_id}");
+        self.running_pids.lock().await.insert(key, pid);
+    }
+
+    async fn deregister_pid(&self, workspace_id: &str, thread_id: &str) {
+        let key = format!("{workspace_id}:{thread_id}");
+        self.running_pids.lock().await.remove(&key);
+    }
+
+    pub(crate) async fn kill_running_turn(&self, workspace_id: &str, thread_id: &str) {
+        let key = format!("{workspace_id}:{thread_id}");
+        if let Some(pid) = self.running_pids.lock().await.remove(&key) {
+            unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM); }
+        }
     }
 
     pub(crate) async fn new_thread(&self, workspace_id: &str) -> String {
@@ -278,6 +302,30 @@ async fn resolve_claude_bin() -> String {
     "claude".to_string()
 }
 
+fn data_url_to_temp_file(data_url: &str) -> Option<String> {
+    let rest = data_url.strip_prefix("data:")?;
+    let semi = rest.find(';')?;
+    let header = &rest[..semi];
+    let after_semi = &rest[semi + 1..];
+    let comma = after_semi.find(',')?;
+    let data = &after_semi[comma + 1..];
+    let ext = if header.contains("image/png") {
+        "png"
+    } else if header.contains("image/jpeg") || header.contains("image/jpg") {
+        "jpg"
+    } else if header.contains("image/gif") {
+        "gif"
+    } else if header.contains("image/webp") {
+        "webp"
+    } else {
+        "png"
+    };
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
+    let path = format!("/tmp/hopper-claude-img-{}.{}", Uuid::new_v4(), ext);
+    std::fs::write(&path, bytes).ok()?;
+    Some(path)
+}
+
 pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     claude_state: Arc<ClaudeState>,
     workspace_id: String,
@@ -285,6 +333,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     thread_id: String,
     text: String,
     model_id: Option<String>,
+    images: Option<Vec<String>>,
     event_sink: E,
 ) -> Result<Value, String> {
     // Ensure thread exists in state
@@ -317,13 +366,39 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         }),
     });
 
+    // Resolve image paths (convert data URLs to temp files).
+    let mut temp_files: Vec<String> = Vec::new();
+    let mut image_paths: Vec<String> = Vec::new();
+    if let Some(ref image_list) = images {
+        for image in image_list {
+            let path = if image.starts_with("data:") {
+                match data_url_to_temp_file(image) {
+                    Some(p) => {
+                        temp_files.push(p.clone());
+                        p
+                    }
+                    None => continue,
+                }
+            } else {
+                image.clone()
+            };
+            image_paths.push(path);
+        }
+    }
+
+    // Build content blocks for the user message event.
+    let mut content_blocks: Vec<Value> = vec![json!({ "type": "text", "text": text })];
+    for path in &image_paths {
+        content_blocks.push(json!({ "type": "localImage", "path": path }));
+    }
+
     // Emit user message item
     let user_item_id = Uuid::new_v4().to_string();
     let user_item = json!({
         "type": "userMessage",
         "id": user_item_id,
         "turnId": turn_id,
-        "content": [{ "type": "text", "text": text }]
+        "content": content_blocks
     });
     event_sink.emit_app_server_event(AppServerEvent {
         workspace_id: workspace_id.clone(),
@@ -363,6 +438,9 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         .unwrap_or("claude-sonnet-4-6");
     cmd.arg("--model").arg(resolved_model);
     cmd.arg("-p").arg(&text);
+    for path in &image_paths {
+        cmd.arg("--image").arg(path);
+    }
     if !workspace_cwd.is_empty() {
         cmd.current_dir(&workspace_cwd);
     }
@@ -383,6 +461,12 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
              Make sure claude-code is installed: npm install -g @anthropic-ai/claude-code\n{e}"
         )
     })?;
+
+    // Register child PID so kill_running_turn can interrupt it.
+    if let Some(pid) = child.id() {
+        claude_state.register_pid(&workspace_id, &thread_id, pid).await;
+    }
+
     let stdout = child.stdout.take().ok_or("missing stdout")?;
     // Consume stderr in a background task to prevent pipe buffer deadlock.
     // Errors are printed to the host process stderr for debugging.
@@ -802,6 +886,12 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         }
 
         let _ = child.wait().await;
+        claude_state.deregister_pid(&workspace_id, &thread_id).await;
+
+        // Clean up temp files created from data URL images.
+        for path in &temp_files {
+            let _ = std::fs::remove_file(path);
+        }
     });
 
     Ok(json!({

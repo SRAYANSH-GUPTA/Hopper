@@ -189,7 +189,7 @@ export function useMessagesViewState({
   const latestReasoningLabel = useMemo(() => {
     for (let index = items.length - 1; index >= 0; index -= 1) {
       const item = items[index];
-      if (item.kind === "message") {
+      if (item.kind === "message" && item.role === "user") {
         break;
       }
       if (item.kind !== "reasoning") {
@@ -206,7 +206,7 @@ export function useMessagesViewState({
   const latestReasoningText = useMemo(() => {
     for (let index = items.length - 1; index >= 0; index -= 1) {
       const item = items[index];
-      if (item.kind === "message") {
+      if (item.kind === "message" && item.role === "user") {
         break;
       }
       if (item.kind !== "reasoning") {

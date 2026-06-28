@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { subscribeAppServerEvents } from "../../services/events";
+import { stripHandoffPrefix } from "../../utils/threadItems.conversion";
 import {
   appendTurn,
   buildHandoffPrompt,
@@ -10,6 +11,10 @@ import {
   type TurnRecord,
 } from "./contextStore";
 
+// Global module state for pending context buffers across the app
+let activeProviderState = "";
+const pendingBuffers: Record<string, Record<string, { user: string; assistant: string }>> = {};
+
 /**
  * Listens to app-server-events and maintains a per-thread context snapshot
  * in localStorage. On provider switch, the caller requests a handoff prompt
@@ -17,12 +22,9 @@ import {
  * message will pick up and prepend automatically.
  */
 export function useContextHandoff(activeProvider: string) {
-  // workspace_id -> thread_id -> { userBuffer, assistantBuffer }
-  const bufferRef = useRef<
-    Record<string, Record<string, { user: string; assistant: string }>>
-  >({});
-
   useEffect(() => {
+    activeProviderState = activeProvider;
+    
     return subscribeAppServerEvents((event) => {
       const workspaceId = event.workspace_id;
       const msg = event.message as Record<string, unknown>;
@@ -39,10 +41,16 @@ export function useContextHandoff(activeProvider: string) {
         const itemType = item.type as string | undefined;
 
         if (itemType === "userMessage") {
-          const content = item.content as { type: string; text: string }[] | undefined;
-          const text = content?.find((c) => c.type === "text")?.text ?? "";
+          let text = "";
+          if (Array.isArray(item.content)) {
+            const contentArray = item.content as { type?: string; text?: string }[];
+            text = contentArray.find((c) => c.type === "text")?.text ?? "";
+          } else if (typeof item.content === "string") {
+            text = item.content;
+          }
+          text = stripHandoffPrefix(text);
           if (!text) return;
-          const ws = (bufferRef.current[workspaceId] ??= {});
+          const ws = (pendingBuffers[workspaceId] ??= {});
           ws[threadId] = { user: text, assistant: "" };
         }
       }
@@ -51,21 +59,21 @@ export function useContextHandoff(activeProvider: string) {
       if (method === "item/agentMessage/delta") {
         const delta = params.delta as string | undefined;
         if (!delta) return;
-        const ws = (bufferRef.current[workspaceId] ??= {});
+        const ws = (pendingBuffers[workspaceId] ??= {});
         const buf = (ws[threadId] ??= { user: "", assistant: "" });
         buf.assistant += delta;
       }
 
       // ── Finalise turn on turn/completed ───────────────────────────────
       if (method === "turn/completed") {
-        const ws = bufferRef.current[workspaceId];
+        const ws = pendingBuffers[workspaceId];
         const buf = ws?.[threadId];
         if (!buf || !buf.user) return;
 
         const turn: TurnRecord = {
           userText: buf.user,
           assistantText: buf.assistant,
-          provider: activeProvider,
+          provider: activeProviderState,
           timestamp: Date.now(),
         };
 
@@ -95,6 +103,27 @@ export function triggerHandoff(
   nextProvider: string,
 ): void {
   if (!activeThreadId) return;
+
+  // Flush any interrupted turn before triggering handoff
+  const ws = pendingBuffers[workspaceId];
+  const buf = ws?.[activeThreadId];
+  if (buf && buf.user) {
+    const turn: TurnRecord = {
+      userText: buf.user,
+      assistantText: buf.assistant,
+      provider: activeProviderState,
+      timestamp: Date.now(),
+    };
+
+    let ctx = loadThreadContext(workspaceId, activeThreadId);
+    if (!ctx) {
+      ctx = createThreadContext(workspaceId, activeThreadId, buf.user);
+    }
+    ctx = appendTurn(ctx, turn);
+    saveThreadContext(ctx);
+    delete ws[activeThreadId];
+  }
+
   const ctx = loadThreadContext(workspaceId, activeThreadId);
   if (!ctx || ctx.recentTurns.length === 0) return;
   const prompt = buildHandoffPrompt(ctx, nextProvider);

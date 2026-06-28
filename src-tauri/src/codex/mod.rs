@@ -437,6 +437,7 @@ pub(crate) async fn send_user_message(
             thread_id,
             text,
             model_id,
+            images,
             event_sink,
         )
         .await;
@@ -566,6 +567,16 @@ pub(crate) async fn turn_interrupt(
             json!({ "workspaceId": workspace_id, "threadId": thread_id, "turnId": turn_id }),
         )
         .await;
+    }
+
+    if claude::is_claude_mode(&state.app_settings).await {
+        state.claude_state.kill_running_turn(&workspace_id, &thread_id).await;
+        return Ok(json!({ "result": "ok" }));
+    }
+
+    if antigravity::is_antigravity_mode(&state.app_settings).await {
+        state.antigravity_state.kill_running_turn(&workspace_id, &thread_id).await;
+        return Ok(json!({ "result": "ok" }));
     }
 
     codex_core::turn_interrupt_core(&state.sessions, workspace_id, thread_id, turn_id).await

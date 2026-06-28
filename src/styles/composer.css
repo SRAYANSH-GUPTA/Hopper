@@ -4,7 +4,9 @@
   gap: 12px;
   -webkit-app-region: no-drag;
   padding: 16px var(--main-panel-padding) 28px;
-  border-top: 1px solid var(--cm-border-default);
+  border: none;
+  border-radius: 20px;
+  margin: 0 12px 12px;
   background: var(--cm-surface-composer);
   backdrop-filter: blur(18px) saturate(1.1);
   -webkit-backdrop-filter: blur(18px) saturate(1.1);
@@ -130,24 +132,22 @@
   font-size: 11px;
   padding: 6px 11px;
   border-radius: 999px;
-  border: 1px solid var(--cm-border-emphasis);
+  border: none;
   background: var(--cm-surface-panel-strong);
   color: var(--text-muted);
 }
 
 .composer-context-action:hover:not(:disabled) {
-  border-color: var(--border-strong);
+  background: var(--surface-hover);
   color: var(--text-strong);
 }
 
 /* Unified composer card — wraps the textarea and the meta bar */
 .composer-box {
-  border: 1px solid var(--cm-border-heavy);
-  background: var(--cm-surface-panel-elevated);
+  border: none;
+  background: transparent;
   border-radius: 24px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 4px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: none;
   overflow: hidden;
 }
 

@@ -811,7 +811,7 @@ describe("Messages", () => {
     );
 
     expect(container.querySelector(".reasoning-inline")).toBeTruthy();
-    const reasoningDetail = container.querySelector(".reasoning-inline-detail");
+    const reasoningDetail = container.querySelector(".reasoning-inline-detail, .reasoning-streaming-text");
     expect(reasoningDetail?.textContent ?? "").toContain("Looking for entry points");
     const workingText = container.querySelector(".working-text");
     expect(workingText?.textContent ?? "").toContain("Scanning repository");
@@ -841,7 +841,7 @@ describe("Messages", () => {
 
     const workingText = container.querySelector(".working-text");
     expect(workingText?.textContent ?? "").toContain("Plan from content");
-    const reasoningDetail = container.querySelector(".reasoning-inline-detail");
+    const reasoningDetail = container.querySelector(".reasoning-inline-detail, .reasoning-streaming-text");
     expect(reasoningDetail?.textContent ?? "").toContain("More detail here");
     expect(reasoningDetail?.textContent ?? "").not.toContain("Plan from content");
   });

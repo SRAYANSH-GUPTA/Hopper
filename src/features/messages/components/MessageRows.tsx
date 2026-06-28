@@ -300,6 +300,59 @@ function buildPlanExportFileName(itemId: string) {
   return normalized.startsWith("plan-") ? `${normalized}.md` : `plan-${normalized}.md`;
 }
 
+const CYCLING_LABELS = [
+  "Thinking…",
+  "Reasoning…",
+  "Analyzing…",
+  "Pondering…",
+  "Processing…",
+  "Calculating…",
+  "Contemplating…",
+  "Deliberating…",
+  "Evaluating…",
+  "Exploring…",
+  "Figuring it out…",
+  "Formulating…",
+  "Gathering thoughts…",
+  "Generating…",
+  "Hypothesizing…",
+  "Imagining…",
+  "Inferring…",
+  "Inspecting…",
+  "Interpreting…",
+  "Investigating…",
+  "Let me think…",
+  "Looking into it…",
+  "Making connections…",
+  "Mapping it out…",
+  "Mulling it over…",
+  "On it…",
+  "Parsing…",
+  "Pattern matching…",
+  "Planning…",
+  "Preparing…",
+  "Problem solving…",
+  "Reasoning through…",
+  "Recalling…",
+  "Reflecting…",
+  "Researching…",
+  "Reviewing…",
+  "Running through scenarios…",
+  "Simulating…",
+  "Sorting through…",
+  "Strategizing…",
+  "Structuring thoughts…",
+  "Synthesizing…",
+  "Tracing through…",
+  "Trying to figure out…",
+  "Understanding…",
+  "Unpacking…",
+  "Verifying…",
+  "Weighing options…",
+  "Working through it…",
+  "Crunching…",
+];
+
 export const WorkingIndicator = memo(function WorkingIndicator({
   isThinking,
   processingStartedAt = null,
@@ -314,10 +367,44 @@ export const WorkingIndicator = memo(function WorkingIndicator({
   const [pollCountdownSeconds, setPollCountdownSeconds] = useState(() =>
     Math.max(1, Math.ceil(pollingIntervalMs / 1000)),
   );
+  const [cycleIndex, setCycleIndex] = useState(0);
+  const [showIndicator, setShowIndicator] = useState(isThinking);
   const thinkingPreviewRef = useRef<HTMLDivElement | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
+
+  // Keep the indicator visible for at least 800ms after isThinking goes false,
+  // so fast responses don't make it flash imperceptibly.
+  useEffect(() => {
+    if (isThinking) {
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+      setShowIndicator(true);
+    } else {
+      hideTimerRef.current = window.setTimeout(() => {
+        hideTimerRef.current = null;
+        setShowIndicator(false);
+      }, 800);
+    }
+    return () => {
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+    };
+  }, [isThinking]);
 
   useEffect(() => {
-    if (!isThinking || !processingStartedAt) {
+    if (!showIndicator || reasoningLabel) return undefined;
+    const interval = window.setInterval(() => {
+      setCycleIndex((i) => (i + 1) % CYCLING_LABELS.length);
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [showIndicator, reasoningLabel]);
+
+  useEffect(() => {
+    if (!showIndicator || !processingStartedAt) {
       setElapsedMs(0);
       return undefined;
     }
@@ -326,10 +413,10 @@ export const WorkingIndicator = memo(function WorkingIndicator({
       setElapsedMs(Date.now() - processingStartedAt);
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [isThinking, processingStartedAt]);
+  }, [showIndicator, processingStartedAt]);
 
   useEffect(() => {
-    if (!showPollingFetchStatus || isThinking) {
+    if (!showPollingFetchStatus || showIndicator) {
       return undefined;
     }
     const intervalSeconds = Math.max(1, Math.ceil(pollingIntervalMs / 1000));
@@ -342,7 +429,7 @@ export const WorkingIndicator = memo(function WorkingIndicator({
     return () => {
       window.clearInterval(timer);
     };
-  }, [isThinking, pollingIntervalMs, showPollingFetchStatus]);
+  }, [showIndicator, pollingIntervalMs, showPollingFetchStatus]);
 
   useEffect(() => {
     const node = thinkingPreviewRef.current;
@@ -353,14 +440,14 @@ export const WorkingIndicator = memo(function WorkingIndicator({
 
   return (
     <>
-      {isThinking && (
+      {showIndicator && (
         <div className={thinkingText ? "working-expanded" : undefined}>
           <div className="working">
             <span className="working-spinner" aria-hidden />
             <div className="working-timer">
               <span className="working-timer-clock">{formatDurationMs(elapsedMs)}</span>
             </div>
-            <span className="working-text">{reasoningLabel || "Working\u2026"}</span>
+            <span className="working-text">{reasoningLabel || CYCLING_LABELS[cycleIndex]}</span>
           </div>
           {thinkingText && (
             <div
@@ -374,7 +461,7 @@ export const WorkingIndicator = memo(function WorkingIndicator({
           )}
         </div>
       )}
-      {!isThinking && lastDurationMs !== null && hasItems && (
+      {!showIndicator && lastDurationMs !== null && hasItems && (
         <div className="turn-complete" aria-live="polite">
           <span className="turn-complete-line" aria-hidden />
           <span className="turn-complete-label">
@@ -925,6 +1012,19 @@ export const ToolRow = memo(function ToolRow({
           </div>
         )}
       </div>
+    </div>
+  );
+});
+
+export const HandoffRow = memo(function HandoffRow({ fromProvider }: { fromProvider: string }) {
+  return (
+    <div className="handoff-banner" role="status" aria-label={`Switched from ${fromProvider}`}>
+      <span className="handoff-banner-line" aria-hidden />
+      <span className="handoff-banner-pill">
+        <span className="handoff-banner-icon" aria-hidden>⇄</span>
+        <span>switched from <strong>{fromProvider}</strong></span>
+      </span>
+      <span className="handoff-banner-line" aria-hidden />
     </div>
   );
 });
