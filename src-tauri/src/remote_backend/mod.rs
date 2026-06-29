@@ -170,6 +170,7 @@ fn can_retry_after_disconnect(method: &str) -> bool {
             | "list_mcp_server_status"
             | "list_threads"
             | "local_usage_snapshot"
+            | "provider_usage_output"
             | "list_workspace_files"
             | "list_workspaces"
             | "model_list"

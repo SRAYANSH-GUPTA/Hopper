@@ -34,6 +34,7 @@ export function useComposerController({
   startModels,
   startFast,
   startStatus,
+  startUsage,
 }: {
   activeThreadId: string | null;
   activeTurnId: string | null;
@@ -71,6 +72,7 @@ export function useComposerController({
   startModels: (text: string) => Promise<void>;
   startFast: (text: string) => Promise<void>;
   startStatus: (text: string) => Promise<void>;
+  startUsage: (text: string) => Promise<void>;
 }) {
   const [composerDraftsByThread, setComposerDraftsByThread] = useState<
     Record<string, string>
@@ -118,6 +120,7 @@ export function useComposerController({
     startModels,
     startFast,
     startStatus,
+    startUsage,
     clearActiveImages,
   });
 

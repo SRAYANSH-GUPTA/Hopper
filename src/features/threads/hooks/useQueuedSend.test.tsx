@@ -36,6 +36,7 @@ const makeOptions = (
   startModels: vi.fn().mockResolvedValue(undefined),
   startFast: vi.fn().mockResolvedValue(undefined),
   startStatus: vi.fn().mockResolvedValue(undefined),
+  startUsage: vi.fn().mockResolvedValue(undefined),
   clearActiveImages: vi.fn(),
   ...overrides,
 });
@@ -376,6 +377,22 @@ describe("useQueuedSend", () => {
     });
 
     expect(startStatus).toHaveBeenCalledWith("/status now");
+    expect(options.sendUserMessage).not.toHaveBeenCalled();
+    expect(options.startReview).not.toHaveBeenCalled();
+  });
+
+  it("routes /usage to the usage handler", async () => {
+    const startUsage = vi.fn().mockResolvedValue(undefined);
+    const options = makeOptions({ startUsage });
+    const { result } = renderHook((props) => useQueuedSend(props), {
+      initialProps: options,
+    });
+
+    await act(async () => {
+      await result.current.handleSend("/usage now", ["img-1"]);
+    });
+
+    expect(startUsage).toHaveBeenCalledWith("/usage now");
     expect(options.sendUserMessage).not.toHaveBeenCalled();
     expect(options.startReview).not.toHaveBeenCalled();
   });

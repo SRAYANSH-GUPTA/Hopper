@@ -268,6 +268,14 @@ pub(super) async fn try_handle(
             let workspace_path = parse_optional_string(params, "workspacePath");
             Some(serialize_result(state.local_usage_snapshot(days, workspace_path)).await)
         }
+        "provider_usage_output" => {
+            let provider = match parse_string(params, "provider") {
+                Ok(value) => value,
+                Err(err) => return Some(Err(err)),
+            };
+            let workspace_path = parse_optional_string(params, "workspacePath");
+            Some(serialize_result(state.provider_usage_output(provider, workspace_path)).await)
+        }
         _ => None,
     }
 }

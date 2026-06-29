@@ -847,6 +847,7 @@ describe("useThreads UX integration", () => {
         startModels: threads.startModels,
         startFast: threads.startFast,
         startStatus: threads.startStatus,
+        startUsage: threads.startUsage,
         clearActiveImages,
       });
       return { threads, queued };

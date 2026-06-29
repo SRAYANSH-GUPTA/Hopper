@@ -10,6 +10,7 @@ import type {
   ReviewTarget,
   SendMessageResult,
   ServiceTier,
+  LocalAgentProvider,
   WorkspaceInfo,
 } from "@/types";
 import {
@@ -21,6 +22,8 @@ import {
   getAppsList as getAppsListService,
   listMcpServerStatus as listMcpServerStatusService,
   getModelList as getModelListService,
+  localUsageSnapshot as localUsageSnapshotService,
+  providerUsageOutput as providerUsageOutputService,
 } from "@services/tauri";
 import { parseModelListResponse } from "@/features/models/utils/modelListResponse";
 import { expandCustomPromptText } from "@utils/customPrompts";
@@ -48,6 +51,7 @@ import {
 type UseThreadMessagingOptions = {
   activeWorkspace: WorkspaceInfo | null;
   activeThreadId: string | null;
+  localProvider?: LocalAgentProvider;
   accessMode?: "read-only" | "current" | "full-access";
   model?: string | null;
   effort?: string | null;
@@ -103,6 +107,7 @@ type UseThreadMessagingOptions = {
 export function useThreadMessaging({
   activeWorkspace,
   activeThreadId,
+  localProvider = "codex",
   accessMode,
   model,
   effort,
@@ -724,6 +729,86 @@ export function useThreadMessaging({
     ],
   );
 
+  const startUsage = useCallback(
+    async (text: string) => {
+      if (!activeWorkspace) {
+        return;
+      }
+      const threadId = await ensureThreadForActiveWorkspace();
+      if (!threadId) {
+        return;
+      }
+
+      const pathArg = text.replace(/^\/?(?:usage|quota)\b/i, "").trim();
+      const workspacePath = activeWorkspace.path;
+      const isProviderUsage =
+        localProvider === "claude" || localProvider === "antigravity";
+
+      try {
+        const lines: string[] = [];
+
+        if (isProviderUsage) {
+          const output = await providerUsageOutputService(
+            localProvider,
+            workspacePath,
+          );
+          lines.push(
+            `**${localProvider === "claude" ? "Claude" : "Antigravity"} Usage**`,
+            "",
+            "```text",
+            output.trimEnd(),
+            "```",
+          );
+        } else {
+          const snapshot = await localUsageSnapshotService(30, pathArg || null);
+          lines.push(`**Local Token Usage (Last 30 Days)**`);
+          if (pathArg) {
+            lines.push(`Path: \`${pathArg}\``);
+          }
+          lines.push(`- **Last 7 days**: ${snapshot.totals.last7DaysTokens.toLocaleString()} tokens`);
+          lines.push(`- **Last 30 days**: ${snapshot.totals.last30DaysTokens.toLocaleString()} tokens`);
+          lines.push(`- **Daily average**: ${Math.round(snapshot.totals.averageDailyTokens).toLocaleString()} tokens`);
+          if (snapshot.totals.cacheHitRatePercent > 0) {
+            lines.push(`- **Cache hit rate**: ${snapshot.totals.cacheHitRatePercent.toFixed(1)}%`);
+          }
+          if (snapshot.topModels && snapshot.topModels.length > 0) {
+            lines.push(``);
+            lines.push(`**Top Models**`);
+            for (const m of snapshot.topModels) {
+              lines.push(`- ${m.model}: ${m.tokens.toLocaleString()} tokens (${m.sharePercent.toFixed(1)}%)`);
+            }
+          }
+        }
+
+        const timestamp = Date.now();
+        recordThreadActivity(activeWorkspace.id, threadId, timestamp);
+        dispatch({
+          type: "addAssistantMessage",
+          threadId,
+          text: lines.join("\n"),
+        });
+        safeMessageActivity();
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        dispatch({
+          type: "addAssistantMessage",
+          threadId,
+          text: isProviderUsage
+            ? `Failed to fetch ${localProvider} usage: ${errorMessage}`
+            : `Failed to fetch usage: ${errorMessage}`,
+        });
+      }
+    },
+    [
+      activeWorkspace,
+      dispatch,
+      ensureThreadForActiveWorkspace,
+      localProvider,
+      recordThreadActivity,
+      safeMessageActivity,
+    ],
+  );
+
   const startFast = useCallback(
     async (text: string) => {
       if (!activeWorkspace) {
@@ -1026,6 +1111,7 @@ export function useThreadMessaging({
     startModels,
     startFast,
     startStatus,
+    startUsage,
     reviewPrompt,
     openReviewPrompt,
     closeReviewPrompt,

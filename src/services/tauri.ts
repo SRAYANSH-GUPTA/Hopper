@@ -13,6 +13,7 @@ import type {
   DictationModelStatus,
   DictationSessionState,
   LocalUsageSnapshot,
+  LocalAgentProvider,
   TcpDaemonStatus,
   TailscaleDaemonCommandPreview,
   TailscaleStatus,
@@ -733,6 +734,19 @@ export async function localUsageSnapshot(
     payload.workspacePath = workspacePath;
   }
   return invoke("local_usage_snapshot", payload);
+}
+
+export async function providerUsageOutput(
+  provider: LocalAgentProvider,
+  workspacePath?: string | null,
+): Promise<string> {
+  const payload: { provider: LocalAgentProvider; workspacePath?: string } = {
+    provider,
+  };
+  if (workspacePath) {
+    payload.workspacePath = workspacePath;
+  }
+  return invoke("provider_usage_output", payload);
 }
 
 export async function getModelList(workspaceId: string) {

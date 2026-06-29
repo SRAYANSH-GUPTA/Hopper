@@ -19,6 +19,7 @@ mod files;
 mod git;
 mod git_utils;
 mod local_usage;
+mod provider_usage;
 #[cfg(desktop)]
 mod menu;
 #[cfg(not(desktop))]
@@ -311,6 +312,7 @@ pub fn run() {
             dictation::dictation_stop,
             dictation::dictation_cancel,
             local_usage::local_usage_snapshot,
+            provider_usage::provider_usage_output,
             notifications::is_macos_debug_build,
             notifications::app_build_type,
             notifications::send_notification_fallback,

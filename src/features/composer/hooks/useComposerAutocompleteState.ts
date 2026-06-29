@@ -305,6 +305,13 @@ export function useComposerAutocompleteState({
           insertText: "rename",
           group: "Slash",
         },
+        {
+          id: "agents",
+          label: "agents",
+          description: "list or manage subagents",
+          insertText: "agents",
+          group: "Slash",
+        },
       ];
     } else {
       // Default to Codex
@@ -363,6 +370,13 @@ export function useComposerAutocompleteState({
           label: "status",
           description: "show session status",
           insertText: "status",
+          group: "Slash",
+        },
+        {
+          id: "usage",
+          label: "usage",
+          description: "show token usage and rate limits",
+          insertText: "usage",
           group: "Slash",
         },
       ];

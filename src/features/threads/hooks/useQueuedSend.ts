@@ -44,6 +44,7 @@ type UseQueuedSendOptions = {
   startModels: (text: string) => Promise<void>;
   startFast: (text: string) => Promise<void>;
   startStatus: (text: string) => Promise<void>;
+  startUsage: (text: string) => Promise<void>;
   clearActiveImages: () => void;
 };
 
@@ -74,7 +75,8 @@ type SlashCommandKind =
   | "new"
   | "resume"
   | "review"
-  | "status";
+  | "status"
+  | "usage";
 
 function parseSlashCommand(text: string, appsEnabled: boolean): SlashCommandKind | null {
   if (appsEnabled && /^\/apps\b/i.test(text)) {
@@ -107,6 +109,9 @@ function parseSlashCommand(text: string, appsEnabled: boolean): SlashCommandKind
   if (/^\/status\b/i.test(text)) {
     return "status";
   }
+  if (/^\/?(?:usage|quota)\b/i.test(text)) {
+    return "usage";
+  }
   return null;
 }
 
@@ -133,6 +138,7 @@ export function useQueuedSend({
   startModels,
   startFast,
   startStatus,
+  startUsage,
   clearActiveImages,
 }: UseQueuedSendOptions): UseQueuedSendResult {
   const [queuedByThread, setQueuedByThread] = useState<
@@ -225,6 +231,10 @@ export function useQueuedSend({
         await startStatus(trimmed);
         return;
       }
+      if (command === "usage") {
+        await startUsage(trimmed);
+        return;
+      }
       if (command === "new" && activeWorkspace) {
         const threadId = await startThreadForWorkspace(activeWorkspace.id);
         const rest = trimmed.replace(/^\/new\b/i, "").trim();
@@ -245,6 +255,7 @@ export function useQueuedSend({
       startModels,
       startFast,
       startStatus,
+      startUsage,
       startThreadForWorkspace,
     ],
   );

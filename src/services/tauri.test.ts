@@ -43,6 +43,7 @@ import {
   tailscaleStatus,
   pickImageFiles,
   pickWorkspacePaths,
+  providerUsageOutput,
   writeGlobalAgentsMd,
   writeGlobalCodexConfigToml,
   createAgent,
@@ -360,6 +361,18 @@ describe("tauri invoke wrappers", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("set_tray_session_usage", {
       usage,
+    });
+  });
+
+  it("maps provider usage output requests", async () => {
+    const invokeMock = vi.mocked(invoke);
+    invokeMock.mockResolvedValueOnce("Usage output");
+
+    await providerUsageOutput("claude", "/tmp/workspace");
+
+    expect(invokeMock).toHaveBeenCalledWith("provider_usage_output", {
+      provider: "claude",
+      workspacePath: "/tmp/workspace",
     });
   });
 

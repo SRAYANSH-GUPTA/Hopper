@@ -1337,6 +1337,14 @@ impl DaemonState {
         local_usage_core::local_usage_snapshot_core(&self.workspaces, days, workspace_path).await
     }
 
+    async fn provider_usage_output(
+        &self,
+        provider: String,
+        workspace_path: Option<String>,
+    ) -> Result<String, String> {
+        shared::provider_usage_core::provider_usage_output_core(&provider, workspace_path).await
+    }
+
     async fn menu_set_accelerators(&self, _updates: Vec<Value>) -> Result<(), String> {
         // Daemon has no native menu runtime; treat as no-op for remote parity.
         Ok(())

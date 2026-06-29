@@ -4,6 +4,7 @@ import type {
   CollabAgentRef,
   CustomPromptOption,
   DebugEntry,
+  LocalAgentProvider,
   ServiceTier,
   ThreadListSortKey,
   WorkspaceInfo,
@@ -44,6 +45,7 @@ type UseThreadsOptions = {
   activeWorkspace: WorkspaceInfo | null;
   onWorkspaceConnected: (id: string) => void;
   onDebug?: (entry: DebugEntry) => void;
+  localProvider?: LocalAgentProvider;
   ensureWorkspaceRuntimeCodexArgs?: (
     workspaceId: string,
     threadId: string | null,
@@ -78,6 +80,7 @@ export function useThreads({
   activeWorkspace,
   onWorkspaceConnected,
   onDebug,
+  localProvider = "codex",
   ensureWorkspaceRuntimeCodexArgs,
   model,
   effort,
@@ -740,6 +743,7 @@ export function useThreads({
     startModels,
     startFast,
     startStatus,
+    startUsage,
     reviewPrompt,
     openReviewPrompt,
     closeReviewPrompt,
@@ -763,6 +767,7 @@ export function useThreads({
   } = useThreadMessaging({
     activeWorkspace,
     activeThreadId,
+    localProvider,
     accessMode,
     model,
     effort,
@@ -914,6 +919,7 @@ export function useThreads({
     startModels,
     startFast,
     startStatus,
+    startUsage,
     reviewPrompt,
     openReviewPrompt,
     closeReviewPrompt,
