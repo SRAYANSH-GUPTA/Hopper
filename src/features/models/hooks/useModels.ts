@@ -54,6 +54,7 @@ export function useModels({
   const lastFetchedWorkspaceId = useRef<string | null>(null);
   const lastFetchedStaticMode = useRef<boolean>(staticModels !== null);
   const inFlight = useRef(false);
+  const fetchGeneration = useRef(0);
   const hasUserSelectedModel = useRef(false);
   const hasUserSelectedEffort = useRef(false);
   const lastWorkspaceId = useRef<string | null>(null);
@@ -171,6 +172,7 @@ export function useModels({
     if (!workspaceId || !isConnected) {
       return;
     }
+    const myGeneration = fetchGeneration.current;
     if (staticModels) {
       const data: ModelOption[] = staticModels.map((sm, index) => ({
         id: sm.id,
@@ -181,6 +183,7 @@ export function useModels({
         defaultReasoningEffort: null,
         isDefault: index === 0,
       }));
+      if (fetchGeneration.current !== myGeneration) return;
       setModels(data);
       lastLoadedSelectionKeyRef.current = selectionKey;
       lastFetchedWorkspaceId.current = workspaceId;
@@ -266,6 +269,7 @@ export function useModels({
         label: "model/list response",
         payload: response,
       });
+      if (fetchGeneration.current !== myGeneration) return;
       setConfigModel(configModelFromConfig);
       const dataFromServer: ModelOption[] = parseModelListResponse(response);
       const data = (() => {
@@ -353,9 +357,10 @@ export function useModels({
       setModels([]);
       lastFetchedWorkspaceId.current = null;
       lastFetchedStaticMode.current = staticModels !== null;
+      // Invalidate any in-flight fetch so its stale result doesn't overwrite
+      // the fresh data that the upcoming refreshModels call will produce.
+      fetchGeneration.current += 1;
       if (triggerChanged) {
-        // Cancel any in-flight fetch from the previous provider so it doesn't
-        // overwrite the incoming results.
         inFlight.current = false;
       }
     }

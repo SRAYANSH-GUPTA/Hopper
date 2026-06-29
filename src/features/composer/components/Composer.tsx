@@ -148,6 +148,9 @@ type ComposerProps = {
   }[];
   onProviderSwitch?: (providerId: string) => void;
   activeProviderId?: string;
+  isPlanMode?: boolean;
+  onPlanModeToggle?: (enabled: boolean) => void;
+  planCommandPrefix?: boolean;
 };
 
 const DEFAULT_EDITOR_SETTINGS: ComposerEditorSettings = {
@@ -247,6 +250,9 @@ export const Composer = memo(function Composer({
   contextActions = [],
   onProviderSwitch,
   activeProviderId,
+  isPlanMode = false,
+  onPlanModeToggle,
+  planCommandPrefix = false,
 }: ComposerProps) {
   const [text, setText] = useState(draftText);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
@@ -328,6 +334,7 @@ export const Composer = memo(function Composer({
     textareaRef,
     setText: setComposerText,
     setSelectionStart,
+    activeProviderId,
     onItemApplied: (item, context) => {
       if (context.triggerChar !== "$" || item.group !== "Apps" || !item.mentionPath) {
         return;
@@ -404,11 +411,12 @@ export const Composer = memo(function Composer({
     if (trimmed) {
       recordHistory(trimmed);
     }
+    const textToSend = planCommandPrefix ? `/plan\n\n${trimmed}` : trimmed;
     const resolvedMentions = resolveBoundAppMentions(trimmed, appMentionBindings);
     if (resolvedMentions.length > 0) {
-      onSend(trimmed, attachedImages, resolvedMentions, submitIntent);
+      onSend(textToSend, attachedImages, resolvedMentions, submitIntent);
     } else {
-      onSend(trimmed, attachedImages, undefined, submitIntent);
+      onSend(textToSend, attachedImages, undefined, submitIntent);
     }
     resetHistoryNavigation();
     setComposerText("");
@@ -418,6 +426,7 @@ export const Composer = memo(function Composer({
     attachedImages,
     disabled,
     onSend,
+    planCommandPrefix,
     recordHistory,
     resetHistoryNavigation,
     setComposerText,
@@ -707,6 +716,8 @@ export const Composer = memo(function Composer({
           onStop={onStop}
           onProviderSwitch={onProviderSwitch}
           activeProviderId={activeProviderId}
+          isPlanMode={isPlanMode}
+          onPlanModeToggle={onPlanModeToggle}
         />
       </div>
     </footer>

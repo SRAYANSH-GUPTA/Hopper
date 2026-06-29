@@ -55,6 +55,7 @@ import { useHomeAccount } from "@app/hooks/useHomeAccount";
 import { useContextHandoff, triggerHandoff } from "@/features/context/useContextHandoff";
 import type {
   ComposerEditorSettings,
+  LocalAgentProvider,
   ServiceTier,
   WorkspaceInfo,
 } from "@/types";
@@ -282,11 +283,21 @@ export default function MainApp() {
   }, []);
 
   // Access mode is thread-scoped (best-effort persisted) and falls back to the app default.
-  
-  const activeProvider = appSettings.localProvider ?? "codex";
+
+  // Per-thread provider tracking (in-memory, session-scoped).
+  // Each thread remembers its own provider so switching in one chat doesn't affect others.
+  const [perThreadProviders, setPerThreadProviders] = useState<Map<string, LocalAgentProvider>>(new Map());
+
+  const activeProvider = ((activeThreadIdRef.current
+    ? perThreadProviders.get(activeThreadIdRef.current)
+    : undefined) ?? appSettings.localProvider ?? "codex") as LocalAgentProvider;
   const activeProviderConfig = PROVIDER_MAP.get(activeProvider) ?? PROVIDER_MAP.get("codex")!;
 
   const [providerSwitchCount, setProviderSwitchCount] = useState(0);
+
+  // Plan mode for non-Codex providers. Codex uses the collaborationModes system.
+  const [nonCodexPlanMode, setNonCodexPlanMode] = useState(false);
+  useEffect(() => { setNonCodexPlanMode(false); }, [activeProvider]);
 
   const {
     models,
@@ -314,7 +325,7 @@ export default function MainApp() {
     setSelectedCollaborationModeId,
   } = useCollaborationModes({
     activeWorkspace,
-    enabled: appSettings.collaborationModesEnabled,
+    enabled: appSettings.collaborationModesEnabled && activeProvider === "codex",
     preferredModeId: preferredCollabModeId,
     selectionKey: threadCodexSelectionKey,
     onDebug: addDebugEntry,
@@ -357,6 +368,20 @@ export default function MainApp() {
     () => effectiveCommitMessageModelId(models, appSettings.commitMessageModelId),
     [models, appSettings.commitMessageModelId],
   );
+
+  // Unified plan mode: Codex reads from collaboration mode; Claude/AGY use local state.
+  const isPlanMode = activeProvider === "codex"
+    ? selectedCollaborationModeId === "plan"
+    : nonCodexPlanMode;
+
+  const handlePlanModeToggle = useCallback((enabled: boolean) => {
+    if (activeProvider === "codex") {
+      const planModeId = collaborationModes.find((m) => m.id === "plan")?.id ?? null;
+      handleSelectCollaborationMode(enabled ? planModeId : null);
+    } else {
+      setNonCodexPlanMode(enabled);
+    }
+  }, [activeProvider, collaborationModes, handleSelectCollaborationMode]);
 
   const composerShortcuts = {
     modelShortcut: appSettings.composerModelShortcut,
@@ -531,8 +556,31 @@ export default function MainApp() {
     onThreadCodexMetadataDetected: handleThreadCodexMetadataDetected,
   });
 
+  // Reset non-Codex plan mode when switching threads
+  useEffect(() => { setNonCodexPlanMode(false); }, [activeThreadId]);
 
   const handleProviderSwitch = useCallback((providerId: string) => {
+    const currentThreadId = activeThreadIdRef.current;
+    const previousGlobal = (appSettings.localProvider ?? "codex") as LocalAgentProvider;
+
+    setPerThreadProviders((prev) => {
+      const next = new Map(prev);
+      // Snapshot the previous global for every known thread that has no stored
+      // provider yet — this prevents them from inheriting the new global.
+      for (const threads of Object.values(threadsByWorkspace)) {
+        for (const thread of threads) {
+          if (!next.has(thread.id)) {
+            next.set(thread.id, previousGlobal);
+          }
+        }
+      }
+      // Record the new provider only for the thread being switched.
+      if (currentThreadId) {
+        next.set(currentThreadId, providerId as LocalAgentProvider);
+      }
+      return next;
+    });
+
     if (activeWorkspaceId && activeThreadId && providerId !== appSettings.localProvider) {
       triggerHandoff(activeWorkspaceId, activeThreadId, providerId);
     }
@@ -544,7 +592,37 @@ export default function MainApp() {
       }
       setProviderSwitchCount((c) => c + 1);
     });
-  }, [activeWorkspaceId, activeThreadId, appSettings.localProvider, queueSaveSettings, workspaces, connectWorkspace]);
+  }, [activeWorkspaceId, activeThreadId, appSettings, queueSaveSettings, workspaces, connectWorkspace, activeThreadIdRef, threadsByWorkspace]);
+
+  // When switching to a thread, snapshot its provider if not yet recorded, then sync
+  // global settings so the backend uses the right provider for the next message.
+  const syncProviderForThreadFnRef = useRef<(threadId: string | null) => void>(() => {});
+  syncProviderForThreadFnRef.current = (threadId: string | null) => {
+    if (!threadId) return;
+    const currentGlobal = (appSettings.localProvider ?? "codex") as LocalAgentProvider;
+    const threadProvider = perThreadProviders.get(threadId);
+
+    if (!threadProvider) {
+      // First visit — snapshot the current global so future switches don't pollute it.
+      setPerThreadProviders((prev) => new Map(prev).set(threadId, currentGlobal));
+      return;
+    }
+
+    if (threadProvider === currentGlobal) return;
+
+    // Thread was explicitly switched to a different provider — restore it globally.
+    void queueSaveSettings({ ...appSettings, localProvider: threadProvider }).then(async () => {
+      for (const workspace of workspaces) {
+        if (workspace.connected) {
+          await connectWorkspace(workspace);
+        }
+      }
+      setProviderSwitchCount((c) => c + 1);
+    });
+  };
+  useEffect(() => {
+    syncProviderForThreadFnRef.current(activeThreadId ?? null);
+  }, [activeThreadId]);
   const { connectionState: remoteThreadConnectionState, reconnectLive } =
     useRemoteThreadLiveConnection({
       backendMode: appSettings.backendMode,
@@ -1603,7 +1681,7 @@ export default function MainApp() {
           onAgentMdSave: () => {
             void saveAgentMd();
           },
-          activeProviderId: appSettings.localProvider ?? null,
+          activeProviderId: activeProvider,
           onProviderSwitch: handleProviderSwitch,
         }
       : null,
@@ -1624,7 +1702,7 @@ export default function MainApp() {
       splitChatDiffView: appSettings.splitChatDiffView,
       gitDiffIgnoreWhitespaceChanges:
         appSettings.gitDiffIgnoreWhitespaceChanges,
-      localProvider: appSettings.localProvider,
+      localProvider: activeProvider,
     },
     workspaces,
     groupedWorkspaces,
@@ -1815,6 +1893,9 @@ export default function MainApp() {
     expandRightPanel,
     collapseRightPanel,
     onProviderSwitch: handleProviderSwitch,
+    isPlanMode,
+    onPlanModeToggle: handlePlanModeToggle,
+    nonCodexPlanMode,
   });
 
   const {

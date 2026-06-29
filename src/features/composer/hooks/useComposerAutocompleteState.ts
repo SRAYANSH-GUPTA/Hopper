@@ -28,6 +28,7 @@ type UseComposerAutocompleteStateArgs = {
     item: AutocompleteItem,
     context: { triggerChar: string; insertedText: string },
   ) => void;
+  activeProviderId?: string;
 };
 
 const MAX_FILE_SUGGESTIONS = 500;
@@ -83,6 +84,7 @@ export function useComposerAutocompleteState({
   setText,
   setSelectionStart,
   onItemApplied,
+  activeProviderId,
 }: UseComposerAutocompleteStateArgs) {
   const skillItems = useMemo<AutocompleteItem[]>(
     () => [
@@ -148,75 +150,235 @@ export function useComposerAutocompleteState({
   );
 
   const slashCommandItems = useMemo<AutocompleteItem[]>(() => {
-    const commands: AutocompleteItem[] = [
-      {
-        id: "compact",
-        label: "compact",
-        description: "compact the active thread context",
-        insertText: "compact",
-        group: "Slash",
-      },
-      {
-        id: "fast",
-        label: "fast",
-        description: "toggle Fast mode for upcoming turns",
-        insertText: "fast",
-        group: "Slash",
-      },
-      {
-        id: "fork",
-        label: "fork",
-        description: "branch into a new thread",
-        insertText: "fork",
-        group: "Slash",
-      },
-      {
-        id: "mcp",
-        label: "mcp",
-        description: "list configured MCP tools",
-        insertText: "mcp",
-        group: "Slash",
-      },
-      {
-        id: "new",
-        label: "new",
-        description: "start a new chat",
-        insertText: "new",
-        group: "Slash",
-      },
-      {
-        id: "review",
-        label: "review",
-        description: "start a code review",
-        insertText: "review",
-        group: "Slash",
-      },
-      {
-        id: "resume",
-        label: "resume",
-        description: "refresh the active thread",
-        insertText: "resume",
-        group: "Slash",
-      },
-      {
-        id: "status",
-        label: "status",
-        description: "show session status",
-        insertText: "status",
-        group: "Slash",
-      },
-    ];
-    if (appsEnabled) {
-      commands.push({
-        id: "apps",
-        label: "apps",
-        description: "list available apps",
-        insertText: "apps",
-        group: "Slash",
-      });
+    const provider = activeProviderId || "codex";
+    let commands: AutocompleteItem[] = [];
+
+    if (provider === "claude") {
+      commands = [
+        {
+          id: "compact",
+          label: "compact",
+          description: "compact the active thread context",
+          insertText: "compact",
+          group: "Slash",
+        },
+        {
+          id: "clear",
+          label: "clear",
+          description: "clear the chat history",
+          insertText: "clear",
+          group: "Slash",
+        },
+        {
+          id: "plan",
+          label: "plan",
+          description: "enter plan mode",
+          insertText: "plan",
+          group: "Slash",
+        },
+        {
+          id: "help",
+          label: "help",
+          description: "show help information",
+          insertText: "help",
+          group: "Slash",
+        },
+        {
+          id: "search",
+          label: "search",
+          description: "search files in workspace",
+          insertText: "search",
+          group: "Slash",
+        },
+        {
+          id: "find",
+          label: "find",
+          description: "find files by name pattern",
+          insertText: "find",
+          group: "Slash",
+        },
+        {
+          id: "view",
+          label: "view",
+          description: "view file contents",
+          insertText: "view",
+          group: "Slash",
+        },
+        {
+          id: "write",
+          label: "write",
+          description: "write or edit a file",
+          insertText: "write",
+          group: "Slash",
+        },
+        {
+          id: "mcp",
+          label: "mcp",
+          description: "list MCP servers/tools",
+          insertText: "mcp",
+          group: "Slash",
+        },
+        {
+          id: "review",
+          label: "review",
+          description: "start a code review",
+          insertText: "review",
+          group: "Slash",
+        },
+      ];
+    } else if (provider === "antigravity") {
+      commands = [
+        {
+          id: "help",
+          label: "help",
+          description: "show help information",
+          insertText: "help",
+          group: "Slash",
+        },
+        {
+          id: "skills",
+          label: "skills",
+          description: "list active agent skills",
+          insertText: "skills",
+          group: "Slash",
+        },
+        {
+          id: "model",
+          label: "model",
+          description: "change active Gemini model",
+          insertText: "model",
+          group: "Slash",
+        },
+        {
+          id: "copy",
+          label: "copy",
+          description: "copy last response to clipboard",
+          insertText: "copy",
+          group: "Slash",
+        },
+        {
+          id: "diff",
+          label: "diff",
+          description: "show codebase diff of changes",
+          insertText: "diff",
+          group: "Slash",
+        },
+        {
+          id: "clear",
+          label: "clear",
+          description: "clear terminal scrollback",
+          insertText: "clear",
+          group: "Slash",
+        },
+        {
+          id: "planning",
+          label: "planning",
+          description: "open task list editor",
+          insertText: "planning",
+          group: "Slash",
+        },
+        {
+          id: "fork",
+          label: "fork",
+          description: "branch into a new thread",
+          insertText: "fork",
+          group: "Slash",
+        },
+        {
+          id: "mcp",
+          label: "mcp",
+          description: "list active MCP servers/tools",
+          insertText: "mcp",
+          group: "Slash",
+        },
+        {
+          id: "resume",
+          label: "resume",
+          description: "resume a past thread",
+          insertText: "resume",
+          group: "Slash",
+        },
+        {
+          id: "rename",
+          label: "rename",
+          description: "rename active thread",
+          insertText: "rename",
+          group: "Slash",
+        },
+      ];
+    } else {
+      // Default to Codex
+      commands = [
+        {
+          id: "compact",
+          label: "compact",
+          description: "compact the active thread context",
+          insertText: "compact",
+          group: "Slash",
+        },
+        {
+          id: "fast",
+          label: "fast",
+          description: "toggle Fast mode for upcoming turns",
+          insertText: "fast",
+          group: "Slash",
+        },
+        {
+          id: "fork",
+          label: "fork",
+          description: "branch into a new thread",
+          insertText: "fork",
+          group: "Slash",
+        },
+        {
+          id: "mcp",
+          label: "mcp",
+          description: "list configured MCP tools",
+          insertText: "mcp",
+          group: "Slash",
+        },
+        {
+          id: "new",
+          label: "new",
+          description: "start a new chat",
+          insertText: "new",
+          group: "Slash",
+        },
+        {
+          id: "review",
+          label: "review",
+          description: "start a code review",
+          insertText: "review",
+          group: "Slash",
+        },
+        {
+          id: "resume",
+          label: "resume",
+          description: "refresh the active thread",
+          insertText: "resume",
+          group: "Slash",
+        },
+        {
+          id: "status",
+          label: "status",
+          description: "show session status",
+          insertText: "status",
+          group: "Slash",
+        },
+      ];
+      if (appsEnabled) {
+        commands.push({
+          id: "apps",
+          label: "apps",
+          description: "list available apps",
+          insertText: "apps",
+          group: "Slash",
+        });
+      }
     }
+
     return commands.sort((a, b) => a.label.localeCompare(b.label));
-  }, [appsEnabled]);
+  }, [activeProviderId, appsEnabled]);
 
   const slashItems = useMemo<AutocompleteItem[]>(
     () => [...slashCommandItems, ...promptItems],

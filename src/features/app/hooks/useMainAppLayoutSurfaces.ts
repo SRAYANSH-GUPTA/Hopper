@@ -227,13 +227,13 @@ type UseMainAppLayoutSurfacesArgs = {
   expandRightPanel: () => void;
   collapseRightPanel: () => void;
   onProviderSwitch: (providerId: string) => void;
+  isPlanMode: boolean;
+  onPlanModeToggle: (enabled: boolean) => void;
+  nonCodexPlanMode: boolean;
 };
 
 type MainAppLayoutSurfacesContext = UseMainAppLayoutSurfacesArgs & {
   sidebarRateLimits: SidebarProps["accountRateLimits"];
-  rightPanelCollapsed: boolean;
-  expandRightPanel: () => void;
-  collapseRightPanel: () => void;
 };
 
 function buildPrimarySurface({
@@ -376,6 +376,9 @@ function buildPrimarySurface({
   expandRightPanel,
   collapseRightPanel,
   onProviderSwitch,
+  isPlanMode,
+  onPlanModeToggle,
+  nonCodexPlanMode,
 }: MainAppLayoutSurfacesContext): LayoutNodesOptions["primary"] {
   return {
     sidebarProps: {
@@ -574,6 +577,9 @@ function buildPrimarySurface({
           onReviewPromptConfirmCustom: confirmCustom,
           onProviderSwitch,
           activeProviderId: appSettings.localProvider,
+          isPlanMode,
+          onPlanModeToggle,
+          planCommandPrefix: nonCodexPlanMode,
         }
       : null,
     approvalToastsProps: {
@@ -1113,6 +1119,9 @@ export function useMainAppLayoutSurfaces({
   expandRightPanel,
   collapseRightPanel,
   onProviderSwitch,
+  isPlanMode,
+  onPlanModeToggle,
+  nonCodexPlanMode,
 }: UseMainAppLayoutSurfacesArgs): LayoutNodesOptions {
   const sidebarRateLimits = activeWorkspace ? activeRateLimits : homeRateLimits;
   const context: MainAppLayoutSurfacesContext = {
@@ -1274,6 +1283,9 @@ export function useMainAppLayoutSurfaces({
     expandRightPanel,
     collapseRightPanel,
     onProviderSwitch,
+    isPlanMode,
+    onPlanModeToggle,
+    nonCodexPlanMode,
     sidebarRateLimits,
   };
 

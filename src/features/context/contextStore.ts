@@ -128,13 +128,20 @@ export function buildHandoffPrompt(
   nextProvider: string,
   nextInstruction?: string,
 ): string {
+  const lastTurn = ctx.recentTurns[ctx.recentTurns.length - 1];
+  const providerNote = nextProvider === lastTurn?.provider
+    ? "same provider, new session"
+    : `switched from ${lastTurn?.provider ?? "unknown"} to ${nextProvider}`;
+
   const lines: string[] = [
     "## Context Handoff",
     "",
-    `You are continuing work originally started by a different AI agent (${nextProvider === ctx.recentTurns[ctx.recentTurns.length - 1]?.provider ? "same provider, new session" : `switched from ${ctx.recentTurns[ctx.recentTurns.length - 1]?.provider ?? "unknown"} to ${nextProvider}`}).`,
-    "Read the context below and pick up exactly where things left off.",
+    `You are continuing a conversation originally started by a different AI agent (${providerNote}).`,
+    "The conversation history below may cover multiple problems — some of which are already fully resolved.",
+    "**Do not re-engage with earlier solved problems unless the user explicitly asks.**",
+    "Read the history for context, but focus exclusively on the most recent user request.",
     "",
-    "### Task Goal",
+    "### Original Task Goal",
     ctx.goal || "(no explicit goal recorded)",
     "",
   ];
@@ -157,6 +164,16 @@ export function buildHandoffPrompt(
 
   if (nextInstruction) {
     lines.push("### Your Job Now", "", nextInstruction, "");
+  }
+
+  if (lastTurn) {
+    lines.push(
+      "### Your Focus",
+      "",
+      "The most recent user message (shown above) is what needs your attention now.",
+      "Earlier turns are provided only as background — treat any problems mentioned there as already handled unless the user says otherwise.",
+      "",
+    );
   }
 
   lines.push(

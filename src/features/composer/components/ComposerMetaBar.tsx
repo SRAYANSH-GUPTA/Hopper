@@ -71,6 +71,8 @@ type ComposerMetaBarProps = {
   onStop?: () => void;
   onProviderSwitch?: (providerId: string) => void;
   activeProviderId?: string;
+  isPlanMode?: boolean;
+  onPlanModeToggle?: (enabled: boolean) => void;
 };
 
 export function ComposerMetaBar({
@@ -100,6 +102,8 @@ export function ComposerMetaBar({
   onStop,
   onProviderSwitch,
   activeProviderId,
+  isPlanMode = false,
+  onPlanModeToggle,
 }: ComposerMetaBarProps) {
   const selectedModel =
     models.find((model) => model.id === selectedModelId) ?? null;
@@ -109,55 +113,37 @@ export function ComposerMetaBar({
     "--composer-model-select-width": `${Math.max(selectedModelLabel.length + 2, 8)}ch`,
   } as CSSProperties;
   void contextUsage; // kept for future use
-  const planMode =
-    collaborationModes.find((mode) => mode.id === "plan") ?? null;
-  const defaultMode =
-    collaborationModes.find((mode) => mode.id === "default") ?? null;
-  const canUsePlanToggle =
-    Boolean(planMode) &&
-    collaborationModes.every(
-      (mode) => mode.id === "default" || mode.id === "plan",
-    );
-  const planSelected = selectedCollaborationModeId === (planMode?.id ?? "");
 
   return (
     <div className="composer-bar">
       <div className="composer-meta">
-        {collaborationModes.length > 0 && (
-          canUsePlanToggle ? (
-            <div className="composer-select-wrap composer-plan-toggle-wrap">
-              <label className="composer-plan-toggle" aria-label="Plan mode">
-                <input
-                  className="composer-plan-toggle-input"
-                  type="checkbox"
-                  checked={planSelected}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    onSelectCollaborationMode(
-                      event.target.checked
-                        ? planMode?.id ?? "plan"
-                        : (defaultMode?.id ?? null),
-                    )
-                  }
+        {/* Plan toggle — always shown for all providers */}
+        <div className="composer-select-wrap composer-plan-toggle-wrap">
+          <label className="composer-plan-toggle" aria-label="Plan mode">
+            <input
+              className="composer-plan-toggle-input"
+              type="checkbox"
+              checked={isPlanMode}
+              disabled={disabled}
+              onChange={(event) => onPlanModeToggle?.(event.target.checked)}
+            />
+            <span className="composer-plan-toggle-icon" aria-hidden>
+              <svg viewBox="0 0 24 24" fill="none">
+                <path
+                  d="m6.5 7.5 1 1 2-2M6.5 12.5l1 1 2-2M6.5 17.5l1 1 2-2M11 7.5h7M11 12.5h7M11 17.5h7"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
-                <span className="composer-plan-toggle-icon" aria-hidden>
-                  <svg viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="m6.5 7.5 1 1 2-2M6.5 12.5l1 1 2-2M6.5 17.5l1 1 2-2M11 7.5h7M11 12.5h7M11 17.5h7"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
-                <span className="composer-plan-toggle-label">
-                  {planMode?.label || "Plan"}
-                </span>
-              </label>
-            </div>
-          ) : (
-            <div className="composer-select-wrap">
+              </svg>
+            </span>
+            <span className="composer-plan-toggle-label">Plan</span>
+          </label>
+        </div>
+        {/* Collab mode dropdown — Codex only, when more than 2 modes exist */}
+        {collaborationModes.length > 2 && (
+          <div className="composer-select-wrap">
             <span className="composer-icon" aria-hidden>
               <svg viewBox="0 0 24 24" fill="none">
                 <path
@@ -169,23 +155,22 @@ export function ComposerMetaBar({
                 />
               </svg>
             </span>
-              <select
-                className="composer-select composer-select--model composer-select--collab"
-                aria-label="Collaboration mode"
-                value={selectedCollaborationModeId ?? ""}
-                onChange={(event) =>
-                  onSelectCollaborationMode(event.target.value || null)
-                }
-                disabled={disabled}
-              >
-                {collaborationModes.map((mode) => (
-                  <option key={mode.id} value={mode.id}>
-                    {mode.label || mode.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )
+            <select
+              className="composer-select composer-select--model composer-select--collab"
+              aria-label="Collaboration mode"
+              value={selectedCollaborationModeId ?? ""}
+              onChange={(event) =>
+                onSelectCollaborationMode(event.target.value || null)
+              }
+              disabled={disabled}
+            >
+              {collaborationModes.map((mode) => (
+                <option key={mode.id} value={mode.id}>
+                  {mode.label || mode.id}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
         <div className="composer-select-wrap composer-select-wrap--model">
           <span className="composer-icon composer-icon--model" aria-hidden>
