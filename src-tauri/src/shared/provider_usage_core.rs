@@ -94,6 +94,7 @@ fn looks_ready_for_slash_command(text: &str) -> bool {
         || lower.contains("type your goal")
         || lower.contains("press enter")
         || lower.contains("slash commands")
+        || lower.contains("? for shortcuts")
         || lower.trim_end().ends_with('>')
 }
 
@@ -118,9 +119,13 @@ fn has_steady_prompt_marker(text: &str) -> bool {
 fn looks_like_usage_screen(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
     lower.contains("models & quota")
-        || lower.contains("account:")
         || lower.contains("weekly limit")
         || lower.contains("five hour limit")
+}
+
+fn is_usage_screen_complete(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    looks_like_usage_screen(text) && (lower.contains("esc close") || lower.contains("esc to cancel"))
 }
 
 fn usage_trace(message: &str) {
@@ -263,25 +268,40 @@ fn run_binary_usage_pty_blocking(
         return Ok(startup_text);
     }
 
-    usage_trace("sending /usage");
+    for byte in b"/usage " {
+        writer
+            .write_all(&[*byte])
+            .map_err(|err| format!("Failed to write to {binary}: {err}"))?;
+        let _ = writer.flush();
+        std::thread::sleep(Duration::from_millis(80)); // Type slightly slower
+    }
+    
+    // Wait for the autocomplete menu to close because of the space
+    std::thread::sleep(Duration::from_millis(500));
+    
     writer
-        .write_all(b"/usage\r\n")
-        .map_err(|err| format!("Failed to write /usage to {binary}: {err}"))?;
-    writer
-        .flush()
-        .map_err(|err| format!("Failed to flush /usage to {binary}: {err}"))?;
+        .write_all(b"\r")
+        .map_err(|err| format!("Failed to write \\r to {binary}: {err}"))?;
+    let _ = writer.flush();
     usage_trace("wrote /usage and flushed input");
 
     let mut raw = Vec::new();
     let start = Instant::now();
     let mut saw_output = false;
-    let settle_after = Duration::from_millis(500);
-    let max_wait = Duration::from_secs(6);
+    let max_wait = Duration::from_secs(12);
     let mut last_output = Instant::now();
 
     loop {
+        let current_text = strip_ansi_sequences(&String::from_utf8_lossy(&raw));
+        let is_complete = is_usage_screen_complete(&current_text);
+        let actual_settle = if is_complete {
+            Duration::from_millis(500)
+        } else {
+            Duration::from_millis(4000)
+        };
+
         let wait = if saw_output {
-            settle_after
+            actual_settle
         } else {
             Duration::from_millis(250)
         };
@@ -301,7 +321,7 @@ fn run_binary_usage_pty_blocking(
                 raw.extend_from_slice(&chunk);
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                if saw_output && last_output.elapsed() >= settle_after {
+                if saw_output && last_output.elapsed() >= actual_settle {
                     usage_trace("usage output settled");
                     break;
                 }

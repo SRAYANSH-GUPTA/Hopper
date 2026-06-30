@@ -4,17 +4,23 @@
 
 ![Hopper](screenshot.png)
 
-Hopper is a Tauri app for orchestrating multiple Codex agents across local workspaces. It provides a sidebar to manage projects, a home screen for quick actions, and a conversation view backed by the Codex app-server protocol.
+Hopper is a new coding AI terminal built on top of CODEXmonitor by Dimillian. Evolving beyond its original Codex roots, Hopper natively integrates **Claude Code** and **Antigravity**, providing a powerful, centralized workspace to manage projects, converse with advanced AI agents, utilize a common Skills Marketplace, and leverage Model Context Protocol (MCP) servers.
 
 ## Features
+
+### AI Terminal & Agent Integrations
+
+- **Claude Code & Antigravity**: Native integration with both Claude Code and Antigravity agents.
+- **Common Skills Marketplace**: Discover, install, and share common skills across different agent engines.
+- **MCP Support**: Full integration with Model Context Protocol (MCP) servers to extend agent capabilities with external tools and resources.
+- Spawn and manage agents per workspace, resume threads, and track unread/running state.
 
 ### Workspaces & Threads
 
 - Add and persist workspaces, group/sort them, and jump into recent agent activity from the home dashboard.
-- Spawn one `codex app-server` per workspace, resume threads, and track unread/running state.
-- Worktree and clone agents for isolated work; worktrees live under the app data directory (legacy `.codex-worktrees` supported).
+- Worktree and clone agents for isolated work; worktrees live under the app data directory.
 - Thread management: pin/rename/archive/copy, per-thread drafts, and stop/interrupt in-flight turns.
-- Optional remote backend (daemon) mode for running Codex on another machine.
+- Optional remote backend (daemon) mode for running agents on another machine.
 - Remote setup helpers for self-hosted connectivity (Tailscale detection/host bootstrap for TCP mode).
 
 ### Composer & Agent Controls
@@ -42,7 +48,6 @@ Hopper is a Tauri app for orchestrating multiple Codex agents across local works
 
 - Resizable sidebar/right/plan/terminal/debug panels with persisted sizes.
 - Responsive layouts (desktop/tablet/phone) with tabbed navigation.
-- Sidebar usage and credits meter for account rate limits plus a home usage snapshot.
 - Terminal dock with multiple tabs for background commands (experimental).
 - In-app updates with toast-driven download/install, debug panel copy/clear, sound notifications, plus platform-specific window effects (macOS overlay title bar + vibrancy) and a reduced transparency toggle.
 
@@ -52,7 +57,7 @@ Hopper is a Tauri app for orchestrating multiple Codex agents across local works
 - Rust toolchain (stable)
 - CMake (required for native dependencies; dictation/Whisper uses it)
 - LLVM/Clang (required on Windows to build dictation dependencies via bindgen)
-- Codex CLI installed and available as `codex` in `PATH` (or configure a custom Codex binary in app/workspace settings)
+- Claude Code / Antigravity CLI installed and available
 - Git CLI (used for worktree operations)
 - GitHub CLI (`gh`) for GitHub Issues/PR integrations (optional)
 
@@ -233,7 +238,7 @@ Artifacts will be in:
 
 - `src-tauri/target/release/bundle/nsis/` (installer exe)
 - `src-tauri/target/release/bundle/msi/` (msi)
- 
+
 Note: building from source on Windows requires LLVM/Clang (for `bindgen` / `libclang`) in addition to CMake.
 
 ## Type Checking
@@ -282,7 +287,6 @@ src-tauri/
   src/shared/git_ui_core/      git/github shared core modules
   src/shared/workspaces_core/  workspace/worktree shared core modules
   src/workspaces/   workspace/worktree adapters
-  src/codex/        codex app-server adapters
   src/files/        file adapters
   tauri.conf.json   window configuration
 ```
@@ -290,29 +294,8 @@ src-tauri/
 ## Notes
 
 - Workspaces persist to `workspaces.json` under the app data directory.
-- App settings persist to `settings.json` under the app data directory (theme, backend mode/provider, remote endpoints/tokens, Codex path, default access mode, UI scale, follow-up message behavior).
-- Feature settings are supported in the UI and synced to `$CODEX_HOME/config.toml` (or `~/.codex/config.toml`) on load/save. Stable: Collaboration modes (`features.collaboration_modes`), personality (`personality`), and Background terminal (`features.unified_exec`). Experimental: Apps (`features.apps`). Steering capability still follows Codex `features.steer`, but follow-up default behavior is controlled in Settings → Composer.
+- App settings persist to `settings.json` under the app data directory.
 - On launch and on window focus, the app reconnects and refreshes thread lists for each workspace.
-- Threads are restored by filtering `thread/list` results using the workspace `cwd`.
-- Selecting a thread always calls `thread/resume` to refresh messages from disk.
-- CLI sessions appear if their `cwd` matches the workspace path; they are not live-streamed unless resumed.
-- The app uses `codex app-server` over stdio; see `src-tauri/src/lib.rs` and `src-tauri/src/codex/`.
 - The remote daemon entrypoint is `src-tauri/src/bin/hopper_daemon.rs`; RPC routing lives in `src-tauri/src/bin/hopper_daemon/rpc.rs` and domain handlers in `src-tauri/src/bin/hopper_daemon/rpc/`.
 - Shared domain logic lives in `src-tauri/src/shared/` (notably `src-tauri/src/shared/git_ui_core/` and `src-tauri/src/shared/workspaces_core/`).
-- Codex home resolves from workspace settings (if set), then legacy `.hopper/`, then `$CODEX_HOME`/`~/.codex`.
-- Worktree agents live under the app data directory (`worktrees/<workspace-id>`); legacy `.codex-worktrees/` paths remain supported, and the app no longer edits repo `.gitignore` files.
 - UI state (panel sizes, reduced transparency toggle, recent thread activity) is stored in `localStorage`.
-- Custom prompts load from `$CODEX_HOME/prompts` (or `~/.codex/prompts`) with optional frontmatter description/argument hints.
-
-## Tauri IPC Surface
-
-Frontend calls live in `src/services/tauri.ts` and map to commands in `src-tauri/src/lib.rs`. The current surface includes:
-
-- Settings/config/files: `get_app_settings`, `update_app_settings`, `get_codex_config_path`, `get_config_model`, `file_read`, `file_write`, `codex_doctor`, `menu_set_accelerators`.
-- Workspaces/worktrees: `list_workspaces`, `is_workspace_path_dir`, `add_workspace`, `add_clone`, `add_worktree`, `worktree_setup_status`, `worktree_setup_mark_ran`, `rename_worktree`, `rename_worktree_upstream`, `apply_worktree_changes`, `update_workspace_settings`, `remove_workspace`, `remove_worktree`, `connect_workspace`, `list_workspace_files`, `read_workspace_file`, `open_workspace_in`, `get_open_app_icon`.
-- Threads/turns/reviews: `start_thread`, `fork_thread`, `compact_thread`, `list_threads`, `resume_thread`, `archive_thread`, `set_thread_name`, `send_user_message`, `turn_interrupt`, `respond_to_server_request`, `start_review`, `remember_approval_rule`, `get_commit_message_prompt`, `generate_commit_message`, `generate_run_metadata`.
-- Account/models/collaboration: `model_list`, `account_rate_limits`, `account_read`, `skills_list`, `apps_list`, `collaboration_mode_list`, `codex_login`, `codex_login_cancel`, `list_mcp_server_status`.
-- Git/GitHub: `get_git_status`, `list_git_roots`, `get_git_diffs`, `get_git_log`, `get_git_commit_diff`, `get_git_remote`, `stage_git_file`, `stage_git_all`, `unstage_git_file`, `revert_git_file`, `revert_git_all`, `commit_git`, `push_git`, `pull_git`, `fetch_git`, `sync_git`, `list_git_branches`, `checkout_git_branch`, `create_git_branch`, `get_github_issues`, `get_github_pull_requests`, `get_github_pull_request_diff`, `get_github_pull_request_comments`.
-- Prompts: `prompts_list`, `prompts_create`, `prompts_update`, `prompts_delete`, `prompts_move`, `prompts_workspace_dir`, `prompts_global_dir`.
-- Terminal/dictation/notifications/usage: `terminal_open`, `terminal_write`, `terminal_resize`, `terminal_close`, `dictation_model_status`, `dictation_download_model`, `dictation_cancel_download`, `dictation_remove_model`, `dictation_request_permission`, `dictation_start`, `dictation_stop`, `dictation_cancel`, `send_notification_fallback`, `is_macos_debug_build`, `local_usage_snapshot`.
-- Remote backend helpers: `tailscale_status`, `tailscale_daemon_command_preview`, `tailscale_daemon_start`, `tailscale_daemon_stop`, `tailscale_daemon_status`.
