@@ -1,5 +1,3 @@
-import Settings from "lucide-react/dist/esm/icons/settings";
-
 import type { LocalUsageSnapshot } from "../../../types";
 
 type SidebarBottomRailProps = {
@@ -11,7 +9,6 @@ type SidebarBottomRailProps = {
   activeProviderLabel: string;
   localUsageSnapshot?: LocalUsageSnapshot | null;
   isLoadingLocalUsage?: boolean;
-  onOpenSettings: () => void;
 };
 
 type UsageRowProps = {
@@ -47,7 +44,6 @@ export function SidebarBottomRail({
   activeProviderLabel,
   localUsageSnapshot,
   isLoadingLocalUsage,
-  onOpenSettings,
 }: SidebarBottomRailProps) {
   return (
     <div className="sidebar-bottom-rail">
@@ -86,21 +82,6 @@ export function SidebarBottomRail({
         </div>
       </div>
 
-      <div className="sidebar-bottom-actions is-compact">
-        <div className="sidebar-utility-actions">
-          <button
-            className="ghost sidebar-labeled-button sidebar-utility-button sidebar-bottom-settings-btn"
-            type="button"
-            onClick={onOpenSettings}
-            aria-label="Open settings"
-          >
-            <span className="sidebar-labeled-button-icon" aria-hidden>
-              <Settings size={14} aria-hidden />
-            </span>
-            <span>Settings</span>
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

@@ -406,7 +406,6 @@ function buildPrimarySurface({
       accountRateLimits: sidebarRateLimits,
       usageShowRemaining: appSettings.usageShowRemaining,
       activeProviderLabel: PROVIDER_MAP.get(appSettings.localProvider ?? DEFAULT_PROVIDER_ID)?.label ?? "Codex",
-      onOpenSettings: sidebarHandlers.onOpenSettings,
       onAddWorkspace: handleAddWorkspace,
       onSelectHome: sidebarHandlers.onSelectHome,
       onSelectWorkspace: sidebarHandlers.onSelectWorkspace,

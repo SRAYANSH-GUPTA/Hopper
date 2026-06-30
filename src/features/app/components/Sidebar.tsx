@@ -134,7 +134,7 @@ type SidebarProps = {
   accountRateLimits: RateLimitSnapshot | null;
   usageShowRemaining: boolean;
   activeProviderLabel: string;
-  onOpenSettings: () => void;
+  // onOpenSettings: () => void;
   onAddWorkspace: () => void;
   onSelectHome: () => void;
   onSelectWorkspace: (id: string) => void;
@@ -204,7 +204,7 @@ export const Sidebar = memo(function Sidebar({
   accountRateLimits,
   usageShowRemaining,
   activeProviderLabel,
-  onOpenSettings,
+  // onOpenSettings,
   onAddWorkspace,
   onSelectHome,
   onSelectWorkspace,
@@ -1203,10 +1203,11 @@ export const Sidebar = memo(function Sidebar({
         activeProviderLabel={activeProviderLabel}
         localUsageSnapshot={localUsageSnapshot}
         isLoadingLocalUsage={isLoadingLocalUsage}
-        onOpenSettings={onOpenSettings}
+        // onOpenSettings={onOpenSettings}
       />
           </>
-        )}
+        )
+        }
       </div>
     </aside>
   );

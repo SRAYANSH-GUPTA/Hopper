@@ -103,7 +103,7 @@ export function WorkspaceCard({
           >
             +
           </button>
-          {!workspace.connected && (
+          {/* {!workspace.connected && (
             <span
               className="connect"
               title="Connect workspace to the local agent"
@@ -114,7 +114,7 @@ export function WorkspaceCard({
             >
               connect
             </span>
-          )}
+          )} */}
         </div>
       </div>
       <div

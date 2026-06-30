@@ -43,8 +43,8 @@ export function useWorkspaceFileListing({
   const filePanelVisible =
     filePanelMode === "files" &&
     (isCompact ? compactTab === "git" : !rightPanelCollapsed);
-  const shouldFetchFiles =
-    Boolean(activeWorkspace) && (filePanelMode === "files" || fileAutocompleteActive);
+  const shouldFetchFiles = Boolean(activeWorkspace);
+  void fileAutocompleteActive;
 
   useEffect(() => {
     if (!activeWorkspaceId) {

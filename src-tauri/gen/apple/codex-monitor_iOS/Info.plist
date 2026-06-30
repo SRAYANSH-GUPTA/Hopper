@@ -11,7 +11,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Codex Monitor</string>
+	<string>Hopper</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -45,7 +45,7 @@
 		<string>fetch</string>
 	</array>
 	<key>CFBundleDisplayName</key>
-	<string>Codex Monitor</string>
+	<string>Hopper</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow access to the microphone for dictation.</string>
 </dict>

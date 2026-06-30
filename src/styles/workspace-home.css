@@ -646,7 +646,7 @@
   border: 1px solid var(--border-subtle);
   background: var(--surface-card);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .workspace-home-composer-card .workspace-home-composer {
@@ -657,6 +657,8 @@
   padding: 12px 16px 16px;
   border-top: 1px solid var(--border-subtle);
   background: rgba(0, 0, 0, 0.15);
+  border-bottom-left-radius: 15px;
+  border-bottom-right-radius: 15px;
 }
 
 .workspace-home-controls-wrapper .workspace-home-controls {

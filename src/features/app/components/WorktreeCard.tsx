@@ -81,7 +81,7 @@ export function WorktreeCard({
               >
                 <span className="worktree-toggle-icon">›</span>
               </button>
-              {!worktree.connected && (
+              {/* {!worktree.connected && (
                 <span
                   className="connect"
                   title="Connect workspace to the local agent"
@@ -92,7 +92,7 @@ export function WorktreeCard({
                 >
                   connect
                 </span>
-              )}
+              )} */}
             </>
           )}
         </div>
