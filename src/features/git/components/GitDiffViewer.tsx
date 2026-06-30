@@ -11,9 +11,7 @@ import type {
   PullRequestReviewIntent,
   PullRequestSelectionRange,
 } from "../../../types";
-import {
-  DIFF_VIEWER_HIGHLIGHTER_OPTIONS,
-} from "../../design-system/diff/diffViewerTheme";
+import { useAppSettings } from "@settings/hooks/useAppSettings";
 import { ImageDiffCard } from "./ImageDiffCard";
 import { splitPath } from "./GitDiffPanel.utils";
 import { DiffCard } from "./GitDiffViewerDiffCard";
@@ -196,10 +194,22 @@ export function GitDiffViewer({
     [],
   );
 
+  const { settings } = useAppSettings();
+  const themeMode = useMemo(() => {
+    const theme = settings.theme;
+    if (theme === "system") {
+      const isDarkSystem =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+      return isDarkSystem ? "pierre-dark" : "pierre-light";
+    }
+    return theme === "light" ? "pierre-light" : "pierre-dark";
+  }, [settings.theme]);
+
   const poolOptions = useMemo(() => ({ workerFactory }), []);
   const highlighterOptions = useMemo(
-    () => DIFF_VIEWER_HIGHLIGHTER_OPTIONS,
-    [],
+    () => ({ theme: themeMode }),
+    [themeMode],
   );
 
   const indexByPath = useMemo(() => {

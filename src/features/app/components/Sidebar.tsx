@@ -845,13 +845,6 @@ export const Sidebar = memo(function Sidebar({
   );
   const pinnedRootCount = useMemo(() => countRootRows(pinnedThreadRows), [pinnedThreadRows]);
 
-  const handleNewConversation = useCallback(() => {
-    const target =
-      workspaces.find((w) => w.id === activeWorkspaceId && w.connected) ??
-      workspaces.find((w) => w.connected);
-    if (target) onAddAgent(target);
-  }, [workspaces, activeWorkspaceId, onAddAgent]);
-
   useEffect(() => {
     if (!addMenuAnchor) {
       return;
@@ -994,7 +987,6 @@ export const Sidebar = memo(function Sidebar({
             <SidebarHeader
         onSelectHome={onSelectHome}
         onAddWorkspace={onAddWorkspace}
-        onNewConversation={handleNewConversation}
         onToggleSearch={() => setIsSearchOpen((prev) => !prev)}
         isSearchOpen={isSearchOpen}
         threadListSortKey={threadListSortKey}

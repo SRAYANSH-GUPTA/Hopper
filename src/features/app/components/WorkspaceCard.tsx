@@ -38,6 +38,7 @@ export function WorkspaceCard({
   onToggleAddMenu,
   children,
 }: WorkspaceCardProps) {
+  void onConnectWorkspace;
   const contentCollapsedClass = isCollapsed ? " collapsed" : "";
 
   return (

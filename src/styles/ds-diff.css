@@ -7,3 +7,19 @@
   --ds-diff-lib-bg-dark: color-mix(in srgb, var(--surface-card-muted) 72%, #0a0c10);
   --ds-diff-lib-bg-system-dark: color-mix(in srgb, var(--surface-card-muted) 72%, #0a0c10);
 }
+
+:root[data-theme="dark"] .ds-diff-viewer {
+  --ds-diff-lib-bg-dark: var(--surface-diff-card);
+  --ds-diff-lib-bg-system-dark: var(--surface-diff-card);
+}
+
+:root[data-theme="cursor"] .ds-diff-viewer {
+  --ds-diff-lib-bg-dark: var(--surface-diff-card);
+  --ds-diff-lib-bg-system-dark: var(--surface-diff-card);
+}
+
+:root[data-theme="gen-z"] .ds-diff-viewer {
+  --ds-diff-lib-bg-dark: var(--surface-diff-card);
+  --ds-diff-lib-bg-system-dark: var(--surface-diff-card);
+}
+

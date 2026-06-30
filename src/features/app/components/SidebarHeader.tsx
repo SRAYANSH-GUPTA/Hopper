@@ -1,11 +1,10 @@
 import ArrowDownUp from "lucide-react/dist/esm/icons/arrow-down-up";
 import BetweenHorizontalStart from "lucide-react/dist/esm/icons/between-horizontal-start";
 import Calendar from "lucide-react/dist/esm/icons/calendar";
-import FolderPlus from "lucide-react/dist/esm/icons/folder-plus";
 import FolderTree from "lucide-react/dist/esm/icons/folder-tree";
 import ListFilter from "lucide-react/dist/esm/icons/list-filter";
 import ListTree from "lucide-react/dist/esm/icons/list-tree";
-import Pencil from "lucide-react/dist/esm/icons/pencil";
+import Plus from "lucide-react/dist/esm/icons/plus";
 import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
 import Search from "lucide-react/dist/esm/icons/search";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,7 +19,6 @@ import { useMenuController } from "../hooks/useMenuController";
 type SidebarHeaderProps = {
   onSelectHome: () => void;
   onAddWorkspace: () => void;
-  onNewConversation?: () => void;
   onToggleSearch: () => void;
   isSearchOpen: boolean;
   threadListSortKey: ThreadListSortKey;
@@ -35,7 +33,6 @@ type SidebarHeaderProps = {
 export function SidebarHeader({
   onSelectHome,
   onAddWorkspace,
-  onNewConversation,
   onToggleSearch,
   isSearchOpen,
   threadListSortKey,
@@ -129,41 +126,28 @@ export function SidebarHeader({
       <div className="sidebar-header-title">
         <div className="sidebar-title-group">
           <button
-            className="sidebar-title-add ds-tooltip-trigger"
-            onClick={onAddWorkspace}
-            data-tauri-drag-region="false"
-            aria-label="Add workspaces"
-            data-tooltip="Add workspaces"
-            data-tooltip-align="start"
-            data-tooltip-placement="bottom"
-            type="button"
-          >
-            <FolderPlus aria-hidden />
-          </button>
-          <button
             className="subtitle subtitle-button sidebar-title-button"
+            
             onClick={onSelectHome}
             data-tauri-drag-region="false"
             aria-label="Open home"
           >
-            Projects
+              Projects
           </button>
         </div>
       </div>
-      {onNewConversation && (
-        <button
-          type="button"
-          className="sidebar-new-convo-btn ds-tooltip-trigger"
-          onClick={onNewConversation}
-          aria-label="New conversation"
-          data-tooltip="New conversation"
-          data-tooltip-align="end"
-          data-tooltip-placement="bottom"
-        >
-          <Pencil size={14} aria-hidden />
-          <span>New</span>
-        </button>
-      )}
+      <button
+        type="button"
+        className="sidebar-new-convo-btn ds-tooltip-trigger"
+        onClick={onAddWorkspace}
+        aria-label="Import project"
+        data-tooltip="Import project"
+        data-tooltip-align="end"
+        data-tooltip-placement="bottom"
+      >
+        <Plus size={14} aria-hidden />
+        <span>New</span>
+      </button>
       <div className="sidebar-header-actions">
         <div className="sidebar-sort-menu" ref={sortMenuRef}>
           <MenuTrigger

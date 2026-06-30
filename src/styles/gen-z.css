@@ -339,6 +339,7 @@
     font-size: 13px !important;
     font-weight: var(--gz-weight-bold) !important;
     color: var(--gz-green) !important;
+    padding-left: 10px !important;
     text-transform: none !important;
     letter-spacing: 0 !important;
     background: none !important;
@@ -646,7 +647,7 @@
     gap: 5px !important;
     padding: 4px 10px !important;
     border-radius: var(--gz-radius-pill) !important;
-    border: 1px solid var(--gz-green) !important;
+    border: 1px solid transparent !important;
     background: var(--gz-green) !important;
     color: #ffffff !important;
     font-size: 11px !important;

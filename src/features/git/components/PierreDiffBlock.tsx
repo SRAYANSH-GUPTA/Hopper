@@ -4,8 +4,8 @@ import { FileDiff, WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { parseDiff } from "../../../utils/diff";
 import { highlightLine, languageFromPath } from "../../../utils/syntax";
 import { workerFactory } from "../../../utils/diffsWorker";
+import { useAppSettings } from "@settings/hooks/useAppSettings";
 import {
-  DIFF_VIEWER_HIGHLIGHTER_OPTIONS,
   DIFF_VIEWER_SCROLL_CSS,
 } from "../../design-system/diff/diffViewerTheme";
 import {
@@ -29,10 +29,22 @@ export function PierreDiffBlock({
   newLines,
   diffStyle = "unified",
 }: PierreDiffBlockProps) {
+  const { settings } = useAppSettings();
+  const themeMode = useMemo(() => {
+    const theme = settings.theme;
+    if (theme === "system") {
+      const isDarkSystem =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+      return isDarkSystem ? "pierre-dark" : "pierre-light";
+    }
+    return theme === "light" ? "pierre-light" : "pierre-dark";
+  }, [settings.theme]);
+
   const poolOptions = useMemo(() => ({ workerFactory }), []);
   const highlighterOptions = useMemo(
-    () => DIFF_VIEWER_HIGHLIGHTER_OPTIONS,
-    [],
+    () => ({ theme: themeMode }),
+    [themeMode],
   );
 
   const fileDiff = useMemo(() => {
@@ -53,8 +65,8 @@ export function PierreDiffBlock({
       ...parsed,
       name: normalizedName,
       prevName: normalizedPrevName,
-      oldLines,
-      newLines,
+      deletionLines: oldLines,
+      additionLines: newLines,
     } as unknown as FileDiffMetadata;
   }, [diff, displayPath, oldLines, newLines]);
 

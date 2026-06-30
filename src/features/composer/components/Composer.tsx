@@ -173,7 +173,6 @@ export const Composer = memo(function Composer({
   isProcessing,
   steerAvailable,
   followUpMessageBehavior,
-  composerFollowUpHintEnabled,
   collaborationModes,
   selectedCollaborationModeId,
   onSelectCollaborationMode,
@@ -263,13 +262,10 @@ export const Composer = memo(function Composer({
   const isDictationBusy = dictationState !== "idle";
   const canSend = text.trim().length > 0 || attachedImages.length > 0;
   const isMac = isMacPlatform();
-  const followUpShortcutLabel = isMac ? "Shift+Cmd+Enter" : "Shift+Ctrl+Enter";
   const effectiveFollowUpBehavior: FollowUpMessageBehavior =
     followUpMessageBehavior === "steer" && steerAvailable ? "steer" : "queue";
   const oppositeFollowUpIntent: ComposerSendIntent =
     effectiveFollowUpBehavior === "queue" ? "steer" : "queue";
-  const oppositeFallsBackToQueue =
-    oppositeFollowUpIntent === "steer" && !steerAvailable;
   const defaultSubmitIntent: ComposerSendIntent = isProcessing
     ? effectiveFollowUpBehavior
     : "default";
@@ -595,25 +591,6 @@ export const Composer = memo(function Composer({
         onEditQueued={onEditQueued}
         onDeleteQueued={onDeleteQueued}
       />
-      {isProcessing && composerFollowUpHintEnabled && (
-        <div className="composer-followup-hint" role="status" aria-live="polite">
-          <div className="composer-followup-title">Follow-up behavior</div>
-          <div className="composer-followup-copy">
-            {oppositeFallsBackToQueue ? (
-              <>
-                Default: Queue (Steer unavailable). Both Enter and {followUpShortcutLabel} will
-                queue this message.
-              </>
-            ) : (
-              <>
-                Default: {effectiveFollowUpBehavior === "steer" ? "Steer" : "Queue"}. Press{" "}
-                {followUpShortcutLabel} to{" "}
-                {oppositeFollowUpIntent === "steer" ? "steer" : "queue"} this message.
-              </>
-            )}
-          </div>
-        </div>
-      )}
       {contextActions.length > 0 ? (
         <div className="composer-context-actions" role="toolbar" aria-label="Review tools">
           {contextActions.map((action) => (
