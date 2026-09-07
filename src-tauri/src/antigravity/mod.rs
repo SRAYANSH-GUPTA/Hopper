@@ -370,8 +370,9 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     let resolved_model = model_id
         .as_deref()
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or("Gemini 3.5 Flash (Medium)");
+        .unwrap_or("Gemini 3.8 Flash (Medium)");
     cmd.arg("--model").arg(resolved_model);
+    cmd.arg("--dangerously-skip-permissions");
     cmd.arg("-p").arg(&final_text);
     if !workspace_cwd.is_empty() {
         cmd.arg("--add-dir").arg(&workspace_cwd);

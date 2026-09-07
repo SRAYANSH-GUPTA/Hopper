@@ -278,15 +278,92 @@ pub(crate) async fn list_threads(
         .await;
     }
 
-    if claude::is_claude_mode(&state.app_settings).await {
-        return claude::list_threads_claude(&state.claude_state, &workspace_id).await;
+    let mut all_threads = Vec::new();
+    let mut next_cursor = Value::Null;
+
+    // 1. Fetch Codex threads
+    match codex_core::list_threads_core(&state.sessions, workspace_id.clone(), cursor.clone(), limit, sort_key.clone()).await {
+        Ok(codex_val) => {
+            let result = codex_val.get("result").unwrap_or(&codex_val);
+            if let Some(data) = result.get("data").and_then(|d| d.as_array()) {
+                for thread in data {
+                    let mut t = thread.clone();
+                    if t.get("localProvider").is_none() {
+                        if let Some(obj) = t.as_object_mut() {
+                            obj.insert("localProvider".to_string(), json!("codex"));
+                        }
+                    }
+                    all_threads.push(t);
+                }
+            }
+            if let Some(c) = result.get("nextCursor") {
+                next_cursor = c.clone();
+            }
+        }
+        Err(e) => {
+            println!("Codex list_threads error: {:?}", e);
+        }
     }
 
-    if antigravity::is_antigravity_mode(&state.app_settings).await {
-        return antigravity::list_threads_antigravity(&state.antigravity_state, &workspace_id).await;
+    // 2. Fetch Claude threads
+    match claude::list_threads_claude(&state.claude_state, &workspace_id).await {
+        Ok(claude_val) => {
+            let result = claude_val.get("result").unwrap_or(&claude_val);
+            if let Some(data) = result.get("data").and_then(|d| d.as_array()) {
+                for thread in data {
+                    let mut t = thread.clone();
+                    if let Some(obj) = t.as_object_mut() {
+                        obj.insert("localProvider".to_string(), json!("claude"));
+                    }
+                    all_threads.push(t);
+                }
+            }
+        }
+        Err(e) => {
+            println!("Claude list_threads error: {:?}", e);
+        }
     }
 
-    codex_core::list_threads_core(&state.sessions, workspace_id, cursor, limit, sort_key).await
+    // 3. Fetch Antigravity threads
+    match antigravity::list_threads_antigravity(&state.antigravity_state, &workspace_id).await {
+        Ok(antigravity_val) => {
+            let result = antigravity_val.get("result").unwrap_or(&antigravity_val);
+            if let Some(data) = result.get("data").and_then(|d| d.as_array()) {
+                for thread in data {
+                    let mut t = thread.clone();
+                    if let Some(obj) = t.as_object_mut() {
+                        obj.insert("localProvider".to_string(), json!("antigravity"));
+                    }
+                    all_threads.push(t);
+                }
+            }
+        }
+        Err(e) => {
+            println!("Antigravity list_threads error: {:?}", e);
+        }
+    }
+
+    // 4. Sort all threads by updated_at or created_at (most recent first)
+    let is_created_sort = sort_key.as_deref() == Some("created_at");
+    all_threads.sort_by(|a, b| {
+        let get_ts = |t: &Value| {
+            if is_created_sort {
+                t.get("createdAt").or_else(|| t.get("created_at")).and_then(|v| v.as_i64()).unwrap_or(0)
+            } else {
+                t.get("updatedAt").or_else(|| t.get("updated_at")).or_else(|| t.get("createdAt")).or_else(|| t.get("created_at")).and_then(|v| v.as_i64()).unwrap_or(0)
+            }
+        };
+        let ts_a = get_ts(a);
+        let ts_b = get_ts(b);
+        ts_b.cmp(&ts_a)
+    });
+
+    Ok(json!({
+        "result": {
+            "data": all_threads,
+            "nextCursor": next_cursor,
+        }
+    }))
 }
 
 #[tauri::command]
@@ -376,6 +453,7 @@ pub(crate) async fn send_user_message(
     workspace_id: String,
     thread_id: String,
     text: String,
+    provider: Option<crate::types::LocalAgentProvider>,
     model: Option<String>,
     effort: Option<String>,
     service_tier: Option<Option<String>>,
@@ -397,6 +475,9 @@ pub(crate) async fn send_user_message(
         payload.insert("workspaceId".to_string(), json!(workspace_id));
         payload.insert("threadId".to_string(), json!(thread_id));
         payload.insert("text".to_string(), json!(text));
+        if let Some(provider) = &provider {
+            payload.insert("provider".to_string(), json!(provider));
+        }
         payload.insert("model".to_string(), json!(model));
         payload.insert("effort".to_string(), json!(effort));
         insert_optional_nullable_string(&mut payload, "serviceTier", service_tier);
@@ -417,7 +498,8 @@ pub(crate) async fn send_user_message(
         .await;
     }
 
-    if claude::is_claude_mode(&state.app_settings).await {
+    let provider = provider.unwrap_or(state.app_settings.lock().await.local_provider.clone());
+    if provider == crate::types::LocalAgentProvider::Claude {
         let workspace_cwd = {
             let workspaces = state.workspaces.lock().await;
             workspaces
@@ -443,7 +525,7 @@ pub(crate) async fn send_user_message(
         .await;
     }
 
-    if antigravity::is_antigravity_mode(&state.app_settings).await {
+    if provider == crate::types::LocalAgentProvider::Antigravity {
         let workspace_cwd = {
             let workspaces = state.workspaces.lock().await;
             workspaces

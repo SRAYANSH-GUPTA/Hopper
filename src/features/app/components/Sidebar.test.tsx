@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRef } from "react";
 import { Sidebar } from "./Sidebar";
@@ -70,6 +70,34 @@ const baseProps = {
 };
 
 describe("Sidebar", () => {
+  it("shows recent threads above collapsed projects and updates their activity order", () => {
+    const project = { id: "project", name: "Project", path: "/tmp/project", connected: true, settings: { sidebarCollapsed: true } };
+    const tree = { ...project, id: "tree", name: "Worktree", kind: "worktree" as const, parentId: "project" };
+    const onSelectThread = vi.fn();
+    const props = {
+      ...baseProps,
+      workspaces: [project, tree],
+      groupedWorkspaces: [{ id: null, name: "Projects", workspaces: [project] }],
+      onSelectThread,
+      threadListSortKey: "created_at" as const,
+      threadsByWorkspace: {
+        project: [{ id: "old", name: "Older thread", updatedAt: 10, createdAt: 100 }],
+        tree: [{ id: "new", name: "Newer worktree thread", updatedAt: 20, createdAt: 1 }],
+      },
+    };
+    const { container, rerender } = render(<Sidebar activeProviderLabel="Anthropic" {...props} />);
+    const recent = screen.getByRole("region", { name: "Recent threads" });
+    expect(container.querySelector(".workspace-list")?.firstElementChild).toBe(recent);
+    expect(Array.from(recent.querySelectorAll(".thread-name")).map((node) => node.textContent)).toEqual(["Newer worktree thread", "Older thread"]);
+    fireEvent.click(within(recent).getByText("Newer worktree thread"));
+    expect(onSelectThread).toHaveBeenCalledWith("tree", "new");
+    rerender(<Sidebar activeProviderLabel="Anthropic" {...props} threadsByWorkspace={{
+      ...props.threadsByWorkspace,
+      project: [{ id: "old", name: "Older thread", updatedAt: 30, createdAt: 100 }],
+    }} />);
+    expect(recent.querySelector(".thread-name")?.textContent).toBe("Older thread");
+  });
+
   it("toggles the search bar from the header icon", () => {
     render(<Sidebar activeProviderLabel="Anthropic" {...baseProps} />);
 

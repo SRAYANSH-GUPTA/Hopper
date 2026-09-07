@@ -47,6 +47,7 @@ import { useSidebarMenus } from "../hooks/useSidebarMenus";
 import { useSidebarScrollFade } from "../hooks/useSidebarScrollFade";
 import { useSidebarLocalUsage } from "../hooks/useSidebarLocalUsage";
 
+import { sortWorkspacesByActivity } from "../utils/workspaceActivity";
 import { useThreadRows } from "../hooks/useThreadRows";
 import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
 import { getUsageLabels } from "../utils/usageLabels";
@@ -383,6 +384,25 @@ export const Sidebar = memo(function Sidebar({
     (workspace) => threadListLoadingByWorkspace[workspace.id] ?? false,
   );
 
+  const recentThreadRows = useMemo(() => {
+    const groups = workspaces.flatMap((workspace) => {
+      const { pinnedRows, unpinnedRows } = getThreadRows(
+        threadsByWorkspace[workspace.id] ?? [], true, workspace.id,
+        getPinTimestamp, pinnedThreadsVersion,
+      );
+      return [...splitRowsByRoot(pinnedRows), ...splitRowsByRoot(unpinnedRows)]
+        .filter((group) => !normalizedQuery || group.rows.some((row) =>
+          threadMatchesQuery(row.thread, workspace.name, normalizedQuery),
+        ))
+        .map((group) => ({
+          timestamp: Math.max(...group.rows.map(({ thread }) => thread.updatedAt ?? thread.createdAt ?? 0)),
+          rows: group.rows.map((row) => ({ ...row, workspaceId: workspace.id })),
+        }));
+    });
+    return groups.sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 5).flatMap((group) => group.rows);
+  }, [workspaces, threadsByWorkspace, getThreadRows, getPinTimestamp, pinnedThreadsVersion, normalizedQuery]);
+
   const pinnedThreadRows = useMemo(() => {
     type ThreadRow = { thread: ThreadSummary; depth: number };
     const groups: Array<{
@@ -523,96 +543,15 @@ export const Sidebar = memo(function Sidebar({
     [threadListSortKey],
   );
 
-  const workspaceActivityById = useMemo(() => {
-    const activityById = new Map<
-      string,
-      {
-        hasThreads: boolean;
-        timestamp: number;
-      }
-    >();
-    const workspaceById = new Map<string, WorkspaceInfo>();
-    workspaces.forEach((workspace) => {
-      workspaceById.set(workspace.id, workspace);
-    });
-
-    const cloneWorkspacesBySourceId = new Map<string, WorkspaceInfo[]>();
-    workspaces
-      .filter((entry) => (entry.kind ?? "main") === "main")
-      .forEach((entry) => {
-        const sourceId = entry.settings.cloneSourceWorkspaceId?.trim();
-        if (!sourceId || sourceId === entry.id || !workspaceById.has(sourceId)) {
-          return;
-        }
-        const list = cloneWorkspacesBySourceId.get(sourceId) ?? [];
-        list.push(entry);
-        cloneWorkspacesBySourceId.set(sourceId, list);
-      });
-
-    filteredGroupedWorkspaces.forEach((group) => {
-      group.workspaces.forEach((workspace) => {
-        const rootThreads = threadsByWorkspace[workspace.id] ?? [];
-        const visibleClones =
-          normalizedQuery && !isWorkspaceMatch(workspace)
-            ? (cloneWorkspacesBySourceId.get(workspace.id) ?? []).filter((clone) =>
-                workspaceVisibleDuringSearchById.get(clone.id),
-              )
-            : (cloneWorkspacesBySourceId.get(workspace.id) ?? []);
-        let hasThreads = rootThreads.length > 0;
-        let timestamp = getSortTimestamp(rootThreads[0]);
-
-        visibleClones.forEach((clone) => {
-          const cloneThreads = threadsByWorkspace[clone.id] ?? [];
-          if (!cloneThreads.length) {
-            return;
-          }
-          hasThreads = true;
-          timestamp = Math.max(timestamp, getSortTimestamp(cloneThreads[0]));
-        });
-
-        activityById.set(workspace.id, {
-          hasThreads,
-          timestamp,
-        });
-      });
-    });
-    return activityById;
-  }, [
-    filteredGroupedWorkspaces,
-    getSortTimestamp,
-    isWorkspaceMatch,
-    normalizedQuery,
-    threadsByWorkspace,
-    workspaceVisibleDuringSearchById,
-    workspaces,
-  ]);
-
-  const sortedGroupedWorkspaces = useMemo(() => {
-    if (threadListOrganizeMode !== "by_project_activity") {
-      return filteredGroupedWorkspaces;
-    }
-    return filteredGroupedWorkspaces.map((group) => ({
-      ...group,
-      workspaces: group.workspaces.slice().sort((a, b) => {
-        const aActivity = workspaceActivityById.get(a.id) ?? {
-          hasThreads: false,
-          timestamp: 0,
-        };
-        const bActivity = workspaceActivityById.get(b.id) ?? {
-          hasThreads: false,
-          timestamp: 0,
-        };
-        if (aActivity.hasThreads !== bActivity.hasThreads) {
-          return aActivity.hasThreads ? -1 : 1;
-        }
-        const timestampDiff = bActivity.timestamp - aActivity.timestamp;
-        if (timestampDiff !== 0) {
-          return timestampDiff;
-        }
-        return a.name.localeCompare(b.name);
-      }),
-    }));
-  }, [filteredGroupedWorkspaces, threadListOrganizeMode, workspaceActivityById]);
+  const sortedGroupedWorkspaces = useMemo(
+    () => sortWorkspacesByActivity(
+      filteredGroupedWorkspaces,
+      workspaces,
+      threadsByWorkspace,
+      threadStatusById,
+    ),
+    [filteredGroupedWorkspaces, workspaces, threadsByWorkspace, threadStatusById],
+  );
 
   const flatThreadRootGroups = useMemo(() => {
     if (threadListOrganizeMode !== "threads_only") {
@@ -725,10 +664,7 @@ export const Sidebar = memo(function Sidebar({
     [workspaceNameById],
   );
 
-  const groupedWorkspacesForRender =
-    threadListOrganizeMode === "by_project_activity"
-      ? sortedGroupedWorkspaces
-      : filteredGroupedWorkspaces;
+  const groupedWorkspacesForRender = sortedGroupedWorkspaces;
   const isThreadsOnlyMode = threadListOrganizeMode === "threads_only";
 
   const handleAllThreadsAddMenuToggle = useCallback(
@@ -1028,6 +964,26 @@ export const Sidebar = memo(function Sidebar({
         ref={sidebarBodyRef}
       >
         <div className="workspace-list">
+          {!isThreadsOnlyMode && !isSearchActive && recentThreadRows.length > 0 && (
+            <section className="pinned-section" aria-label="Recent threads">
+              <div className="sidebar-section-header">
+                <div className="sidebar-section-title">Recent threads</div>
+              </div>
+              <PinnedThreadList
+                rows={recentThreadRows}
+                activeWorkspaceId={activeWorkspaceId}
+                activeThreadId={activeThreadId}
+                threadStatusById={threadStatusById}
+                pendingUserInputKeys={pendingUserInputKeys}
+                getThreadTime={getThreadTime}
+                getThreadArgsBadge={getThreadArgsBadge}
+                isThreadPinned={isThreadPinned}
+                onSelectThread={onSelectThread}
+                onShowThreadMenu={showThreadMenu}
+                getWorkspaceLabel={getWorkspaceLabel}
+              />
+            </section>
+          )}
           {pinnedThreadRows.length > 0 && (
             <div className="pinned-section">
               <div className="sidebar-section-header">

@@ -456,6 +456,7 @@ export async function sendUserMessage(
   threadId: string,
   text: string,
   options?: {
+    provider?: LocalAgentProvider;
     model?: string | null;
     effort?: string | null;
     serviceTier?: "fast" | "flex" | null | undefined;
@@ -475,6 +476,9 @@ export async function sendUserMessage(
     accessMode: options?.accessMode ?? null,
     images,
   };
+  if (options?.provider !== undefined) {
+    payload.provider = options.provider;
+  }
   if (options?.serviceTier !== undefined) {
     payload.serviceTier = options.serviceTier;
   }

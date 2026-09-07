@@ -288,8 +288,11 @@ export default function MainApp() {
   // Each thread remembers its own provider so switching in one chat doesn't affect others.
   const [perThreadProviders, setPerThreadProviders] = useState<Map<string, LocalAgentProvider>>(new Map());
 
-  const activeProvider = ((activeThreadIdRef.current
-    ? perThreadProviders.get(activeThreadIdRef.current)
+  // Synchronized active thread ID state to avoid circular dependency layout-effects causing rendering lags.
+  const [activeThreadIdState, setActiveThreadIdState] = useState<string | null>(null);
+
+  const activeProvider = ((activeThreadIdState
+    ? perThreadProviders.get(activeThreadIdState)
     : undefined) ?? appSettings.localProvider ?? "codex") as LocalAgentProvider;
   const activeProviderConfig = PROVIDER_MAP.get(activeProvider) ?? PROVIDER_MAP.get("codex")!;
 
@@ -313,7 +316,7 @@ export default function MainApp() {
     onDebug: addDebugEntry,
     preferredModelId,
     preferredEffort,
-    selectionKey: threadCodexSelectionKey,
+    selectionKey: `${activeProvider}:${threadCodexSelectionKey ?? ""}`,
     staticModels: activeProviderConfig.staticModels,
     refreshTrigger: providerSwitchCount,
   });
@@ -558,11 +561,32 @@ export default function MainApp() {
     onThreadCodexMetadataDetected: handleThreadCodexMetadataDetected,
   });
 
+  if (activeThreadId !== activeThreadIdState) {
+    setActiveThreadIdState(activeThreadId);
+  }
+
   // Reset non-Codex plan mode when switching threads
   useEffect(() => { setNonCodexPlanMode(false); }, [activeThreadId]);
 
+  // Sync per-thread providers map when threads load/change
+  useEffect(() => {
+    setPerThreadProviders((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const threads of Object.values(threadsByWorkspace)) {
+        for (const thread of threads) {
+          if (thread.localProvider && !next.has(thread.id)) {
+            next.set(thread.id, thread.localProvider);
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [threadsByWorkspace]);
+
   const handleProviderSwitch = useCallback((providerId: string) => {
-    const currentThreadId = activeThreadIdRef.current;
+    const currentThreadId = activeThreadId;
     const previousGlobal = (appSettings.localProvider ?? "codex") as LocalAgentProvider;
 
     setPerThreadProviders((prev) => {
@@ -594,7 +618,7 @@ export default function MainApp() {
       }
       setProviderSwitchCount((c) => c + 1);
     });
-  }, [activeWorkspaceId, activeThreadId, appSettings, queueSaveSettings, workspaces, connectWorkspace, activeThreadIdRef, threadsByWorkspace]);
+  }, [activeWorkspaceId, activeThreadId, appSettings, queueSaveSettings, workspaces, connectWorkspace, threadsByWorkspace]);
 
   // When switching to a thread, snapshot its provider if not yet recorded, then sync
   // global settings so the backend uses the right provider for the next message.

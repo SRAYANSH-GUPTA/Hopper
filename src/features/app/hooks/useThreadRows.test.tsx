@@ -150,4 +150,30 @@ describe("useThreadRows", () => {
       ["thread-subagent-child", 1],
     ]);
   });
+
+  it("keeps the active root visible in a collapsed workspace", () => {
+    const threads: ThreadSummary[] = [
+      { id: "thread-a", name: "A", updatedAt: 4 },
+      { id: "thread-b", name: "B", updatedAt: 3 },
+      { id: "thread-c", name: "C", updatedAt: 2 },
+      { id: "thread-active", name: "Active", updatedAt: 1 },
+    ];
+    const { result } = renderHook(() => useThreadRows({}));
+
+    const rows = result.current.getThreadRows(
+      threads,
+      false,
+      "ws-1",
+      () => null,
+      0,
+      "thread-active",
+    );
+
+    expect(rows.unpinnedRows.map((row) => row.thread.id)).toEqual([
+      "thread-a",
+      "thread-b",
+      "thread-active",
+    ]);
+    expect(rows.hasMoreRoots).toBe(true);
+  });
 });

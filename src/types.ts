@@ -152,6 +152,7 @@ export type ThreadSummary = {
   isSubagent?: boolean;
   subagentNickname?: string | null;
   subagentRole?: string | null;
+  localProvider?: LocalAgentProvider;
 };
 
 export type ThreadListSortKey = "created_at" | "updated_at";

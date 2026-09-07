@@ -108,11 +108,24 @@ where
 }
 
 fn normalize_app_settings(settings: AppSettings) -> (AppSettings, bool) {
-    let (global_worktrees_folder, changed) =
+    let (global_worktrees_folder, mut changed) =
         normalize_optional_windows_namespace_path(settings.global_worktrees_folder.clone());
+    let antigravity_model_id = settings.antigravity_model_id.as_deref().map(|model| {
+        let migrated = match model.trim() {
+            "Gemini 3.5 Flash (High)" => "Gemini 3.8 Flash (High)",
+            "Gemini 3.5 Flash (Medium)" => "Gemini 3.8 Flash (Medium)",
+            "Gemini 3.5 Flash (Low)" => "Gemini 3.8 Flash (Low)",
+            current => current,
+        };
+        if migrated != model {
+            changed = true;
+        }
+        migrated.to_string()
+    });
     (
         AppSettings {
             global_worktrees_folder,
+            antigravity_model_id,
             ..settings
         },
         changed,
@@ -418,6 +431,27 @@ mod tests {
             read.global_worktrees_folder.as_deref(),
             Some(r"I:\gpt-projects\worktrees")
         );
+    }
+
+    #[test]
+    fn read_settings_migrates_removed_antigravity_flash_models() {
+        let temp_dir = std::env::temp_dir().join(format!("hopper-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).expect("create temp dir");
+        let path = temp_dir.join("settings.json");
+
+        let mut settings = AppSettings::default();
+        settings.antigravity_model_id = Some("Gemini 3.5 Flash (Low)".to_string());
+        write_settings(&path, &settings).expect("write settings");
+
+        let migrated = read_settings(&path).expect("read settings");
+        assert_eq!(
+            migrated.antigravity_model_id.as_deref(),
+            Some("Gemini 3.8 Flash (Low)")
+        );
+
+        let persisted = std::fs::read_to_string(&path).expect("read persisted settings");
+        assert!(persisted.contains("Gemini 3.8 Flash (Low)"));
+        assert!(!persisted.contains("Gemini 3.5 Flash"));
     }
 
     #[test]

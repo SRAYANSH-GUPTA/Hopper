@@ -1,4 +1,4 @@
-import type { ThreadSummary } from "@/types";
+import type { LocalAgentProvider, ThreadSummary } from "@/types";
 import {
   getThreadCreatedTimestamp,
   getThreadTimestamp,
@@ -75,5 +75,6 @@ export function buildThreadSummaryFromThread({
     ...(isSubagent && subagentMetadata.role
       ? { subagentRole: subagentMetadata.role }
       : {}),
+    ...(thread.localProvider ? { localProvider: thread.localProvider as LocalAgentProvider } : {}),
   };
 }

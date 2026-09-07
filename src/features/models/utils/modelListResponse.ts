@@ -1,5 +1,19 @@
 import type { ModelOption } from "../../../types";
 
+const CODEX_ASTRA_MODEL: ModelOption = {
+  id: "gpt-6-astra",
+  model: "gpt-6-astra",
+  displayName: "GPT-6 Astra",
+  description: "OpenAI's most capable model for complex end-to-end work.",
+  supportedReasoningEfforts: [
+    { reasoningEffort: "low", description: "" },
+    { reasoningEffort: "medium", description: "" },
+    { reasoningEffort: "high", description: "" },
+  ],
+  defaultReasoningEffort: "medium",
+  isDefault: false,
+};
+
 export function normalizeEffortValue(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -75,7 +89,7 @@ function parseReasoningEfforts(item: Record<string, unknown>): ModelOption["supp
 export function parseModelListResponse(response: unknown): ModelOption[] {
   const items = extractModelItems(response);
 
-  return items
+  const models = items
     .map((item) => {
       if (!item || typeof item !== "object") {
         return null;
@@ -97,4 +111,18 @@ export function parseModelListResponse(response: unknown): ModelOption[] {
       } satisfies ModelOption;
     })
     .filter((model): model is ModelOption => model !== null);
+
+  const astraIndex = models.findIndex(
+    (model) => model.id === CODEX_ASTRA_MODEL.id || model.model === CODEX_ASTRA_MODEL.model,
+  );
+  if (astraIndex === -1) {
+    return [...models, CODEX_ASTRA_MODEL];
+  }
+
+  models[astraIndex] = {
+    ...models[astraIndex],
+    supportedReasoningEfforts: CODEX_ASTRA_MODEL.supportedReasoningEfforts,
+    defaultReasoningEffort: CODEX_ASTRA_MODEL.defaultReasoningEffort,
+  };
+  return models;
 }

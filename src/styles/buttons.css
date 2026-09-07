@@ -20,8 +20,8 @@ button:disabled {
 }
 
 .primary {
-  background: linear-gradient(135deg, #62b7ff, #4fe3a3);
-  color: #0b0f1a;
+  background: var(--button-primary-bg);
+  color: var(--button-primary-text);
   box-shadow: 0 12px 22px var(--shadow-accent);
 }
 
@@ -69,4 +69,8 @@ button:active:not(:disabled) {
 
 .ghost:active:not(:disabled) {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--button-primary-hover);
 }

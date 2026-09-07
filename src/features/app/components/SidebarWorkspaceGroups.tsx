@@ -52,6 +52,7 @@ type SidebarWorkspaceGroupsProps = {
     workspaceId: string,
     getPinTimestamp: (workspaceId: string, threadId: string) => number | null,
     pinVersion?: number,
+    activeThreadId?: string | null,
   ) => ThreadRowsResult;
   getThreadTime: (thread: ThreadSummary) => string | null;
   getThreadArgsBadge?: (workspaceId: string, threadId: string) => string | null;
@@ -159,6 +160,7 @@ function SidebarWorkspaceEntry({
     workspace.id,
     getPinTimestamp,
     pinnedThreadsVersion,
+    activeWorkspaceId === workspace.id ? activeThreadId : null,
   );
   const nextCursor = threadListCursorByWorkspace[workspace.id] ?? null;
   const {
@@ -385,28 +387,37 @@ export function SidebarWorkspaceGroups({
   toggleGroupCollapse,
   ...entryProps
 }: SidebarWorkspaceGroupsProps) {
-  return groups.map((group) => {
-    const showGroupHeader = Boolean(group.id) || hasWorkspaceGroups;
-    const toggleId = group.id ?? (showGroupHeader ? ungroupedCollapseId : null);
-    const isGroupCollapsed = Boolean(toggleId && collapsedGroups.has(toggleId));
+  return (
+    <>
+      {!hasWorkspaceGroups && groups.length > 0 && (
+        <div className="sidebar-section-header sidebar-projects-heading">
+          <div className="sidebar-section-title">All projects</div>
+        </div>
+      )}
+      {groups.map((group) => {
+        const showGroupHeader = Boolean(group.id) || hasWorkspaceGroups;
+        const toggleId = group.id ?? (showGroupHeader ? ungroupedCollapseId : null);
+        const isGroupCollapsed = Boolean(toggleId && collapsedGroups.has(toggleId));
 
-    return (
-      <WorkspaceGroup
-        key={group.id ?? "ungrouped"}
-        toggleId={toggleId}
-        name={group.name}
-        showHeader={showGroupHeader}
-        isCollapsed={isGroupCollapsed}
-        onToggleCollapse={toggleGroupCollapse}
-      >
-        {group.workspaces.map((workspace) => (
-          <SidebarWorkspaceEntry
-            key={workspace.id}
-            workspace={workspace}
-            {...entryProps}
-          />
-        ))}
-      </WorkspaceGroup>
-    );
-  });
+        return (
+          <WorkspaceGroup
+            key={group.id ?? "ungrouped"}
+            toggleId={toggleId}
+            name={group.name}
+            showHeader={showGroupHeader}
+            isCollapsed={isGroupCollapsed}
+            onToggleCollapse={toggleGroupCollapse}
+          >
+            {group.workspaces.map((workspace) => (
+              <SidebarWorkspaceEntry
+                key={workspace.id}
+                workspace={workspace}
+                {...entryProps}
+              />
+            ))}
+          </WorkspaceGroup>
+        );
+      })}
+    </>
+  );
 }

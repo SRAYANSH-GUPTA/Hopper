@@ -443,6 +443,10 @@ export function reduceThreadLifecycle(
         }
       });
 
+      existingThreads.forEach((thread) => {
+        appendExistingAnchor(thread.id);
+      });
+
       return {
         ...state,
         threadsByWorkspace: {

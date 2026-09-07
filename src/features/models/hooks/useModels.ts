@@ -61,6 +61,11 @@ export function useModels({
   const lastSelectionKey = useRef<string | null>(null);
   const lastRefreshTrigger = useRef(refreshTrigger);
   const lastLoadedSelectionKeyRef = useRef<string | null>(null);
+  const lastRequestedWorkspaceId = useRef<string | null>(null);
+  const lastRequestedSelectionKey = useRef<string | null>(null);
+  const lastRequestedStaticMode = useRef<boolean | null>(null);
+  const lastRequestedTrigger = useRef<number | null>(null);
+  const lastRequestedConnected = useRef<boolean>(false);
 
   const workspaceId = activeWorkspace?.id ?? null;
   const isConnected = Boolean(activeWorkspace?.connected);
@@ -347,25 +352,55 @@ export function useModels({
     const isSameWorkspace = lastFetchedWorkspaceId.current === workspaceId;
     const isSameStaticMode = lastFetchedStaticMode.current === (staticModels !== null);
     const isSameSelectionKey = lastLoadedSelectionKeyRef.current === selectionKey;
+
+    const isFetchingSame =
+      lastRequestedWorkspaceId.current === workspaceId &&
+      lastRequestedSelectionKey.current === selectionKey &&
+      lastRequestedStaticMode.current === (staticModels !== null) &&
+      lastRequestedTrigger.current === refreshTrigger &&
+      lastRequestedConnected.current === isConnected;
+
+    if (isFetchingSame) {
+      return;
+    }
+
     if (!triggerChanged && isSameWorkspace && isSameStaticMode && isSameSelectionKey && currentModels.length > 0) {
       return;
     }
+
+    lastRequestedWorkspaceId.current = workspaceId;
+    lastRequestedSelectionKey.current = selectionKey;
+    lastRequestedStaticMode.current = staticModels !== null;
+    lastRequestedTrigger.current = refreshTrigger;
+    lastRequestedConnected.current = isConnected;
+
     // On explicit provider switch (trigger changed) or static-mode change,
     // clear stale models immediately so the UI doesn't show the wrong list
     // while the new fetch is in flight.
     if (triggerChanged || !isSameStaticMode || !isSameSelectionKey) {
-      setModels([]);
+      // Only clear models when they're actually stale (wrong provider/selection)
+      // or when there are none yet. For reconnect-only triggers (triggerChanged
+      // but same provider/selection), keep existing models visible so the user
+      // doesn't see a flash of "No models" while re-fetching. If the fresh
+      // fetch then comes back empty, the length drop (N→0) re-fires this
+      // effect and we get one automatic retry.
+      if (!isSameStaticMode || !isSameSelectionKey || currentModels.length === 0) {
+        if (models.length > 0) {
+          setModels([]);
+        }
+      }
       lastFetchedWorkspaceId.current = null;
       lastFetchedStaticMode.current = staticModels !== null;
       // Invalidate any in-flight fetch so its stale result doesn't overwrite
       // the fresh data that the upcoming refreshModels call will produce.
       fetchGeneration.current += 1;
-      if (triggerChanged) {
-        inFlight.current = false;
-      }
+      // Always reset inFlight when invalidating — without this, refreshModels()
+      // below returns early (inFlight guard) and models stay empty until the
+      // cancelled request's finally block clears the flag.
+      inFlight.current = false;
     }
     refreshModels();
-  }, [isConnected, currentModels.length, refreshModels, workspaceId, staticModels, refreshTrigger, selectionKey]);
+  }, [isConnected, currentModels.length, refreshModels, workspaceId, staticModels, refreshTrigger, selectionKey, models.length]);
 
   useEffect(() => {
     if (!selectedModel) {

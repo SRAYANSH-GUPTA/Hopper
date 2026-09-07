@@ -57,6 +57,19 @@ describe("useAppSettings", () => {
     expect(result.current.settings.remoteBackendHost).toBe("example:1234");
   });
 
+  it("migrates saved Gemini 3.5 Flash selections to matching 3.8 effort", async () => {
+    getAppSettingsMock.mockResolvedValue({
+      antigravityModelId: "Gemini 3.5 Flash (High)",
+    } as AppSettings);
+
+    const { result } = renderHook(() => useAppSettings());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.settings.antigravityModelId).toBe(
+      "Gemini 3.8 Flash (High)",
+    );
+  });
+
   it("keeps defaults when getAppSettings fails", async () => {
     getAppSettingsMock.mockRejectedValue(new Error("boom"));
 

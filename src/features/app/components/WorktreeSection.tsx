@@ -33,6 +33,7 @@ type WorktreeSectionProps = {
     workspaceId: string,
     getPinTimestamp: (workspaceId: string, threadId: string) => number | null,
     pinVersion?: number,
+    activeThreadId?: string | null,
   ) => ThreadRowsResult;
   getThreadTime: (thread: ThreadSummary) => string | null;
   getThreadArgsBadge?: (workspaceId: string, threadId: string) => string | null;
@@ -128,6 +129,7 @@ export function WorktreeSection({
             worktree.id,
             getPinTimestamp,
             pinnedThreadsVersion,
+            activeWorkspaceId === worktree.id ? activeThreadId : null,
           );
           const {
             visibleRows: filteredWorktreeThreadRows,

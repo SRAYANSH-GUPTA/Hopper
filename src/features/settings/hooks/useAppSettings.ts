@@ -244,6 +244,9 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
   const chatHistoryScrollbackItems = normalizeChatHistoryScrollbackItems(
     settings.chatHistoryScrollbackItems,
   );
+  const antigravityModelId = settings.antigravityModelId
+    ?.trim()
+    .replace(/^Gemini 3\.5 Flash \((High|Medium|Low)\)$/, "Gemini 3.8 Flash ($1)") || null;
   return {
     ...settings,
     ...remoteBackendSettings,
@@ -251,6 +254,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
       ? settings.localProvider
       : (DEFAULT_PROVIDER_ID as AppSettings["localProvider"]),
     claudeModelId: settings.claudeModelId?.trim() ? settings.claudeModelId.trim() : null,
+    antigravityModelId,
     codexBin: settings.codexBin?.trim() ? settings.codexBin.trim() : null,
     codexArgs: settings.codexArgs?.trim() ? settings.codexArgs.trim() : null,
     uiScale: clampUiScale(settings.uiScale),

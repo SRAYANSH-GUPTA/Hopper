@@ -157,6 +157,11 @@ pub(super) async fn try_handle(
             Some(state.set_thread_name(workspace_id, thread_id, name).await)
         }
         "send_user_message" => {
+            if let Some(provider) = params.get("provider").filter(|value| !value.is_null()) {
+                if provider.as_str() != Some("codex") {
+                    return Some(Err("Remote daemon only supports the Codex provider.".to_string()));
+                }
+            }
             let workspace_id = match parse_string(params, "workspaceId") {
                 Ok(value) => value,
                 Err(err) => return Some(Err(err)),

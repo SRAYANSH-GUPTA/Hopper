@@ -42,8 +42,9 @@ export function useThreadRows(threadParentById: Record<string, string>) {
       workspaceId: string,
       getPinTimestamp: (workspaceId: string, threadId: string) => number | null,
       pinVersion = 0,
+      activeThreadId: string | null = null,
     ): ThreadRowResult => {
-      const cacheKey = `${workspaceId}:${isExpanded ? "1" : "0"}`;
+      const cacheKey = `${workspaceId}:${isExpanded ? "1" : "0"}:${activeThreadId ?? ""}`;
       const threadCache = cacheRef.current.get(threads);
       const cachedEntry = threadCache?.get(cacheKey);
       if (cachedEntry && cachedEntry.pinVersion === pinVersion) {
@@ -105,6 +106,22 @@ export function useThreadRows(threadParentById: Record<string, string>) {
 
       const visibleRootCount = isExpanded ? unpinnedRoots.length : 3;
       const visibleRoots = unpinnedRoots.slice(0, visibleRootCount);
+      if (!isExpanded && activeThreadId) {
+        let activeRootId = activeThreadId;
+        const visited = new Set<string>();
+        while (!visited.has(activeRootId)) {
+          visited.add(activeRootId);
+          const parentId = resolveVisibleParentId(activeRootId);
+          if (!parentId) {
+            break;
+          }
+          activeRootId = parentId;
+        }
+        const activeRoot = unpinnedRoots.find((thread) => thread.id === activeRootId);
+        if (activeRoot && !visibleRoots.some((thread) => thread.id === activeRootId)) {
+          visibleRoots[Math.max(visibleRoots.length - 1, 0)] = activeRoot;
+        }
+      }
 
       const appendThread = (
         thread: ThreadSummary,

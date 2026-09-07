@@ -696,6 +696,32 @@ describe("threadReducer", () => {
     ]);
   });
 
+  it("retains ordinary existing threads on partial setThreads payloads", () => {
+    const base: ThreadState = {
+      ...initialState,
+      threadsByWorkspace: {
+        "ws-1": [
+          { id: "thread-newer", name: "Newer", updatedAt: 20 },
+          { id: "thread-older", name: "Older", updatedAt: 10 },
+        ],
+      },
+      activeThreadIdByWorkspace: { "ws-1": "thread-newer" },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreads",
+      workspaceId: "ws-1",
+      sortKey: "updated_at",
+      preserveAnchors: true,
+      threads: [{ id: "thread-newer", name: "Newer fresh", updatedAt: 30 }],
+    });
+
+    expect(next.threadsByWorkspace["ws-1"]?.map((thread) => thread.id)).toEqual([
+      "thread-newer",
+      "thread-older",
+    ]);
+  });
+
   it("drops stale active anchors on complete setThreads payloads", () => {
     const base: ThreadState = {
       ...initialState,

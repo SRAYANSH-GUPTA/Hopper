@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { ChevronRight, Folder, Plus } from "lucide-react";
 
 import type { WorkspaceInfo } from "../../../types";
 
@@ -59,6 +60,7 @@ export function WorkspaceCard({
         <div className="workspace-copy">
           <div className="workspace-name-row">
             <div className="workspace-title">
+              <Folder className="workspace-folder-icon" size={15} aria-hidden />
               <span className="workspace-name">{workspaceName ?? workspace.name}</span>
               <button
                 className={`workspace-toggle ${isCollapsed ? "" : "expanded"}`}
@@ -70,7 +72,7 @@ export function WorkspaceCard({
                 aria-label={isCollapsed ? "Show agents" : "Hide agents"}
                 aria-expanded={!isCollapsed}
               >
-                <span className="workspace-toggle-icon">›</span>
+                <ChevronRight className="workspace-toggle-icon" size={13} aria-hidden />
               </button>
             </div>
           </div>
@@ -102,7 +104,7 @@ export function WorkspaceCard({
             aria-label="Add agent options"
             aria-expanded={addMenuOpen}
           >
-            +
+            <Plus size={14} aria-hidden />
           </button>
           {/* {!workspace.connected && (
             <span

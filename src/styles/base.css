@@ -1,29 +1,29 @@
 @import "./themes.css";
 
 .app.reduced-transparency {
-  --surface-sidebar: rgba(18, 18, 18, 0.92);
-  --surface-sidebar-opaque: rgb(18, 18, 18);
-  --surface-topbar: rgba(10, 14, 20, 0.94);
-  --surface-right-panel: rgba(9, 12, 20, 0.92);
-  --surface-composer: rgba(10, 14, 20, 0.94);
-  --surface-messages: rgba(8, 10, 16, 0.94);
-  --surface-card: rgba(30, 32, 40, 0.94);
-  --surface-card-strong: rgba(38, 40, 48, 0.96);
-  --surface-card-muted: rgba(24, 26, 34, 0.9);
-  --surface-item: rgba(28, 30, 38, 0.88);
-  --surface-control: rgba(40, 44, 55, 0.7);
-  --surface-control-hover: rgba(54, 60, 72, 0.8);
-  --surface-control-disabled: rgba(40, 44, 55, 0.5);
-  --surface-hover: rgba(46, 50, 62, 0.7);
-  --surface-active: rgba(100, 200, 255, 0.18);
-  --surface-approval: rgba(12, 16, 26, 0.92);
-  --surface-debug: rgba(12, 16, 26, 0.92);
-  --surface-command: rgba(12, 14, 20, 0.95);
-  --surface-diff-card: rgba(14, 18, 28, 0.9);
-  --surface-bubble: rgba(42, 46, 58, 0.9);
-  --surface-bubble-user: rgba(77, 153, 255, 0.55);
-  --surface-context-core: rgba(16, 20, 30, 0.96);
-  --surface-popover: rgba(16, 20, 30, 0.995);
+  --surface-sidebar: #171B17;
+  --surface-sidebar-opaque: #171B17;
+  --surface-topbar: #101310;
+  --surface-right-panel: #171B17;
+  --surface-composer: #171B17;
+  --surface-messages: #101310;
+  --surface-card: #171B17;
+  --surface-card-strong: #20261E;
+  --surface-card-muted: #171B17;
+  --surface-item: #171B17;
+  --surface-control: #252C22;
+  --surface-control-hover: #30392B;
+  --surface-control-disabled: #171B17;
+  --surface-hover: #252C22;
+  --surface-active: rgba(192, 246, 106, 0.18);
+  --surface-approval: #171B17;
+  --surface-debug: #171B17;
+  --surface-command: #171B17;
+  --surface-diff-card: #171B17;
+  --surface-bubble: #20261E;
+  --surface-bubble-user: rgba(192, 246, 106, 0.18);
+  --surface-context-core: #171B17;
+  --surface-popover: #171B17;
 }
 
 * {
@@ -279,4 +279,19 @@ button.window-caption-control:focus-visible,
     animation-duration: var(--ds-spinner-dur) !important;
     animation-iteration-count: infinite !important;
   }
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+h1, h2, h3 {
+  font-family: var(--heading-font-family);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--border-accent);
+  outline-offset: 3px;
 }

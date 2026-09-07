@@ -266,7 +266,7 @@ export function useThreadMessaging({
             workspace.id,
             threadId,
             finalText,
-            buildTurnStartPayload({
+            { ...buildTurnStartPayload({
               model: resolvedModel,
               effort: resolvedEffort,
               serviceTier: resolvedServiceTier,
@@ -274,7 +274,7 @@ export function useThreadMessaging({
               accessMode: resolvedAccessMode,
               images,
               appMentions,
-            }),
+            }), provider: localProvider },
           )) as Record<string, unknown>;
 
         const rpcError = extractRpcErrorMessage(response);
@@ -386,6 +386,7 @@ export function useThreadMessaging({
       getCustomName,
       markProcessing,
       model,
+      localProvider,
       onDebug,
       pushThreadErrorMessage,
       recordThreadActivity,
