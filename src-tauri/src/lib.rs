@@ -33,6 +33,7 @@ mod rules;
 mod settings;
 mod shared;
 mod state;
+mod sidebar_browser;
 mod storage;
 mod tailscale;
 #[cfg(desktop)]
@@ -244,6 +245,7 @@ pub fn run() {
             codex::thread_live_unsubscribe,
             codex::fork_thread,
             codex::list_threads,
+            sidebar_browser::set_sidebar_browser_bounds,
             codex::list_mcp_server_status,
             codex::archive_thread,
             codex::compact_thread,

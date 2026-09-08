@@ -79,7 +79,7 @@ describe("useResizablePanels", () => {
 
     const hook = renderResizablePanels();
 
-    expect(hook.result.sidebarWidth).toBe(420);
+    expect(hook.result.sidebarWidth).toBe(720);
     expect(hook.result.rightPanelWidth).toBe(270);
     expect(hook.result.planPanelHeight).toBe(220);
 
@@ -110,9 +110,9 @@ describe("useResizablePanels", () => {
       window.dispatchEvent(new MouseEvent("mouseup"));
     });
 
-    expect(hook.result.sidebarWidth).toBe(420);
+    expect(hook.result.sidebarWidth).toBe(720);
     expect(window.localStorage.getItem("hopper.sidebarWidth")).toBe(
-      "420",
+      "720",
     );
 
     hook.unmount();

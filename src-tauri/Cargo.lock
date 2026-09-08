@@ -1711,6 +1711,7 @@ dependencies = [
  "fix-path-env",
  "futures-util",
  "git2",
+ "gtk",
  "ignore",
  "libc",
  "objc2",

@@ -1333,6 +1333,10 @@ export type ProviderSetupStatus = {
 export function getProviderSetupStatus() {
   return invoke<ProviderSetupStatus>("provider_setup_status");
 }
+
+export function setSidebarBrowserBounds(label: string, bounds: { x: number; y: number; width: number; height: number }) {
+  return invoke<void>("set_sidebar_browser_bounds", { label, ...bounds });
+}
 export function runProviderSetupAction(provider: SetupProviderId, action: "install" | "login" | "verify") {
   return invoke<{ message: string; verified?: boolean }>("provider_setup_action", { provider, action });
 }

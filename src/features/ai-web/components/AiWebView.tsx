@@ -3,7 +3,7 @@ import { MessageSquare, ExternalLink, Sparkles, Flame, Blocks, RefreshCw } from 
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Webview } from "@tauri-apps/api/webview";
-import { LogicalSize, LogicalPosition } from "@tauri-apps/api/dpi";
+import { setSidebarBrowserBounds } from "@services/tauri";
 
 type Chatbot = "claude" | "chatgpt" | "copilot" | "gemini" | "mistral";
 
@@ -16,24 +16,59 @@ const CHATBOTS: { id: Chatbot; label: string; url: string; icon: React.ReactNode
 ];
 
 let webviewCounter = 0;
+const SIDEBAR_RESIZE_GUTTER = 8;
+
+function getSidebarWebviewBounds(element: HTMLElement) {
+  const panel = element.getBoundingClientRect();
+  const sidebar = element.closest(".sidebar")?.getBoundingClientRect() ?? panel;
+  const left = Math.max(panel.left, sidebar.left);
+  const top = Math.max(panel.top, sidebar.top);
+  const right = Math.min(panel.right, sidebar.right - SIDEBAR_RESIZE_GUTTER);
+  const bottom = Math.min(panel.bottom, sidebar.bottom);
+  return {
+    x: Math.round(left),
+    y: Math.round(top),
+    width: Math.max(1, Math.round(right - left)),
+    height: Math.max(1, Math.round(bottom - top)),
+  };
+}
+
+function afterLayout(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
+function getDesktopChromeUserAgent(): string {
+  const hostUserAgent = navigator.userAgent;
+  const platform = hostUserAgent.includes("Windows")
+    ? "Windows NT 10.0; Win64; x64"
+    : hostUserAgent.includes("Macintosh")
+      ? "Macintosh; Intel Mac OS X 10_15_7"
+      : "X11; Linux x86_64";
+  return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36`;
+}
 
 export function AiWebView() {
   const [selectedChatbot, setSelectedChatbot] = useState<Chatbot | null>(null);
   const [activeChatbot, setActiveChatbot] = useState<Chatbot | null>(null);
   const [webviewError, setWebviewError] = useState<string | null>(null);
+  const [isWebviewLoading, setIsWebviewLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const webviewRef = useRef<Webview | null>(null);
+  const readyWebviewRef = useRef<Webview | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
 
   // Sync the webview position/size with the container element
   const syncWebviewBounds = useCallback(() => {
     const webview = webviewRef.current;
     const el = containerRef.current;
-    if (!webview || !el) return;
+    if (!webview || !el || readyWebviewRef.current !== webview) return;
 
-    const rect = el.getBoundingClientRect();
-    void webview.setPosition(new LogicalPosition(rect.left, rect.top));
-    void webview.setSize(new LogicalSize(rect.width, rect.height));
+    const bounds = getSidebarWebviewBounds(el);
+    void setSidebarBrowserBounds(webview.label, bounds).catch((error) => {
+      setWebviewError(String(error));
+    });
   }, []);
 
   // Create or destroy the native webview
@@ -47,22 +82,45 @@ export function AiWebView() {
     const el = containerRef.current;
     if (!el) return;
 
-    const rect = el.getBoundingClientRect();
-    const label = `ai-chatbot-${++webviewCounter}`;
-
     try {
+      setIsWebviewLoading(true);
+      await afterLayout();
+      if (containerRef.current !== el || !el.isConnected) return;
+      const bounds = getSidebarWebviewBounds(el);
+      const label = `ai-chatbot-${++webviewCounter}`;
       const appWindow = getCurrentWindow();
       const webview = new Webview(appWindow, label, {
         url: bot.url,
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        userAgent: getDesktopChromeUserAgent(),
+        backgroundColor: "#101310",
         transparent: false,
       });
 
       webviewRef.current = webview;
+      readyWebviewRef.current = null;
       setWebviewError(null);
+
+      void webview.once("tauri://created", () => {
+        if (webviewRef.current !== webview) return;
+        readyWebviewRef.current = webview;
+        setIsWebviewLoading(false);
+        syncWebviewBounds();
+      });
+      void webview.once<unknown>("tauri://error", (event) => {
+        if (webviewRef.current !== webview) return;
+        webviewRef.current = null;
+        setIsWebviewLoading(false);
+        const detail =
+          typeof event.payload === "string"
+            ? event.payload
+            : JSON.stringify(event.payload);
+        setWebviewError(detail || "The embedded browser could not be created.");
+        console.error("Failed to create AI webview:", event.payload);
+      });
 
       // Keep position in sync on resize / layout shifts
       if (observerRef.current) {
@@ -77,6 +135,7 @@ export function AiWebView() {
     } catch (err) {
       console.error("Failed to create webview:", err);
       setWebviewError(String(err));
+      setIsWebviewLoading(false);
       // Fallback: open in external browser
       void openUrl(bot.url);
     }
@@ -99,13 +158,21 @@ export function AiWebView() {
 
   const handleContinue = () => {
     if (selectedChatbot) {
-      const bot = CHATBOTS.find((b) => b.id === selectedChatbot);
-      if (bot) {
-        setActiveChatbot(selectedChatbot);
-        void openWebview(bot);
-      }
+      setActiveChatbot(selectedChatbot);
     }
   };
+
+  // The native webview needs the active panel's container to exist first.
+  // Creating it directly in handleContinue runs before React mounts that node.
+  useEffect(() => {
+    if (!activeChatbot || webviewRef.current || !containerRef.current) {
+      return;
+    }
+    const bot = CHATBOTS.find((candidate) => candidate.id === activeChatbot);
+    if (bot) {
+      void openWebview(bot);
+    }
+  }, [activeChatbot, openWebview]);
 
   const handleChange = async () => {
     if (webviewRef.current) {
@@ -118,6 +185,7 @@ export function AiWebView() {
     }
     setActiveChatbot(null);
     setWebviewError(null);
+    setIsWebviewLoading(false);
   };
 
   const handleRefresh = () => {
@@ -186,9 +254,13 @@ export function AiWebView() {
           ref={containerRef}
           style={{ flex: 1, width: "100%", position: "relative", background: "#1a1a1a" }}
         >
+          {isWebviewLoading && !webviewError && (
+            <div className="ai-webview-status">Loading {activeBot.label}…</div>
+          )}
           {webviewError && (
-            <div style={{ padding: "24px", textAlign: "center", color: "#a1a1aa", fontSize: "13px" }}>
+            <div className="ai-webview-error">
               <p style={{ marginBottom: "12px" }}>Could not embed {activeBot.label} inline.</p>
+              <p className="ai-webview-error-detail">{webviewError}</p>
               <button
                 type="button"
                 onClick={() => void openUrl(activeBot.url)}
