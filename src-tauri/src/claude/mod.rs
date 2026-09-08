@@ -10,7 +10,7 @@ use base64::Engine;
 
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
+use crate::shared::process_core::tokio_command;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -134,21 +134,18 @@ impl ClaudeState {
     }
 
     /// Start the permission server if it isn't running yet and return its port.
-    /// Also ensures the PreToolUse hook is written into ~/.claude/settings.json.
+    /// Hooks are supplied to each CLI session without editing global settings.
     pub(crate) async fn get_or_start_permission_server<E: EventSink>(
         &self,
         event_sink: E,
-    ) -> u16 {
+    ) -> Arc<ClaudePermissionServer> {
         let mut guard = self.permission_server.lock().await;
         if let Some(srv) = guard.as_ref() {
-            return srv.port;
+            return Arc::clone(srv);
         }
-        // Ensure the global hook is installed so Claude Code can reach us.
-        permission_server::ensure_hook_installed().await;
         let srv = ClaudePermissionServer::start(event_sink).await;
-        let port = srv.port;
-        *guard = Some(srv);
-        port
+        *guard = Some(Arc::clone(&srv));
+        srv
     }
 
     /// Resolve a pending permission request by request_id.
@@ -265,41 +262,10 @@ pub(crate) async fn read_thread_claude(
 /// GUI apps on macOS/Linux don't inherit the full user PATH (nvm, homebrew,
 /// npm global bins, etc.), so a bare `Command::new("claude")` silently fails.
 async fn resolve_claude_bin() -> String {
-    // Ask a login shell for the resolved path so we pick up nvm, homebrew, etc.
-    let out = Command::new("/bin/sh")
-        .args(["-lc", "which claude 2>/dev/null || command -v claude 2>/dev/null"])
-        .output()
-        .await;
-
-    if let Ok(o) = out {
-        let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-        if !path.is_empty() {
-            return path;
-        }
-    }
-
-    // Common fallback locations
-    for candidate in &[
-        "/usr/local/bin/claude",
-        "/opt/homebrew/bin/claude",
-    ] {
-        if std::path::Path::new(candidate).exists() {
-            return candidate.to_string();
-        }
-    }
-
-    // Check HOME-relative paths
-    if let Ok(home) = std::env::var("HOME") {
-        for suffix in &[".npm/bin/claude", ".local/bin/claude", ".yarn/bin/claude"] {
-            let p = format!("{home}/{suffix}");
-            if std::path::Path::new(&p).exists() {
-                return p;
-            }
-        }
-    }
-
-    // Last resort — hope it's on PATH
-    "claude".to_string()
+    use crate::shared::provider_setup_core::{resolve_provider_bin, SetupProvider};
+    resolve_provider_bin(SetupProvider::Claude).await
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| SetupProvider::Claude.bin().to_string())
 }
 
 fn data_url_to_temp_file(data_url: &str) -> Option<String> {
@@ -321,9 +287,9 @@ fn data_url_to_temp_file(data_url: &str) -> Option<String> {
         "png"
     };
     let bytes = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
-    let path = format!("/tmp/hopper-claude-img-{}.{}", Uuid::new_v4(), ext);
+    let path = std::env::temp_dir().join(format!("hopper-claude-img-{}.{}", Uuid::new_v4(), ext));
     std::fs::write(&path, bytes).ok()?;
-    Some(path)
+    Some(path.to_string_lossy().into_owned())
 }
 
 pub(crate) async fn send_message_claude<E: EventSink + 'static>(
@@ -416,7 +382,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     });
 
     // Start (or reuse) the permission server so hooks can route approvals to the UI.
-    let permission_port = claude_state
+    let permission_server = claude_state
         .get_or_start_permission_server(event_sink.clone())
         .await;
 
@@ -424,7 +390,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     let claude_bin = resolve_claude_bin().await;
 
     // Build claude command
-    let mut cmd = Command::new(&claude_bin);
+    let mut cmd = tokio_command(&claude_bin);
     cmd.arg("--output-format").arg("stream-json");
     // --verbose is required by the CLI when using --output-format=stream-json with -p.
     // In stream-json mode all output (including verbose info) is valid JSON lines.
@@ -444,10 +410,12 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     if !workspace_cwd.is_empty() {
         cmd.current_dir(&workspace_cwd);
     }
-    // Expose permission server port and workspace id to the hook command so it
-    // can POST approval requests back to us.
-    cmd.env("CODEXMONITOR_PERMISSION_PORT", permission_port.to_string());
-    cmd.env("CODEXMONITOR_WORKSPACE_ID", &workspace_id);
+    cmd.arg("--settings").arg(crate::shared::provider_setup_core::claude_hook_settings(
+        permission_server.port, &permission_server.token, &workspace_id,
+    ).to_string());
+    // Older Hopper hooks stay dormant; leave the user's global file untouched.
+    cmd.env_remove("CODEXMONITOR_PERMISSION_PORT");
+    cmd.env_remove("CODEXMONITOR_WORKSPACE_ID");
     // Close stdin — without this, claude may block waiting for input.
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(std::process::Stdio::piped());

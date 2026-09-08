@@ -1309,3 +1309,33 @@ function camelCaseSkill(r: Record<string, unknown>): MarketplaceSkill {
     githubUrl: (r.github_url as string | null) ?? null,
   };
 }
+
+export type SetupProviderId = "claude" | "antigravity";
+export type ProviderSetupPreferences = {
+  completed: boolean;
+  claudeEnabled: boolean;
+  antigravityEnabled: boolean;
+  antigravityAutoApprove: boolean;
+};
+export type ProviderSetupStatus = {
+  preferences: ProviderSetupPreferences;
+  platform: string;
+  supported: boolean;
+  providers: {
+    id: SetupProviderId;
+    label: string;
+    installed: boolean;
+    path: string | null;
+    version: string | null;
+    authenticated: boolean | null;
+  }[];
+};
+export function getProviderSetupStatus() {
+  return invoke<ProviderSetupStatus>("provider_setup_status");
+}
+export function runProviderSetupAction(provider: SetupProviderId, action: "install" | "login" | "verify") {
+  return invoke<{ message: string; verified?: boolean }>("provider_setup_action", { provider, action });
+}
+export function saveProviderSetup(preferences: ProviderSetupPreferences) {
+  return invoke<{ ok: boolean }>("provider_setup_save", { preferences });
+}

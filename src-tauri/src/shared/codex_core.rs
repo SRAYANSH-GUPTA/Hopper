@@ -4,11 +4,11 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{oneshot, Mutex};
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
 use tokio::time::Instant;
 
 use crate::backend::app_server::WorkspaceSession;
@@ -210,6 +210,26 @@ async fn get_session_clone(
         .ok_or_else(|| "workspace not connected".to_string())
 }
 
+async fn get_session_clone_after_connecting(
+    sessions: &Mutex<HashMap<String, Arc<WorkspaceSession>>>,
+    workspace_id: &str,
+) -> Result<Arc<WorkspaceSession>, String> {
+    let mut attempts = 0;
+    loop {
+        match get_session_clone(sessions, workspace_id).await {
+            Ok(session) => return Ok(session),
+            Err(error) if error == "workspace not connected" => {
+                attempts += 1;
+                if attempts >= 100 {
+                    return Err(error);
+                }
+                sleep(Duration::from_millis(50)).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 async fn resolve_workspace_and_parent(
     workspaces: &Mutex<HashMap<String, WorkspaceEntry>>,
     workspace_id: &str,
@@ -331,7 +351,10 @@ pub(crate) async fn list_threads_core(
     limit: Option<u32>,
     sort_key: Option<String>,
 ) -> Result<Value, String> {
-    let session = get_session_clone(sessions, &workspace_id).await?;
+    // Workspace restoration connects sessions asynchronously. Thread refreshes can
+    // arrive in that small window, so wait briefly for the session to appear
+    // instead of surfacing a misleading "workspace not connected" error.
+    let session = get_session_clone_after_connecting(sessions, &workspace_id).await?;
     let params = json!({
         "cursor": cursor,
         "limit": limit,
@@ -595,7 +618,7 @@ pub(crate) async fn model_list_core(
     sessions: &Mutex<HashMap<String, Arc<WorkspaceSession>>>,
     workspace_id: String,
 ) -> Result<Value, String> {
-    let session = get_session_clone(sessions, &workspace_id).await?;
+    let session = get_session_clone_after_connecting(sessions, &workspace_id).await?;
     session
         .send_request_for_workspace(&workspace_id, "model/list", json!({}))
         .await

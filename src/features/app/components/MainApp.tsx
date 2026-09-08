@@ -1,3 +1,4 @@
+import { ProviderSetup } from "@/features/provider-setup/components/ProviderSetup";
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import successSoundUrl from "@/assets/success-notification.mp3";
 import errorSoundUrl from "@/assets/error-notification.mp3";
@@ -2021,5 +2022,17 @@ export default function MainApp() {
     },
   });
 
-  return <MainAppShell {...mainAppShellProps} />;
+  return <>
+    <MainAppShell {...mainAppShellProps} />
+    <ProviderSetup
+      enabled={!appSettingsLoading}
+      onboarding
+      remote={appSettings.backendMode === "remote"}
+      targetKey={`${appSettings.backendMode}:${appSettings.remoteBackendHost}`}
+      onConfigured={async (preferences) => {
+        const provider = preferences.claudeEnabled ? "claude" : "antigravity";
+        await queueSaveSettings({ ...appSettings, localProvider: provider });
+      }}
+    />
+  </>;
 }

@@ -6,7 +6,7 @@ extern crate libc;
 
 use base64::Engine as _;
 use serde_json::{json, Value};
-use tokio::process::Command;
+use crate::shared::process_core::tokio_command;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -226,37 +226,10 @@ pub(crate) async fn read_thread_antigravity(
 }
 
 async fn resolve_antigravity_bin() -> String {
-    let out = Command::new("/bin/sh")
-        .args(["-lc", "which agy 2>/dev/null || command -v agy 2>/dev/null"])
-        .output()
-        .await;
-
-    if let Ok(o) = out {
-        let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-        if !path.is_empty() {
-            return path;
-        }
-    }
-
-    for candidate in &[
-        "/usr/local/bin/agy",
-        "/opt/homebrew/bin/agy",
-    ] {
-        if std::path::Path::new(candidate).exists() {
-            return candidate.to_string();
-        }
-    }
-
-    if let Ok(home) = std::env::var("HOME") {
-        for suffix in &[".local/bin/agy", ".npm/bin/agy"] {
-            let p = format!("{home}/{suffix}");
-            if std::path::Path::new(&p).exists() {
-                return p;
-            }
-        }
-    }
-
-    "agy".to_string()
+    use crate::shared::provider_setup_core::{resolve_provider_bin, SetupProvider};
+    resolve_provider_bin(SetupProvider::Antigravity).await
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| SetupProvider::Antigravity.bin().to_string())
 }
 
 fn data_url_to_temp_file(data_url: &str) -> Option<String> {
@@ -275,9 +248,9 @@ fn data_url_to_temp_file(data_url: &str) -> Option<String> {
         "png"
     };
     let bytes = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
-    let path = format!("/tmp/hopper-img-{}.{}", Uuid::new_v4(), ext);
+    let path = std::env::temp_dir().join(format!("hopper-img-{}.{}", Uuid::new_v4(), ext));
     std::fs::write(&path, bytes).ok()?;
-    Some(path)
+    Some(path.to_string_lossy().into_owned())
 }
 
 pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
@@ -290,6 +263,7 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     images: Option<Vec<String>>,
     event_sink: E,
 ) -> Result<Value, String> {
+    let auto_approve = crate::shared::provider_setup_core::read_preferences()?.antigravity_auto_approve;
     state.ensure_thread(&workspace_id, &thread_id).await;
 
     let session_id = state.get_session_id(&workspace_id, &thread_id).await;
@@ -363,7 +337,7 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
 
     let agy_bin = resolve_antigravity_bin().await;
 
-    let mut cmd = Command::new(&agy_bin);
+    let mut cmd = tokio_command(&agy_bin);
     if let Some(ref sid) = session_id {
         cmd.arg("--conversation").arg(sid);
     }
@@ -372,7 +346,9 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
         .filter(|s| !s.trim().is_empty())
         .unwrap_or("Gemini 3.8 Flash (Medium)");
     cmd.arg("--model").arg(resolved_model);
-    cmd.arg("--dangerously-skip-permissions");
+    if auto_approve {
+        cmd.arg("--dangerously-skip-permissions");
+    }
     cmd.arg("-p").arg(&final_text);
     if !workspace_cwd.is_empty() {
         cmd.arg("--add-dir").arg(&workspace_cwd);
@@ -399,20 +375,37 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     
     let thread_id_clone = thread_id.clone();
     let workspace_id_clone = workspace_id.clone();
-    let turn_id_clone = turn_id.clone();
     let state_clone = state.clone();
     let state_for_deregister = state.clone();
     let event_sink_clone = event_sink.clone();
     let mut current_session = session_id.clone();
     let mut current_session_clone_for_stderr = current_session.clone();
+    let turn_id_for_stderr = turn_id.clone();
     let workspace_id_for_deregister = workspace_id.clone();
     let thread_id_for_deregister = thread_id.clone();
 
     tokio::spawn(async move {
         use tokio::io::AsyncBufReadExt;
         let mut lines = tokio::io::BufReader::new(stderr).lines();
+        let mut emitted_error = false;
         while let Ok(Some(line)) = lines.next_line().await {
             eprintln!("[antigravity stderr] {line}");
+            let lower = line.to_ascii_lowercase();
+            if !emitted_error && (lower.contains("quota") || lower.contains("rate limit")) {
+                emitted_error = true;
+                event_sink_clone.emit_app_server_event(AppServerEvent {
+                    workspace_id: workspace_id_clone.clone(),
+                    message: json!({
+                        "method": "error",
+                        "params": {
+                            "threadId": thread_id_clone.clone(),
+                            "turnId": turn_id_for_stderr.clone(),
+                            "error": { "message": line },
+                            "willRetry": false
+                        }
+                    }),
+                });
+            }
             if current_session_clone_for_stderr.is_none() {
                 if let Some(captures) = regex::Regex::new(r"Created conversation ([a-f0-9\-]{36})").unwrap().captures(&line) {
                     let sid = captures.get(1).unwrap().as_str().to_string();

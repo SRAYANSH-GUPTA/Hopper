@@ -1,3 +1,4 @@
+import { ProviderSetup } from "@/features/provider-setup/components/ProviderSetup";
 import { useEffect, useMemo, useRef } from "react";
 import Stethoscope from "lucide-react/dist/esm/icons/stethoscope";
 import type { Dispatch, SetStateAction } from "react";
@@ -236,6 +237,10 @@ export function SettingsCodexSection({
       title="Local Agent"
       subtitle="Configure the local agent CLI and default parameters."
     >
+      <ProviderSetup
+        targetKey={`${appSettings.backendMode}:${appSettings.remoteBackendHost}`}
+        remote={appSettings.backendMode === "remote"}
+      />
       <div className="settings-field">
         <label className="settings-field-label" htmlFor="local-provider">
           Active provider

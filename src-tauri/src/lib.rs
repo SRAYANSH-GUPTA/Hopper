@@ -20,6 +20,7 @@ mod git;
 mod git_utils;
 mod local_usage;
 mod provider_usage;
+mod provider_setup;
 #[cfg(desktop)]
 mod menu;
 #[cfg(not(desktop))]
@@ -207,6 +208,9 @@ pub fn run() {
             menu::menu_set_accelerators,
             tray::set_tray_recent_threads,
             tray::set_tray_session_usage,
+            provider_setup::provider_setup_status,
+            provider_setup::provider_setup_action,
+            provider_setup::provider_setup_save,
             codex::codex_doctor,
             codex::codex_update,
             workspaces::list_workspaces,

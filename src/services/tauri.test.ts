@@ -3,6 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import * as notification from "@tauri-apps/plugin-notification";
 import {
+  getProviderSetupStatus,
+  runProviderSetupAction,
+  saveProviderSetup,
   exportMarkdownFile,
   addWorkspace,
   compactThread,
@@ -1122,4 +1125,14 @@ describe("tauri invoke wrappers", () => {
     });
     expect(isPermissionGrantedMock).not.toHaveBeenCalled();
   });
+  it("keeps provider setup IPC payloads aligned with app and daemon commands", async () => {
+    await getProviderSetupStatus();
+    expect(invoke).toHaveBeenCalledWith("provider_setup_status");
+    await runProviderSetupAction("antigravity", "verify");
+    expect(invoke).toHaveBeenCalledWith("provider_setup_action", { provider: "antigravity", action: "verify" });
+    const preferences = { completed: true, claudeEnabled: true, antigravityEnabled: false, antigravityAutoApprove: false };
+    await saveProviderSetup(preferences);
+    expect(invoke).toHaveBeenCalledWith("provider_setup_save", { preferences });
+  });
+
 });

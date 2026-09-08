@@ -17,6 +17,7 @@ use crate::event_sink::TauriEventSink;
 use crate::remote_backend;
 use crate::shared::agents_config_core;
 use crate::shared::codex_core::{self, insert_optional_nullable_string};
+use crate::shared::workspaces_core;
 use crate::state::AppState;
 use crate::types::WorkspaceEntry;
 
@@ -301,7 +302,9 @@ pub(crate) async fn list_threads(
             }
         }
         Err(e) => {
-            println!("Codex list_threads error: {:?}", e);
+            if e != "workspace not connected" {
+                println!("Codex list_threads error: {:?}", e);
+            }
         }
     }
 
@@ -714,6 +717,24 @@ pub(crate) async fn model_list(
         .await;
     }
 
+    // Model discovery always comes from Codex, even when Claude or Antigravity is
+    // the active conversation provider. Connect a Codex app-server directly.
+    workspaces_core::connect_workspace_core(
+        workspace_id.clone(),
+        &state.workspaces,
+        &state.sessions,
+        &state.app_settings,
+        |entry, default_bin, codex_args, codex_home| {
+            spawn_workspace_session(
+                entry,
+                default_bin,
+                codex_args,
+                app.clone(),
+                codex_home,
+            )
+        },
+    )
+    .await?;
     codex_core::model_list_core(&state.sessions, workspace_id).await
 }
 

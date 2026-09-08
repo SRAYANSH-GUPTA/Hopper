@@ -10,16 +10,17 @@ use uuid::Uuid;
 use crate::backend::events::{AppServerEvent, EventSink};
 
 /// Lightweight HTTP server that bridges Claude Code's PreToolUse hooks to the
-/// CodexMonitor frontend approval UI.
+/// Hopper frontend approval UI.
 ///
 /// Flow:
 ///   Claude Code (hook) → POST /permission → server holds connection →
 ///   emits claude/requestApproval event → frontend shows toast →
 ///   user approves/declines → Tauri command resolves oneshot →
-///   server writes {"decision":"approve"} or {"decision":"block"} →
+///   server returns PreToolUse permissionDecision allow/deny →
 ///   hook exits → Claude Code proceeds or stops.
 pub(crate) struct ClaudePermissionServer {
     pub(crate) port: u16,
+    pub(crate) token: String,
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>>,
 }
 
@@ -32,6 +33,8 @@ impl ClaudePermissionServer {
         let pending: Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let pending_clone = pending.clone();
+        let token = Uuid::new_v4().to_string();
+        let server_token = token.clone();
 
         tokio::spawn(async move {
             loop {
@@ -39,7 +42,12 @@ impl ClaudePermissionServer {
                     Ok((stream, _)) => {
                         let pending = pending_clone.clone();
                         let sink = event_sink.clone();
-                        tokio::spawn(handle_connection(stream, pending, sink));
+                        tokio::spawn(handle_connection(
+                            stream,
+                            pending,
+                            sink,
+                            server_token.clone(),
+                        ));
                     }
                     Err(e) => {
                         eprintln!("[claude permission server] accept error: {e}");
@@ -49,7 +57,11 @@ impl ClaudePermissionServer {
         });
 
         eprintln!("[claude permission server] started on port {port}");
-        Arc::new(Self { port, pending })
+        Arc::new(Self {
+            port,
+            token,
+            pending,
+        })
     }
 
     /// Called by the Tauri command when the user approves or declines.
@@ -65,47 +77,50 @@ async fn handle_connection<E: EventSink>(
     mut stream: TcpStream,
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>>,
     event_sink: E,
+    token: String,
 ) {
-    // Read the full HTTP request (hooks send small payloads, 64 KiB is plenty)
-    let mut buf = vec![0u8; 65536];
-    let n = match stream.read(&mut buf).await {
-        Ok(n) if n > 0 => n,
-        _ => return,
+    let request = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        read_request(&mut stream),
+    )
+    .await;
+    let (headers, body) = match request {
+        Ok(Ok(request)) => request,
+        _ => {
+            let _ = write_http_response(&mut stream, 400, r#"{"error":"invalid request"}"#).await;
+            return;
+        }
     };
-
-    let req = String::from_utf8_lossy(&buf[..n]);
-
-    // Parse workspace_id from the query string: GET /permission?workspace_id=...
-    let workspace_id = req
-        .lines()
-        .next()                          // "POST /permission?workspace_id=xxx HTTP/1.1"
-        .and_then(|line| {
-            let path = line.split_whitespace().nth(1)?;
-            let query = path.split_once('?')?.1;
-            query.split('&').find_map(|kv| {
-                let (k, v) = kv.split_once('=')?;
-                if k == "workspace_id" { Some(v.to_string()) } else { None }
-            })
+    let authorized = headers.lines().any(|line| {
+        line.split_once(':').is_some_and(|(key, value)| {
+            key.eq_ignore_ascii_case("x-hopper-token") && value.trim() == token
         })
-        .unwrap_or_else(|| "unknown".to_string());
-
-    // Extract JSON body (everything after the blank line separating headers from body)
-    let body = match req.find("\r\n\r\n") {
-        Some(pos) => req[pos + 4..].trim().to_string(),
-        None => return,
-    };
-
-    if body.is_empty() {
-        let _ = write_http_response(&mut stream, 400, r#"{"error":"empty body"}"#).await;
+    });
+    if !authorized {
+        let _ = write_http_response(&mut stream, 403, r#"{"error":"forbidden"}"#).await;
         return;
     }
+    let workspace_id = headers
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|path| reqwest::Url::parse(&format!("http://localhost{path}")).ok())
+        .and_then(|url| {
+            url.query_pairs()
+                .find(|(key, _)| key == "workspace_id")
+                .map(|(_, value)| value.into_owned())
+        });
+    let Some(workspace_id) = workspace_id else {
+        let _ = write_http_response(&mut stream, 400, r#"{"error":"missing workspace"}"#).await;
+        return;
+    };
 
     // Claude Code PreToolUse hook sends:
     // {"tool_name":"Bash","tool_input":{"command":"..."}}
     let data: Value = match serde_json::from_str(&body) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("[claude permission server] JSON parse error: {e}: {body}");
+            eprintln!("[claude permission server] JSON parse error: {e}");
             let _ = write_http_response(&mut stream, 400, r#"{"error":"invalid json"}"#).await;
             return;
         }
@@ -156,13 +171,9 @@ async fn handle_connection<E: EventSink>(
     // Remove the pending entry in case it wasn't consumed (e.g. timeout path)
     pending.lock().await.remove(&request_id);
 
-    let response_body = if approved {
-        r#"{"decision":"approve"}"#
-    } else {
-        r#"{"decision":"block","reason":"User declined in CodexMonitor"}"#
-    };
-
-    let _ = write_http_response(&mut stream, 200, response_body).await;
+    let response_body =
+        crate::shared::provider_setup_core::claude_permission_response(approved).to_string();
+    let _ = write_http_response(&mut stream, 200, &response_body).await;
 }
 
 async fn write_http_response(
@@ -178,91 +189,132 @@ async fn write_http_response(
     stream.write_all(response.as_bytes()).await
 }
 
-/// Write the CodexMonitor PreToolUse hook into ~/.claude/settings.json so that
-/// all Claude Code invocations (in any workspace) can route permission requests
-/// through CodexMonitor when it is running.
-///
-/// The hook is a no-op when CODEXMONITOR_PERMISSION_PORT is unset (i.e. when
-/// Claude Code is run outside of CodexMonitor).
-pub(crate) async fn ensure_hook_installed() {
-    let hook_command = concat!(
-        "if [ -n \"$CODEXMONITOR_PERMISSION_PORT\" ]; then ",
-        "INPUT=$(cat); ",
-        "PAYLOAD=$(printf '%s' \"$INPUT\" | python3 -c \"",
-        "import sys,json; d=json.load(sys.stdin); ",
-        "d['workspace_id']=__import__('os').environ.get('CODEXMONITOR_WORKSPACE_ID','unknown'); ",
-        "print(json.dumps(d))\"); ",
-        "curl -s --max-time 120 -X POST -H 'Content-Type: application/json' ",
-        "-d \"$PAYLOAD\" ",
-        "\"http://127.0.0.1:$CODEXMONITOR_PERMISSION_PORT/permission\" 2>/dev/null || true; ",
-        "fi"
-    );
-
-    let home = match std::env::var("HOME") {
-        Ok(h) => h,
-        Err(_) => return,
-    };
-    let settings_path = std::path::PathBuf::from(&home).join(".claude").join("settings.json");
-
-    // Read existing settings (or start with empty object)
-    let raw = tokio::fs::read_to_string(&settings_path).await.unwrap_or_default();
-    let mut settings: Value = serde_json::from_str(&raw).unwrap_or(json!({}));
-
-    // Navigate to hooks.PreToolUse array, creating it if absent
-    let hooks = settings
-        .as_object_mut()
-        .and_then(|o| {
-            if !o.contains_key("hooks") {
-                o.insert("hooks".to_string(), json!({}));
+async fn read_request(stream: &mut TcpStream) -> Result<(String, String), String> {
+    const LIMIT: usize = 1024 * 1024;
+    let mut bytes = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+        let n = stream.read(&mut chunk).await.map_err(|e| e.to_string())?;
+        if n == 0 {
+            return Err("Incomplete HTTP request".into());
+        }
+        bytes.extend_from_slice(&chunk[..n]);
+        if bytes.len() > LIMIT {
+            return Err("Request too large".into());
+        }
+        if let Some(end) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+            let headers = std::str::from_utf8(&bytes[..end]).map_err(|e| e.to_string())?;
+            if !headers.starts_with("POST /permission?") {
+                return Err("Unknown route".into());
             }
-            o.get_mut("hooks")
-        })
-        .and_then(|h| h.as_object_mut())
-        .and_then(|h| {
-            if !h.contains_key("PreToolUse") {
-                h.insert("PreToolUse".to_string(), json!([]));
-            }
-            h.get_mut("PreToolUse")
-        })
-        .and_then(|ptu| ptu.as_array_mut());
-
-    let hooks = match hooks {
-        Some(h) => h,
-        None => return,
-    };
-
-    // Check if our hook is already present (avoid duplicates)
-    let already_installed = hooks.iter().any(|entry| {
-        entry
-            .get("hooks")
-            .and_then(|h| h.as_array())
-            .map(|arr| {
-                arr.iter().any(|h| {
-                    h.get("command")
-                        .and_then(|c| c.as_str())
-                        .map(|c| c.contains("CODEXMONITOR_PERMISSION_PORT"))
-                        .unwrap_or(false)
+            let size = headers
+                .lines()
+                .find_map(|line| {
+                    let (key, value) = line.split_once(':')?;
+                    if key.eq_ignore_ascii_case("content-length") {
+                        value.trim().parse::<usize>().ok()
+                    } else {
+                        None
+                    }
                 })
-            })
-            .unwrap_or(false)
-    });
+                .ok_or("Missing content length")?;
+            if size > LIMIT - end - 4 {
+                return Err("Body too large".into());
+            }
+            if bytes.len() >= end + 4 + size {
+                let body = std::str::from_utf8(&bytes[end + 4..end + 4 + size])
+                    .map_err(|e| e.to_string())?;
+                return Ok((headers.to_string(), body.to_string()));
+            }
+        }
+    }
+}
 
-    if already_installed {
-        return;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone)]
+    struct TestSink(tokio::sync::mpsc::UnboundedSender<AppServerEvent>);
+    impl EventSink for TestSink {
+        fn emit_app_server_event(&self, event: AppServerEvent) {
+            let _ = self.0.send(event);
+        }
+        fn emit_terminal_output(&self, _: crate::backend::events::TerminalOutput) {}
+        fn emit_terminal_exit(&self, _: crate::backend::events::TerminalExit) {}
     }
 
-    // Insert the hook entry that catches all tools (".*" matcher)
-    hooks.push(json!({
-        "matcher": ".*",
-        "hooks": [{
-            "type": "command",
-            "command": hook_command
-        }]
-    }));
+    #[test]
+    fn authenticates_and_routes_claude_approval_requests() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                let server = ClaudePermissionServer::start(TestSink(tx)).await;
+                let settings = crate::shared::provider_setup_core::claude_hook_settings(
+                    server.port,
+                    &server.token,
+                    "workspace & one",
+                );
+                let url = settings["hooks"]["PreToolUse"][0]["hooks"][0]["url"]
+                    .as_str()
+                    .unwrap()
+                    .to_string();
+                let client = reqwest::Client::new();
+                let rejected = client
+                    .post(&url)
+                    .json(&json!({"tool_name": "Bash"}))
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(rejected.status(), 403);
+                assert!(rx.try_recv().is_err());
+                let token = server.token.clone();
+                let response = tokio::spawn(async move {
+                    client
+                        .post(&url)
+                        .header("X-Hopper-Token", token)
+                        .json(&json!({"tool_name": "Bash", "tool_input": {"command": "pwd"}}))
+                        .send()
+                        .await
+                        .unwrap()
+                        .json::<Value>()
+                        .await
+                        .unwrap()
+                });
+                let event = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(event.workspace_id, "workspace & one");
+                server
+                    .resolve(event.message["id"].as_str().unwrap(), true)
+                    .await;
+                assert_eq!(
+                    response.await.unwrap()["hookSpecificOutput"]["permissionDecision"],
+                    "allow"
+                );
+                assert!(server.pending.lock().await.is_empty());
+            });
+    }
 
-    // Write back
-    if let Ok(serialized) = serde_json::to_string_pretty(&settings) {
-        let _ = tokio::fs::write(&settings_path, serialized).await;
-        eprintln!("[claude permission server] hook installed in ~/.claude/settings.json");
+    #[test]
+    fn reads_a_body_split_across_tcp_packets() {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let sender = tokio::spawn(async move {
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+            stream.write_all(b"POST /permission?workspace_id=one HTTP/1.1\r\nContent-Length: 7\r\n\r\n").await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            stream.write_all(b"{\"x\":1}").await.unwrap();
+        });
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let (_, body) = read_request(&mut stream).await.unwrap();
+        assert_eq!(body, r#"{"x":1}"#);
+        sender.await.unwrap();
+        });
     }
 }

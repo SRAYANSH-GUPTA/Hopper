@@ -51,7 +51,13 @@ Hopper is a new coding AI terminal built on top of CODEXmonitor by Dimillian. Ev
 - Terminal dock with multiple tabs for background commands (experimental).
 - In-app updates with toast-driven download/install, debug panel copy/clear, sound notifications, plus platform-specific window effects (macOS overlay title bar + vibrancy) and a reduced transparency toggle.
 
-## Requirements
+## First-launch provider setup
+
+Packaged Hopper opens a setup screen for installing Claude Code or Antigravity, signing in with your own account, and testing the connection. Reopen it under **Settings → Codex**. Antigravity permission bypass is opt-in.
+
+See [Provider setup](docs/provider-setup.md) for platform requirements, remote-host behavior, configuration handling, and optional Bash/PowerShell setup scripts.
+
+## Development requirements
 
 - Node.js + npm
 - Rust toolchain (stable)
