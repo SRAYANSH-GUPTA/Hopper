@@ -4,13 +4,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-extern crate libc;
-
 use base64::Engine;
 
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use crate::shared::process_core::tokio_command;
+use crate::shared::process_core::{terminate_process, tokio_command};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -62,8 +60,9 @@ impl ClaudeState {
 
     pub(crate) async fn kill_running_turn(&self, workspace_id: &str, thread_id: &str) {
         let key = format!("{workspace_id}:{thread_id}");
-        if let Some(pid) = self.running_pids.lock().await.remove(&key) {
-            unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM); }
+        let pid = self.running_pids.lock().await.remove(&key);
+        if let Some(pid) = pid {
+            terminate_process(pid).await;
         }
     }
 
@@ -457,8 +456,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         let mut new_session_id: Option<String> = None;
         // tool_use_id -> item_id (for tool_result matching)
         let mut tool_item_ids: HashMap<String, String> = HashMap::new();
-        // tool_use_id -> (tool_name, command_display) so completion events can include them
-        let mut tool_details: HashMap<String, (String, String)> = HashMap::new();
         // message_id -> accumulated text (deduplicates streaming assistant events)
         let mut message_texts: HashMap<String, String> = HashMap::new();
         // message IDs that have already had item/started emitted

@@ -2,11 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-extern crate libc;
-
 use base64::Engine as _;
 use serde_json::{json, Value};
-use crate::shared::process_core::tokio_command;
+use crate::shared::process_core::{terminate_process, tokio_command};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -53,8 +51,9 @@ impl AntigravityState {
 
     pub(crate) async fn kill_running_turn(&self, workspace_id: &str, thread_id: &str) {
         let key = format!("{workspace_id}:{thread_id}");
-        if let Some(pid) = self.running_pids.lock().await.remove(&key) {
-            unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM); }
+        let pid = self.running_pids.lock().await.remove(&key);
+        if let Some(pid) = pid {
+            terminate_process(pid).await;
         }
     }
 
@@ -378,7 +377,7 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     let state_clone = state.clone();
     let state_for_deregister = state.clone();
     let event_sink_clone = event_sink.clone();
-    let mut current_session = session_id.clone();
+    let current_session = session_id.clone();
     let mut current_session_clone_for_stderr = current_session.clone();
     let turn_id_for_stderr = turn_id.clone();
     let workspace_id_for_deregister = workspace_id.clone();

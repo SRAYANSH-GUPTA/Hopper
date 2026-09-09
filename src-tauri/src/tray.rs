@@ -65,7 +65,7 @@ pub(crate) struct TrayState {
 
 #[tauri::command]
 pub(crate) fn set_tray_recent_threads<R: tauri::Runtime>(
-    app: AppHandle<R>,
+    _app: AppHandle<R>,
     state: tauri::State<'_, TrayState>,
     entries: Vec<TrayRecentThreadEntry>,
 ) -> Result<(), String> {
@@ -82,14 +82,14 @@ pub(crate) fn set_tray_recent_threads<R: tauri::Runtime>(
     }
 
     #[cfg(target_os = "macos")]
-    update_tray_menu(&app, &state)?;
+    update_tray_menu(&_app, &state)?;
 
     Ok(())
 }
 
 #[tauri::command]
 pub(crate) fn set_tray_session_usage<R: tauri::Runtime>(
-    app: AppHandle<R>,
+    _app: AppHandle<R>,
     state: tauri::State<'_, TrayState>,
     usage: Option<TraySessionUsage>,
 ) -> Result<(), String> {
@@ -106,7 +106,7 @@ pub(crate) fn set_tray_session_usage<R: tauri::Runtime>(
     }
 
     #[cfg(target_os = "macos")]
-    update_tray_menu(&app, &state)?;
+    update_tray_menu(&_app, &state)?;
 
     Ok(())
 }

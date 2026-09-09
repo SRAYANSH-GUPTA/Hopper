@@ -31,23 +31,91 @@ pub(crate) fn std_command(program: impl AsRef<OsStr>) -> std::process::Command {
     command
 }
 
+/// Stop a registered provider process. Windows also terminates its children;
+/// Unix preserves the providers' existing graceful SIGTERM behavior.
+pub(crate) async fn terminate_process(pid: u32) {
+    // Zero and negative Unix PIDs target process groups, not a single child.
+    if pid == 0 || pid > i32::MAX as u32 {
+        return;
+    }
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(pid as libc::pid_t, libc::SIGTERM);
+    }
+    #[cfg(windows)]
+    {
+        let _ = tokio_command("taskkill")
+            .arg("/PID")
+            .arg(pid.to_string())
+            .arg("/T")
+            .arg("/F")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
+}
+
 pub(crate) async fn kill_child_process_tree(child: &mut Child) {
     #[cfg(windows)]
     {
         if let Some(pid) = child.id() {
-            let _ = tokio_command("taskkill")
-                .arg("/PID")
-                .arg(pid.to_string())
-                .arg("/T")
-                .arg("/F")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .await;
+            terminate_process(pid).await;
         }
     }
 
     let _ = child.kill().await;
+}
+
+#[cfg(all(test, any(unix, windows)))]
+mod tests {
+    use super::{terminate_process, tokio_command};
+    use std::time::Duration;
+
+    #[test]
+    fn terminates_a_registered_process() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                #[cfg(unix)]
+                let mut command = tokio_command("sleep");
+                #[cfg(unix)]
+                command.arg("60");
+                #[cfg(windows)]
+                let mut command = tokio_command("ping.exe");
+                #[cfg(windows)]
+                command.args(["-n", "60", "127.0.0.1"]);
+
+                let mut child = command
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .kill_on_drop(true)
+                    .spawn()
+                    .expect("start test child");
+                let pid = child.id().expect("running child PID");
+                assert!(child.try_wait().unwrap().is_none());
+                terminate_process(pid).await;
+                let status = tokio::time::timeout(Duration::from_secs(10), child.wait())
+                    .await
+                    .expect("child should stop promptly")
+                    .expect("wait for child");
+                assert!(!status.success());
+            });
+    }
+
+    #[test]
+    fn ignores_process_group_and_invalid_pids() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                terminate_process(0).await;
+                terminate_process(u32::MAX).await;
+            });
+    }
 }
 
 #[cfg(target_os = "windows")]

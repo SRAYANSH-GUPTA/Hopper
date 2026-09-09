@@ -26,13 +26,13 @@ use self::core as tailscale_core;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 const UNSUPPORTED_MESSAGE: &str = "Tailscale integration is only available on desktop.";
 
-fn apply_tailscale_command_env(command: &mut tokio::process::Command) {
+fn apply_tailscale_command_env(_command: &mut tokio::process::Command) {
     #[cfg(target_os = "macos")]
     {
         // The app-bundled Tailscale binary can fail with CLIError 3 when TERM is missing
         // (typical for GUI-launched release apps). Force a sane terminal type.
         let term = std::env::var("TERM").unwrap_or_else(|_| "xterm-256color".to_string());
-        command.env("TERM", term);
+        _command.env("TERM", term);
     }
 }
 
