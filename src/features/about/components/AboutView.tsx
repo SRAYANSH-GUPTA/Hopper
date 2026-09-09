@@ -43,7 +43,7 @@ export function AboutView() {
         <div className="about-header">
           <img
             className="about-icon"
-            src="/app-icon.png"
+            src="/app_icon.png"
             alt="Hopper icon"
           />
           <div className="about-title">Hopper</div>
