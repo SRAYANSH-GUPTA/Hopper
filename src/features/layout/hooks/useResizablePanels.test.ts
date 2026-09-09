@@ -119,6 +119,38 @@ describe("useResizablePanels", () => {
     appEl.remove();
   });
 
+  it("allows the sidebar to reach half of a wide application", () => {
+    const hook = renderResizablePanels();
+    const appEl = document.createElement("div");
+    Object.defineProperty(appEl, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ width: 2000 }),
+    });
+    document.body.appendChild(appEl);
+    hook.result.appRef.current = appEl;
+
+    act(() => {
+      hook.result.onSidebarResizeStart({
+        clientX: 0,
+        clientY: 0,
+        preventDefault() {},
+      } as React.MouseEvent);
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new MouseEvent("mousemove", { clientX: 4000, clientY: 0 }),
+      );
+      window.dispatchEvent(new MouseEvent("mouseup"));
+    });
+
+    expect(hook.result.sidebarWidth).toBe(1000);
+    expect(window.localStorage.getItem("hopper.sidebarWidth")).toBe("1000");
+
+    hook.unmount();
+    appEl.remove();
+  });
+
   it("moves split position right when dragging the splitter right", () => {
     const hook = renderResizablePanels();
     const { split, resizer } = buildSplitDom();
