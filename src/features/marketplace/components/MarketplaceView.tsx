@@ -153,7 +153,10 @@ export function MarketplaceView() {
     <div className="marketplace-view">
       <div className="marketplace-header">
         <div className="marketplace-title-row">
-          <Package size={20} strokeWidth={1.6} />
+          <Package
+            className="marketplace-title-icon"
+            strokeWidth={1.6}
+          />
           <h2 className="marketplace-title">Skill Marketplace</h2>
         </div>
         <p className="marketplace-subtitle">

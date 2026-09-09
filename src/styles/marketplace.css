@@ -1,6 +1,7 @@
 /* ─── Marketplace ────────────────────────────────────────────────────────── */
 
 .marketplace-view {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -68,12 +69,18 @@
 .marketplace-title-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: clamp(8px, 1.5cqw, 14px);
   color: var(--cm-fg-primary);
 }
 
+.marketplace-title-icon {
+  flex: 0 0 auto;
+  width: clamp(24px, 6cqw, 44px);
+  height: clamp(24px, 6cqw, 44px);
+}
+
 .marketplace-title {
-  font-size: 18px;
+  font-size: clamp(18px, 4.5cqw, 38px);
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.3px;

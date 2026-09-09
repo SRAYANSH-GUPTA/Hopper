@@ -1,4 +1,5 @@
 import type { TurnPlan } from "../../../types";
+import { Markdown } from "@/features/messages/components/Markdown";
 
 type PlanPanelProps = {
   plan: TurnPlan | null;
@@ -37,7 +38,7 @@ export function PlanPanel({ plan, isProcessing }: PlanPanelProps) {
         {progress && <span className="plan-progress">{progress}</span>}
       </div>
       {plan?.explanation && (
-        <div className="plan-explanation">{plan.explanation}</div>
+        <Markdown value={plan.explanation} className="markdown plan-explanation" />
       )}
       {showEmpty ? (
         <div className="plan-empty">{emptyLabel}</div>

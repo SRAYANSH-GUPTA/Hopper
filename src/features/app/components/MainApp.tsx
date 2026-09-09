@@ -31,6 +31,7 @@ import { useWorkspaceFromUrlPrompt } from "@/features/workspaces/hooks/useWorksp
 import { useWorkspaceController } from "@app/hooks/useWorkspaceController";
 import { useWorkspaceSelection } from "@/features/workspaces/hooks/useWorkspaceSelection";
 import { usePlanReadyActions } from "@app/hooks/usePlanReadyActions";
+import { resolvePlanPanelPlan } from "@/features/plan/utils/resolvePlanPanelPlan";
 import { useThreadRows } from "@app/hooks/useThreadRows";
 import { useInterruptShortcut } from "@app/hooks/useInterruptShortcut";
 import { useArchiveShortcut } from "@app/hooks/useArchiveShortcut";
@@ -1223,9 +1224,13 @@ export default function MainApp() {
     accountRateLimits: activeRateLimits,
     showRemaining: appSettings.usageShowRemaining,
   });
-  const activePlan = activeThreadId
+  const liveActivePlan = activeThreadId
     ? planByThread[activeThreadId] ?? null
     : null;
+  const activePlan = useMemo(
+    () => resolvePlanPanelPlan(liveActivePlan, activeItems),
+    [activeItems, liveActivePlan],
+  );
   const hasActivePlan = Boolean(
     activePlan && (activePlan.steps.length > 0 || activePlan.explanation)
   );

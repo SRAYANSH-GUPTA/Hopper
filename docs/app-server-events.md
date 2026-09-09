@@ -86,6 +86,18 @@ subscriptions.
 - `turn/plan/updated`
 - `turn/started`
 
+Plan UI routing:
+
+- `turn/plan/updated` populates the structured live plan and step progress.
+- `item/plan/delta` and completed `plan` items populate the conversation plan and
+  serve as the sidebar plan fallback when no structured live plan is available.
+- Claude and Antigravity sidebar plans use the latest assistant message following
+  the latest user request when that request starts with `/plan`. This uses stored
+  conversation content, including streamed replies; a later user request clears
+  the fallback until it has its own plan response.
+- Sidebar plan selection is conversation-scoped: switching between Codex,
+  Claude, and Antigravity does not filter out a plan created by another provider.
+
 ## Additional Stream Methods Handled In Hopper
 
 These arrive on the same frontend event stream but are not Codex v2

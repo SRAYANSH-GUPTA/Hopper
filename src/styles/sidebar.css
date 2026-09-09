@@ -14,6 +14,32 @@
   transition: opacity 200ms ease, transform 200ms ease, padding-top 180ms ease;
 }
 
+.sidebar-git-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding-top: 8px;
+}
+
+.sidebar-git-panel > .ds-panel,
+.sidebar-git-panel > .plan-panel {
+  flex: 0 0 auto;
+  height: auto;
+  min-width: 0;
+}
+
+.sidebar-git-panel .diff-list,
+.sidebar-git-panel .plan-list {
+  flex: 0 0 auto;
+  overflow-y: visible;
+}
+
 .sidebar-drag-strip {
   position: absolute;
   top: 0;
