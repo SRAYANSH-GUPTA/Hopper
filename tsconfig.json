@@ -8,7 +8,7 @@
 
     /* Bundler mode */
     "moduleResolution": "bundler",
-    "baseUrl": "https://hopper.srayansh.in/",
+    "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
       "@app/*": ["src/features/app/*"],
