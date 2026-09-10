@@ -56,6 +56,14 @@ describe("parseModelListResponse", () => {
     expect(model.displayName).toBe("GPT-5.3-Codex-Spark");
   });
 
+  it("accepts model catalogs returned through adapter wrappers", () => {
+    const models = parseModelListResponse({
+      result: { models: [{ id: "gpt-5.3-codex", slug: "gpt-5.3-codex" }] },
+    });
+
+    expect(models[0]?.model).toBe("gpt-5.3-codex");
+  });
+
   it("uses the raw model slug when displayName is missing", () => {
     const response = {
       result: {

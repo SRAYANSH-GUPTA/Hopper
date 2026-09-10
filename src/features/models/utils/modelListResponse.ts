@@ -38,9 +38,22 @@ function extractModelItems(response: unknown): unknown[] {
     return resultData;
   }
 
+  // Some app-server versions return the catalog under `models` while the
+  // response is being proxied through an adapter. Accept that equivalent
+  // shape so a protocol wrapper does not make the picker appear empty.
+  const resultModels = result?.models;
+  if (Array.isArray(resultModels)) {
+    return resultModels;
+  }
+
   const topLevelData = record.data;
   if (Array.isArray(topLevelData)) {
     return topLevelData;
+  }
+
+  const topLevelModels = record.models;
+  if (Array.isArray(topLevelModels)) {
+    return topLevelModels;
   }
 
   return [];
@@ -95,7 +108,7 @@ export function parseModelListResponse(response: unknown): ModelOption[] {
         return null;
       }
       const record = item as Record<string, unknown>;
-      const modelSlug = String(record.model ?? record.id ?? "");
+      const modelSlug = String(record.model ?? record.slug ?? record.id ?? "");
       const rawDisplayName = String(record.displayName || record.display_name || "");
       const displayName = rawDisplayName.trim().length > 0 ? rawDisplayName : modelSlug;
       return {
