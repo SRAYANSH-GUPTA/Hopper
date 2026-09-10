@@ -613,13 +613,13 @@ jobs:
           path = Path("src-tauri/Cargo.lock")
           content = path.read_text()
           content, count = re.subn(
-            r'(?ms)(\[\[package\]\]\nname = "codex-monitor"\nversion = ")[^"]+(")',
+            r'(?ms)(\[\[package\]\]\nname = "hopper"\nversion = ")[^"]+(")',
             r'\g<1>$NEXT_VERSION\2',
             content,
             count=1,
           )
           if count != 1:
-            raise SystemExit("Failed to update codex-monitor version in src-tauri/Cargo.lock")
+            raise SystemExit("Failed to update hopper version in src-tauri/Cargo.lock")
           path.write_text(content)
           PY
 

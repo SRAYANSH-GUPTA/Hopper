@@ -1,6 +1,6 @@
 [package]
 name = "hopper"
-version = "0.7.68"
+version = "1.0.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
