@@ -168,27 +168,10 @@ export function SettingsDisplaySection({
         Adjust how the window renders backgrounds and effects.
       </div>
       <div className="settings-field">
-        <label className="settings-field-label" htmlFor="theme-select">
+        <label className="settings-field-label">
           Theme
         </label>
-        <select
-          id="theme-select"
-          className="settings-select"
-          value={appSettings.theme}
-          onChange={(event) =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              theme: event.target.value as AppSettings["theme"],
-            })
-          }
-        >
-          <option value="cursor">Cursor</option>
-          <option value="gen-z">Gen-Z</option>
-          <option value="system">System</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-          <option value="dim">Dim</option>
-        </select>
+        <div className="settings-help">Cursor</div>
       </div>
       <SettingsToggleRow
         title="Show remaining Codex limits"

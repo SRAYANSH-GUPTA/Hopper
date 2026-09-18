@@ -12,7 +12,8 @@ pub(crate) async fn get_app_settings(
     state: State<'_, AppState>,
     window: Window,
 ) -> Result<AppSettings, String> {
-    let settings = get_app_settings_core(&state.app_settings).await;
+    let mut settings = get_app_settings_core(&state.app_settings).await;
+    settings.theme = "cursor".to_string();
     let _ = window::apply_window_appearance(&window, settings.theme.as_str());
     Ok(settings)
 }
@@ -23,6 +24,8 @@ pub(crate) async fn update_app_settings(
     state: State<'_, AppState>,
     window: Window,
 ) -> Result<AppSettings, String> {
+    let mut settings = settings;
+    settings.theme = "cursor".to_string();
     let previous = state.app_settings.lock().await.clone();
     let updated =
         update_app_settings_core(settings, &state.app_settings, &state.settings_path).await?;
@@ -93,7 +96,7 @@ mod tests {
     fn should_not_reset_remote_backend_for_non_transport_setting_changes() {
         let previous = AppSettings::default();
         let mut updated = previous.clone();
-        updated.theme = "dark".to_string();
+        updated.theme = "cursor".to_string();
         updated.backend_mode = BackendMode::Local;
         assert!(!should_reset_remote_backend(&previous, &updated));
     }

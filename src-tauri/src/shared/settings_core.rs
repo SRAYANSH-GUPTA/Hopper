@@ -17,6 +17,7 @@ fn normalize_personality(value: &str) -> Option<&'static str> {
 
 pub(crate) async fn get_app_settings_core(app_settings: &Mutex<AppSettings>) -> AppSettings {
     let mut settings = app_settings.lock().await.clone();
+    settings.theme = "cursor".to_string();
     if let Ok(Some(collaboration_modes_enabled)) = codex_config::read_collaboration_modes_enabled()
     {
         settings.collaboration_modes_enabled = collaboration_modes_enabled;
@@ -45,6 +46,7 @@ pub(crate) async fn update_app_settings_core(
     app_settings: &Mutex<AppSettings>,
     settings_path: &PathBuf,
 ) -> Result<AppSettings, String> {
+    settings.theme = "cursor".to_string();
     settings.global_worktrees_folder = settings
         .global_worktrees_folder
         .map(|path| normalize_windows_namespace_path(&path));

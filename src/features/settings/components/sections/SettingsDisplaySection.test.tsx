@@ -15,7 +15,7 @@ describe("SettingsDisplaySection", () => {
       <SettingsDisplaySection
         appSettings={
           ({
-            theme: "system",
+            theme: "cursor",
             usageShowRemaining: false,
             showMessageFilePath: true,
             threadTitleAutogenerationEnabled: false,
@@ -68,7 +68,7 @@ describe("SettingsDisplaySection", () => {
       <SettingsDisplaySection
         appSettings={
           ({
-            theme: "system",
+            theme: "cursor",
             usageShowRemaining: false,
             showMessageFilePath: true,
             chatHistoryScrollbackItems: 200,
@@ -121,7 +121,7 @@ describe("SettingsDisplaySection", () => {
       <SettingsDisplaySection
         appSettings={
           ({
-            theme: "system",
+            theme: "cursor",
             usageShowRemaining: false,
             showMessageFilePath: true,
             chatHistoryScrollbackItems: null,
@@ -180,7 +180,7 @@ describe("SettingsDisplaySection", () => {
       <SettingsDisplaySection
         appSettings={
           ({
-            theme: "system",
+            theme: "cursor",
             usageShowRemaining: false,
             showMessageFilePath: true,
             chatHistoryScrollbackItems: 200,
@@ -230,7 +230,7 @@ describe("SettingsDisplaySection", () => {
       <SettingsDisplaySection
         appSettings={
           ({
-            theme: "system",
+            theme: "cursor",
             usageShowRemaining: false,
             showMessageFilePath: true,
             chatHistoryScrollbackItems: 200,
@@ -290,7 +290,7 @@ describe("SettingsDisplaySection", () => {
       <SettingsDisplaySection
         appSettings={
           ({
-            theme: "system",
+            theme: "cursor",
             usageShowRemaining: false,
             showMessageFilePath: true,
             chatHistoryScrollbackItems: 200,

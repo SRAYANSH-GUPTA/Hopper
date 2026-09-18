@@ -121,6 +121,18 @@ pub fn run() {
         .setup(|app| {
             let state = state::AppState::load(&app.handle());
             app.manage(state);
+            #[cfg(desktop)]
+            if let Some(main_window) = app.get_webview_window("main") {
+                let initial_theme = tauri::async_runtime::block_on(async {
+                    app.state::<state::AppState>()
+                        .app_settings
+                        .lock()
+                        .await
+                        .theme
+                        .clone()
+                });
+                let _ = main_window.set_theme(window::native_window_theme(initial_theme.as_str()));
+            }
             #[cfg(target_os = "macos")]
             {
                 let tray_state = app.state::<tray::TrayState>();

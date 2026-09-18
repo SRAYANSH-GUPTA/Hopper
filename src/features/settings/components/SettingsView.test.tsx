@@ -108,7 +108,7 @@ const baseSettings: AppSettings = {
   lastComposerModelId: null,
   lastComposerReasoningEffort: null,
   uiScale: 1,
-  theme: "system",
+  theme: "cursor",
   usageShowRemaining: false,
   showMessageFilePath: true,
   chatHistoryScrollbackItems: 200,
@@ -511,18 +511,9 @@ const renderEnvironmentsSection = (
 };
 
 describe("SettingsView Display", () => {
-  it("updates the theme selection", async () => {
-    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
-    renderDisplaySection({ onUpdateAppSettings });
-
-    const select = screen.getByLabelText("Theme");
-    fireEvent.change(select, { target: { value: "dark" } });
-
-    await waitFor(() => {
-      expect(onUpdateAppSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ theme: "dark" }),
-      );
-    });
+  it("uses the Cursor theme by default", () => {
+    renderDisplaySection();
+    expect(screen.getByText("Cursor")).toBeTruthy();
   });
 
   it("toggles remaining limits display", async () => {

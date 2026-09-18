@@ -13,28 +13,22 @@ type WindowAppearanceOverride =
 static WINDOW_APPEARANCE_OVERRIDE: OnceLock<Mutex<Option<WindowAppearanceOverride>>> =
     OnceLock::new();
 
+#[cfg(desktop)]
+pub(crate) fn native_window_theme(_theme: &str) -> Option<Theme> {
+    Some(Theme::Dark)
+}
+
 #[cfg(target_os = "macos")]
-fn apply_macos_window_appearance(window: &Window, theme: &str) -> Result<(), String> {
+fn apply_macos_window_appearance(window: &Window, _theme: &str) -> Result<(), String> {
     use objc2_app_kit::{
-        NSAppearance, NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
+        NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua,
         NSWindow,
     };
 
     let ns_window = window.ns_window().map_err(|error| error.to_string())?;
     let ns_window: &NSWindow = unsafe { &*ns_window.cast() };
 
-    if theme == "system" {
-        ns_window.setAppearance(None);
-        return Ok(());
-    }
-
-    let appearance_name = unsafe {
-        if theme == "light" {
-            NSAppearanceNameAqua
-        } else {
-            NSAppearanceNameDarkAqua
-        }
-    };
+    let appearance_name = unsafe { NSAppearanceNameDarkAqua };
     let appearance =
         NSAppearance::appearanceNamed(appearance_name).ok_or("NSAppearance missing")?;
     ns_window.setAppearance(Some(&appearance));
@@ -54,12 +48,7 @@ pub(crate) fn apply_window_appearance(window: &Window, theme: &str) -> Result<()
 
     #[cfg(desktop)]
     {
-        let next_theme = match theme {
-            "light" => Some(Theme::Light),
-            "dark" | "dim" => Some(Theme::Dark),
-            _ => None,
-        };
-        let _ = window.set_theme(next_theme);
+        let _ = window.set_theme(native_window_theme(theme));
     }
 
     #[cfg(target_os = "macos")]
@@ -74,6 +63,17 @@ pub(crate) fn apply_window_appearance(window: &Window, theme: &str) -> Result<()
     }
 
     Ok(())
+}
+
+#[cfg(all(test, desktop))]
+mod tests {
+    use super::native_window_theme;
+    use tauri::Theme;
+
+    #[test]
+    fn cursor_uses_dark_native_window_chrome() {
+        assert_eq!(native_window_theme("cursor"), Some(Theme::Dark));
+    }
 }
 
 #[cfg(target_os = "ios")]

@@ -48,7 +48,7 @@ describe("useAppSettings", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.settings.uiScale).toBe(UI_SCALE_MAX);
-    expect(result.current.settings.theme).toBe("system");
+    expect(result.current.settings.theme).toBe("cursor");
     expect(result.current.settings.uiFontFamily).toContain("system-ui");
     expect(result.current.settings.codeFontFamily).toContain("ui-monospace");
     expect(result.current.settings.codeFontSize).toBe(16);
@@ -78,7 +78,7 @@ describe("useAppSettings", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.settings.uiScale).toBe(UI_SCALE_DEFAULT);
-    expect(result.current.settings.theme).toBe("system");
+    expect(result.current.settings.theme).toBe("cursor");
     expect(result.current.settings.uiFontFamily).toContain("system-ui");
     expect(result.current.settings.codeFontFamily).toContain("ui-monospace");
     expect(result.current.settings.backendMode).toBe("local");
@@ -105,7 +105,7 @@ describe("useAppSettings", () => {
     const saved: AppSettings = {
       ...result.current.settings,
       codexArgs: "--profile dev",
-      theme: "dark",
+      theme: "cursor",
       uiScale: 2.4,
       uiFontFamily: "Avenir, sans-serif",
       codeFontFamily: "JetBrains Mono, monospace",
@@ -121,7 +121,7 @@ describe("useAppSettings", () => {
 
     expect(updateAppSettingsMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        theme: "system",
+      theme: "cursor",
         uiScale: 0.1,
         uiFontFamily: expect.stringContaining("system-ui"),
         codeFontFamily: expect.stringContaining("ui-monospace"),
@@ -130,7 +130,7 @@ describe("useAppSettings", () => {
       }),
     );
     expect(returned).toEqual(saved);
-    expect(result.current.settings.theme).toBe("dark");
+    expect(result.current.settings.theme).toBe("cursor");
     expect(result.current.settings.uiScale).toBe(2.4);
   });
 

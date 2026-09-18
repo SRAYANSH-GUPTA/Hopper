@@ -207,7 +207,7 @@ export type RemoteBackendTarget = {
   token: string | null;
   lastConnectedAtMs?: number | null;
 };
-export type ThemePreference = "system" | "light" | "dark" | "dim" | "cursor" | "gen-z";
+export type ThemePreference = "cursor";
 export type PersonalityPreference = "friendly" | "pragmatic";
 export type FollowUpMessageBehavior = "queue" | "steer";
 export type ComposerSendIntent = "default" | "queue" | "steer";
