@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MessageSquare, ExternalLink, Sparkles, Flame, Blocks, RefreshCw } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Webview } from "@tauri-apps/api/webview";
-import { setSidebarBrowserBounds } from "@services/tauri";
+import { createSidebarBrowser, setSidebarBrowserBounds, setSidebarBrowserVisible } from "@services/tauri";
 
 type Chatbot = "claude" | "chatgpt" | "copilot" | "gemini" | "mistral";
 
@@ -17,6 +16,11 @@ const CHATBOTS: { id: Chatbot; label: string; url: string; icon: React.ReactNode
 
 let webviewCounter = 0;
 const SIDEBAR_RESIZE_GUTTER = 8;
+
+// Persist webview instances and active chatbot across component unmounts so
+// switching sidebar tabs doesn't destroy the session.
+const webviewCache = new Map<Chatbot, Webview>();
+let persistedActiveChatbot: Chatbot | null = null;
 
 function getSidebarWebviewBounds(element: HTMLElement) {
   const panel = element.getBoundingClientRect();
@@ -39,25 +43,16 @@ function afterLayout(): Promise<void> {
   });
 }
 
-function getDesktopChromeUserAgent(): string {
-  const hostUserAgent = navigator.userAgent;
-  const platform = hostUserAgent.includes("Windows")
-    ? "Windows NT 10.0; Win64; x64"
-    : hostUserAgent.includes("Macintosh")
-      ? "Macintosh; Intel Mac OS X 10_15_7"
-      : "X11; Linux x86_64";
-  return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36`;
-}
-
 export function AiWebView() {
   const [selectedChatbot, setSelectedChatbot] = useState<Chatbot | null>(null);
-  const [activeChatbot, setActiveChatbot] = useState<Chatbot | null>(null);
+  const [activeChatbot, setActiveChatbot] = useState<Chatbot | null>(persistedActiveChatbot);
   const [webviewError, setWebviewError] = useState<string | null>(null);
   const [isWebviewLoading, setIsWebviewLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const webviewRef = useRef<Webview | null>(null);
   const readyWebviewRef = useRef<Webview | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
+  const isMountedRef = useRef(true);
 
   // Sync the webview position/size with the container element
   const syncWebviewBounds = useCallback(() => {
@@ -71,16 +66,43 @@ export function AiWebView() {
     });
   }, []);
 
-  // Create or destroy the native webview
+  // Create or reuse the native webview, preserving the session across tab switches
   const openWebview = useCallback(async (bot: typeof CHATBOTS[number]) => {
-    // Tear down old webview if any
+    const el = containerRef.current;
+    if (!el) return;
+
+    // Reuse a cached webview for this chatbot to keep its session alive
+    const cached = webviewCache.get(bot.id);
+    if (cached) {
+      webviewRef.current = cached;
+      readyWebviewRef.current = cached;
+      setWebviewError(null);
+      setIsWebviewLoading(false);
+      await afterLayout();
+      // If the component unmounted while we were awaiting layout, hide and bail
+      if (!isMountedRef.current) {
+        void setSidebarBrowserVisible(cached.label, false).catch(() => void cached.hide().catch(() => {}));
+        return;
+      }
+      syncWebviewBounds();
+      await setSidebarBrowserVisible(cached.label, true).catch(() => cached.show());
+      if (!isMountedRef.current) {
+        void setSidebarBrowserVisible(cached.label, false).catch(() => void cached.hide().catch(() => {}));
+        return;
+      }
+      if (observerRef.current) observerRef.current.disconnect();
+      const observer = new ResizeObserver(() => syncWebviewBounds());
+      observer.observe(el);
+      observerRef.current = observer;
+      window.addEventListener("resize", syncWebviewBounds);
+      return;
+    }
+
+    // Close any unrelated webview sitting in the ref (shouldn't normally happen)
     if (webviewRef.current) {
       try { await webviewRef.current.close(); } catch { /* already closed */ }
       webviewRef.current = null;
     }
-
-    const el = containerRef.current;
-    if (!el) return;
 
     try {
       setIsWebviewLoading(true);
@@ -88,39 +110,22 @@ export function AiWebView() {
       if (containerRef.current !== el || !el.isConnected) return;
       const bounds = getSidebarWebviewBounds(el);
       const label = `ai-chatbot-${++webviewCounter}`;
-      const appWindow = getCurrentWindow();
-      const webview = new Webview(appWindow, label, {
-        url: bot.url,
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-        userAgent: getDesktopChromeUserAgent(),
-        backgroundColor: "#101310",
-        transparent: false,
-      });
+      await createSidebarBrowser(label, bot.url, bounds);
+      const webview = await Webview.getByLabel(label);
+      if (!webview) {
+        throw new Error("The embedded browser was created but could not be attached.");
+      }
 
+      if (!isMountedRef.current) {
+        void setSidebarBrowserVisible(webview.label, false).catch(() => void webview.hide().catch(() => {}));
+        return;
+      }
       webviewRef.current = webview;
-      readyWebviewRef.current = null;
+      readyWebviewRef.current = webview;
+      webviewCache.set(bot.id, webview);
       setWebviewError(null);
-
-      void webview.once("tauri://created", () => {
-        if (webviewRef.current !== webview) return;
-        readyWebviewRef.current = webview;
-        setIsWebviewLoading(false);
-        syncWebviewBounds();
-      });
-      void webview.once<unknown>("tauri://error", (event) => {
-        if (webviewRef.current !== webview) return;
-        webviewRef.current = null;
-        setIsWebviewLoading(false);
-        const detail =
-          typeof event.payload === "string"
-            ? event.payload
-            : JSON.stringify(event.payload);
-        setWebviewError(detail || "The embedded browser could not be created.");
-        console.error("Failed to create AI webview:", event.payload);
-      });
+      setIsWebviewLoading(false);
+      syncWebviewBounds();
 
       // Keep position in sync on resize / layout shifts
       if (observerRef.current) {
@@ -141,12 +146,17 @@ export function AiWebView() {
     }
   }, [syncWebviewBounds]);
 
-  // Close webview on unmount
+  // Hide (not close) the webview on unmount so the session is preserved
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      if (webviewRef.current) {
-        void webviewRef.current.close().catch(() => {});
-        webviewRef.current = null;
+      isMountedRef.current = false;
+      const webview = webviewRef.current;
+      if (webview) {
+        // Use the Rust command for reliable GTK hide on Linux; JS .hide() as fallback
+        void setSidebarBrowserVisible(webview.label, false).catch(() => {
+          void webview.hide().catch(() => {});
+        });
       }
       if (observerRef.current) {
         observerRef.current.disconnect();
@@ -158,6 +168,7 @@ export function AiWebView() {
 
   const handleContinue = () => {
     if (selectedChatbot) {
+      persistedActiveChatbot = selectedChatbot;
       setActiveChatbot(selectedChatbot);
     }
   };
@@ -179,10 +190,15 @@ export function AiWebView() {
       try { await webviewRef.current.close(); } catch { /* ok */ }
       webviewRef.current = null;
     }
+    if (activeChatbot) {
+      webviewCache.delete(activeChatbot);
+    }
     if (observerRef.current) {
       observerRef.current.disconnect();
       observerRef.current = null;
     }
+    window.removeEventListener("resize", syncWebviewBounds);
+    persistedActiveChatbot = null;
     setActiveChatbot(null);
     setWebviewError(null);
     setIsWebviewLoading(false);
@@ -190,9 +206,16 @@ export function AiWebView() {
 
   const handleRefresh = () => {
     const bot = CHATBOTS.find((b) => b.id === activeChatbot);
-    if (bot) {
-      void openWebview(bot);
+    if (!bot) return;
+    // Close and remove the cached webview so openWebview creates a fresh one
+    const cached = webviewCache.get(bot.id);
+    if (cached) {
+      void cached.close().catch(() => {});
+      webviewCache.delete(bot.id);
     }
+    webviewRef.current = null;
+    readyWebviewRef.current = null;
+    void openWebview(bot);
   };
 
   const activeBot = CHATBOTS.find((b) => b.id === activeChatbot);

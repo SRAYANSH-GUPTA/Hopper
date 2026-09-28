@@ -1346,6 +1346,16 @@ export function getProviderSetupStatus() {
 export function setSidebarBrowserBounds(label: string, bounds: { x: number; y: number; width: number; height: number }) {
   return invoke<void>("set_sidebar_browser_bounds", { label, ...bounds });
 }
+export function setSidebarBrowserVisible(label: string, visible: boolean) {
+  return invoke<void>("set_sidebar_browser_visible", { label, visible });
+}
+export function createSidebarBrowser(
+  label: string,
+  url: string,
+  bounds: { x: number; y: number; width: number; height: number },
+) {
+  return invoke<void>("create_sidebar_browser", { label, url, ...bounds });
+}
 export function runProviderSetupAction(provider: SetupProviderId, action: "install" | "login" | "verify") {
   return invoke<{ message: string; verified?: boolean }>("provider_setup_action", { provider, action });
 }

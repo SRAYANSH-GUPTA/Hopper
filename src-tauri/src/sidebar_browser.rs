@@ -1,5 +1,56 @@
-//! Desktop-only placement of the embedded sidebar browser.
-use tauri::Manager;
+//! Desktop-only lifecycle and placement of the embedded sidebar browser.
+use tauri::{Manager, Url, WebviewUrl};
+
+#[tauri::command]
+pub(crate) async fn create_sidebar_browser(
+    app: tauri::AppHandle,
+    label: String,
+    url: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    if !label.starts_with("ai-chatbot-")
+        || ![x, y, width, height].iter().all(|value| value.is_finite())
+        || width <= 0.0
+        || height <= 0.0
+    {
+        return Err("Invalid sidebar browser configuration".into());
+    }
+
+    let url = Url::parse(&url).map_err(|error| error.to_string())?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("Sidebar browser URL must use HTTP or HTTPS".into());
+    }
+
+    let window = app.get_window("main").ok_or("Main window not found")?;
+    let data_directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("sidebar-browser");
+    let popup_app = app.clone();
+    let popup_label = label.clone();
+    let builder = tauri::webview::WebviewBuilder::new(label, WebviewUrl::External(url))
+        .data_directory(data_directory)
+        .enable_clipboard_access()
+        .on_new_window(move |url, _features| {
+            if let Some(webview) = popup_app.get_webview(&popup_label) {
+                let _ = webview.navigate(url);
+            }
+            tauri::webview::NewWindowResponse::Deny
+        });
+
+    window
+        .add_child(
+            builder,
+            tauri::LogicalPosition::new(x, y),
+            tauri::LogicalSize::new(width, height),
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
 
 #[tauri::command]
 pub(crate) async fn set_sidebar_browser_bounds(
@@ -105,5 +156,47 @@ pub(crate) async fn set_sidebar_browser_bounds(
             .map_err(|error| error.to_string())?;
         view.set_size(tauri::LogicalSize::new(width, height))
             .map_err(|error| error.to_string())
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn set_sidebar_browser_visible(
+    app: tauri::AppHandle,
+    label: String,
+    visible: bool,
+) -> Result<(), String> {
+    if !label.starts_with("ai-chatbot-") {
+        return Err("Invalid sidebar browser label".into());
+    }
+    let view = app.get_webview(&label).ok_or("Sidebar browser not found")?;
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::*;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        view.with_webview(move |platform| {
+            let browser = platform.inner();
+            // Hiding only the browser widget leaves the gtk::Fixed container
+            // visible; it still intercepts mouse events. Hide/show the Fixed
+            // (browser's direct parent) to fully remove the input surface.
+            let fixed = browser
+                .parent()
+                .and_then(|p| p.downcast::<gtk::Fixed>().ok());
+            if let Some(fixed) = fixed {
+                if visible { fixed.show_all(); } else { fixed.hide(); }
+            } else {
+                if visible { browser.show(); } else { browser.hide(); }
+            }
+            let _ = tx.send(());
+        })
+        .map_err(|error| error.to_string())?;
+        rx.await.map_err(|error| error.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // On macOS and Windows the JS webview.hide()/show() path is reliable;
+        // this command is a no-op so the frontend can call it unconditionally.
+        let _ = (view, visible);
+        Ok(())
     }
 }
