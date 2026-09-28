@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use tokio::sync::Mutex;
 
@@ -10,11 +10,18 @@ use crate::backend::app_server::WorkspaceSession;
 use crate::codex::args::resolve_workspace_codex_args;
 use crate::codex::home::resolve_workspace_codex_home;
 use crate::shared::process_core::kill_child_process_tree;
-use crate::types::{AppSettings, WorkspaceEntry};
+use crate::types::{AppSettings, LocalAgentProvider, WorkspaceEntry};
 
 use super::helpers::resolve_entry_and_parent;
 
 static CONNECT_WORKSPACE_SPAWN_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+pub(super) async fn uses_codex_provider(app_settings: &Mutex<AppSettings>) -> bool {
+    matches!(
+        app_settings.lock().await.local_provider,
+        LocalAgentProvider::Codex
+    )
+}
 
 pub(super) fn workspace_session_spawn_lock() -> &'static Mutex<()> {
     CONNECT_WORKSPACE_SPAWN_LOCK.get_or_init(|| Mutex::new(()))

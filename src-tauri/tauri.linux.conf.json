@@ -1,4 +1,10 @@
 {
+  "bundle": {
+    "targets": [
+      "deb",
+      "rpm"
+    ]
+  },
   "app": {
     "windows": [
       {

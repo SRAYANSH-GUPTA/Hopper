@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { pickImageFiles } from "../../../services/tauri";
+import { pickAttachmentFiles } from "../../../services/tauri";
 
 type UseComposerImagesArgs = {
   activeThreadId: string | null;
@@ -34,7 +34,7 @@ export function useComposerImages({
   );
 
   const pickImages = useCallback(async () => {
-    const picked = await pickImageFiles();
+    const picked = await pickAttachmentFiles();
     if (picked.length === 0) {
       return;
     }

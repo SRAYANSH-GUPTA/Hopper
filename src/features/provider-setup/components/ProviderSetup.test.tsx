@@ -8,9 +8,10 @@ vi.mock("@services/tauri", () => ({
   getProviderSetupStatus: vi.fn(), runProviderSetupAction: vi.fn(), saveProviderSetup: vi.fn(),
 }));
 const status: ProviderSetupStatus = {
-  preferences: { completed: false, claudeEnabled: false, antigravityEnabled: false, antigravityAutoApprove: false },
+  preferences: { completed: false, codexEnabled: false, claudeEnabled: false, antigravityEnabled: false, antigravityAutoApprove: false },
   platform: "linux", supported: true,
   providers: [
+    { id: "codex", label: "Codex", installed: false, version: null, path: null, authenticated: null },
     { id: "claude", label: "Claude Code", installed: false, version: null, path: null, authenticated: null },
     { id: "antigravity", label: "Antigravity", installed: true, version: null, path: "/usr/bin/agy", authenticated: null },
   ],
@@ -48,6 +49,13 @@ describe("ProviderSetup", () => {
     fireEvent.click(screen.getByRole("button", { name: "Install Claude Code" }));
     await waitFor(() => expect(runProviderSetupAction).toHaveBeenCalledWith("claude", "install"));
     expect(saveProviderSetup).not.toHaveBeenCalled();
+  });
+
+  it("offers the official Codex install action", async () => {
+    render(<ProviderSetup targetKey="local" />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Codex" }));
+    fireEvent.click(screen.getByRole("button", { name: "Install Codex" }));
+    await waitFor(() => expect(runProviderSetupAction).toHaveBeenCalledWith("codex", "install"));
   });
 
   it("keeps failed connection checks incomplete and retryable", async () => {
@@ -88,8 +96,8 @@ describe("ProviderSetup", () => {
     const later = screen.getByRole("button", { name: "Set up later" });
     later.focus();
     fireEvent.keyDown(later, { key: "Tab" });
-    expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: "Claude Code" }));
-    fireEvent.keyDown(within(dialog).getByRole("checkbox", { name: "Claude Code" }), { key: "Escape" });
+    expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: "Codex" }));
+    fireEvent.keyDown(within(dialog).getByRole("checkbox", { name: "Codex" }), { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(saveProviderSetup).not.toHaveBeenCalled();
   });

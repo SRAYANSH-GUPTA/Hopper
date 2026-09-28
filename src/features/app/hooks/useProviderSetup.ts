@@ -87,7 +87,7 @@ export function useProviderSetup(enabled: boolean, targetKey: string) {
     }
   };
 
-  const selected = preferences ? [preferences.claudeEnabled && "claude", preferences.antigravityEnabled && "antigravity"].filter(Boolean) as SetupProviderId[] : [];
+  const selected = preferences ? [preferences.codexEnabled && "codex", preferences.claudeEnabled && "claude", preferences.antigravityEnabled && "antigravity"].filter(Boolean) as SetupProviderId[] : [];
   return { status, preferences, setPreferences, verified, busy, error, message, closed, dismiss: () => setClosed(true), refresh, act, finish,
     canFinish: selected.length > 0 && selected.every((id) => verified[id]) };
 }

@@ -522,6 +522,7 @@ pub(crate) async fn send_user_message(
             thread_id,
             text,
             model_id,
+            effort,
             images,
             event_sink,
         )
@@ -717,8 +718,11 @@ pub(crate) async fn model_list(
         .await;
     }
 
-    // Model discovery always comes from Codex, even when Claude or Antigravity is
-    // the active conversation provider. Connect a Codex app-server directly.
+    // For the Claude provider, fetch models from the Claude Code model catalog.
+    if claude::is_claude_mode(&state.app_settings).await {
+        return claude::list_models_claude().await;
+    }
+
     workspaces_core::connect_workspace_core(
         workspace_id.clone(),
         &state.workspaces,

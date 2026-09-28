@@ -86,6 +86,14 @@ export async function pickImageFiles(): Promise<string[]> {
   return Array.isArray(selection) ? selection : [selection];
 }
 
+export async function pickAttachmentFiles(): Promise<string[]> {
+  const selection = await open({ multiple: true });
+  if (!selection) {
+    return [];
+  }
+  return Array.isArray(selection) ? selection : [selection];
+}
+
 export async function exportMarkdownFile(
   content: string,
   defaultFileName = "plan.md",
@@ -1310,9 +1318,10 @@ function camelCaseSkill(r: Record<string, unknown>): MarketplaceSkill {
   };
 }
 
-export type SetupProviderId = "claude" | "antigravity";
+export type SetupProviderId = "codex" | "claude" | "antigravity";
 export type ProviderSetupPreferences = {
   completed: boolean;
+  codexEnabled: boolean;
   claudeEnabled: boolean;
   antigravityEnabled: boolean;
   antigravityAutoApprove: boolean;

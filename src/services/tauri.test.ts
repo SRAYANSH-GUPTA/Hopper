@@ -45,6 +45,7 @@ import {
   tailscaleDaemonStop,
   tailscaleStatus,
   pickImageFiles,
+  pickAttachmentFiles,
   pickWorkspacePaths,
   providerUsageOutput,
   writeGlobalAgentsMd,
@@ -153,6 +154,17 @@ describe("tauri invoke wrappers", () => {
         },
       ],
     });
+  });
+
+  it("allows selecting any attachment file", async () => {
+    const openMock = vi.mocked(open);
+    openMock.mockResolvedValueOnce(["/tmp/report.pdf", "/tmp/notes.docx"]);
+
+    await expect(pickAttachmentFiles()).resolves.toEqual([
+      "/tmp/report.pdf",
+      "/tmp/notes.docx",
+    ]);
+    expect(openMock).toHaveBeenCalledWith({ multiple: true });
   });
 
   it("returns null when markdown export is cancelled", async () => {
@@ -1130,7 +1142,7 @@ describe("tauri invoke wrappers", () => {
     expect(invoke).toHaveBeenCalledWith("provider_setup_status");
     await runProviderSetupAction("antigravity", "verify");
     expect(invoke).toHaveBeenCalledWith("provider_setup_action", { provider: "antigravity", action: "verify" });
-    const preferences = { completed: true, claudeEnabled: true, antigravityEnabled: false, antigravityAutoApprove: false };
+    const preferences = { completed: true, codexEnabled: false, claudeEnabled: true, antigravityEnabled: false, antigravityAutoApprove: false };
     await saveProviderSetup(preferences);
     expect(invoke).toHaveBeenCalledWith("provider_setup_save", { preferences });
   });

@@ -1,6 +1,8 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import Image from "lucide-react/dist/esm/icons/image";
+import FileText from "lucide-react/dist/esm/icons/file-text";
 import X from "lucide-react/dist/esm/icons/x";
+import { isImageAttachment } from "../utils/attachments";
 
 type ComposerAttachmentsProps = {
   attachments: string[];
@@ -21,6 +23,9 @@ function fileTitle(path: string) {
 }
 
 function attachmentPreviewSrc(path: string) {
+  if (!isImageAttachment(path)) {
+    return "";
+  }
   if (path.startsWith("data:")) {
     return path;
   }
@@ -66,7 +71,11 @@ export function ComposerAttachments({
               </span>
             ) : (
               <span className="composer-icon" aria-hidden>
-                <Image size={14} />
+                {isImageAttachment(path) ? (
+                  <Image size={14} />
+                ) : (
+                  <FileText size={14} />
+                )}
               </span>
             )}
             <span className="composer-attachment-name">{title}</span>

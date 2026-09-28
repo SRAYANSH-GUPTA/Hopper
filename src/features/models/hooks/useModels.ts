@@ -12,7 +12,12 @@ type UseModelsOptions = {
   preferredModelId?: string | null;
   preferredEffort?: string | null;
   selectionKey?: string | null;
-  staticModels?: { id: string; label: string }[] | null;
+  staticModels?: {
+    id: string;
+    label: string;
+    supportedReasoningEfforts?: string[];
+    defaultReasoningEffort?: string | null;
+  }[] | null;
   refreshTrigger?: number;
 };
 
@@ -78,8 +83,11 @@ export function useModels({
         model: sm.id,
         displayName: sm.label,
         description: "",
-        supportedReasoningEfforts: [],
-        defaultReasoningEffort: null,
+        supportedReasoningEfforts: (sm.supportedReasoningEfforts ?? []).map((reasoningEffort) => ({
+          reasoningEffort,
+          description: "",
+        })),
+        defaultReasoningEffort: sm.defaultReasoningEffort ?? null,
         isDefault: index === 0,
       }));
     }

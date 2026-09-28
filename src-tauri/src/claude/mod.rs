@@ -2,7 +2,7 @@ pub(crate) mod permission_server;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 
@@ -156,6 +156,140 @@ impl ClaudeState {
     }
 }
 
+/// Fetch the Claude Code model catalog and return models in the Hopper model-list format.
+///
+/// Primary source: `https://downloads.claude.ai/model-catalog/v1/catalog.json` (no auth).
+/// Fallback: the locally cached catalog in `~/.claude/cache/model-catalog/`.
+pub(crate) async fn list_models_claude() -> Result<Value, String> {
+    const CATALOG_URL: &str = "https://downloads.claude.ai/model-catalog/v1/catalog.json";
+
+    let catalog = fetch_catalog_from_url(CATALOG_URL)
+        .await
+        .or_else(|_| read_catalog_from_cache())?;
+
+    let models = extract_models_from_catalog(&catalog);
+    Ok(json!({ "result": { "data": models } }))
+}
+
+async fn fetch_catalog_from_url(url: &str) -> Result<Value, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .https_only(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    resp.json::<Value>().await.map_err(|e| e.to_string())
+}
+
+fn read_catalog_from_cache() -> Result<Value, String> {
+    let cache_dir = dirs::home_dir()
+        .ok_or("Cannot locate home directory")?
+        .join(".claude/cache/model-catalog");
+
+    let entries = std::fs::read_dir(&cache_dir).map_err(|e| e.to_string())?;
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+
+    let mut best: Option<(i64, Value)> = None;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("published-") || !name.ends_with(".json") || name == "published-floor.json" {
+            continue;
+        }
+        let bytes = match std::fs::read(entry.path()) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let wrapper: Value = match serde_json::from_slice(&bytes) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let stale_at = wrapper.get("staleAt").and_then(Value::as_i64).unwrap_or(0);
+        let fetched_at = wrapper.get("fetchedAt").and_then(Value::as_i64).unwrap_or(0);
+
+        // Prefer most recently fetched; accept expired catalogs as last resort.
+        let doc_bytes = match wrapper.get("documentBytes").and_then(Value::as_str) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        let decoded = match base64::engine::general_purpose::STANDARD.decode(&doc_bytes) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let catalog: Value = match serde_json::from_slice(&decoded) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        // Prefer non-expired entries; among equals pick the freshest.
+        let is_fresh = stale_at > now_ms;
+        let score = if is_fresh { fetched_at + i64::MAX / 2 } else { fetched_at };
+        if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
+            best = Some((score, catalog));
+        }
+    }
+
+    best.map(|(_, catalog)| catalog)
+        .ok_or_else(|| "No local Claude model catalog cache found".into())
+}
+
+fn extract_models_from_catalog(catalog: &Value) -> Vec<Value> {
+    let models = catalog
+        .get("surfaces")
+        .and_then(|s| s.get("cc"))
+        .and_then(|cc| cc.get("model_selector_config"))
+        .and_then(Value::as_array)
+        .and_then(|arr| arr.first())
+        .and_then(|cfg| cfg.get("models"))
+        .and_then(Value::as_array);
+
+    let Some(models) = models else {
+        return vec![];
+    };
+
+    models
+        .iter()
+        .filter_map(|m| {
+            let id = m.get("id")?.as_str()?;
+            let name = m.get("name").and_then(Value::as_str).unwrap_or(id);
+            let description = m.get("description").and_then(Value::as_str).unwrap_or("");
+            let runtime = m.get("runtime");
+            let effort_levels: Vec<&str> = runtime
+                .and_then(|r| r.get("effort_levels"))
+                .and_then(Value::as_array)
+                .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            let default_effort = runtime
+                .and_then(|r| r.get("default_effort"))
+                .and_then(Value::as_str);
+
+            let supported_reasoning_efforts: Vec<Value> = effort_levels
+                .iter()
+                .map(|e| json!({ "reasoningEffort": e, "description": "" }))
+                .collect();
+
+            Some(json!({
+                "id": id,
+                "model": id,
+                "displayName": name,
+                "description": description,
+                "supportedReasoningEfforts": supported_reasoning_efforts,
+                "defaultReasoningEffort": default_effort,
+                "isDefault": false,
+            }))
+        })
+        .collect()
+}
+
 pub(crate) async fn is_claude_mode(app_settings: &Mutex<crate::types::AppSettings>) -> bool {
     matches!(app_settings.lock().await.local_provider, LocalAgentProvider::Claude)
 }
@@ -298,6 +432,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     thread_id: String,
     text: String,
     model_id: Option<String>,
+    effort: Option<String>,
     images: Option<Vec<String>>,
     event_sink: E,
 ) -> Result<Value, String> {
@@ -402,6 +537,9 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         .filter(|s| !s.trim().is_empty())
         .unwrap_or("claude-sonnet-4-6");
     cmd.arg("--model").arg(resolved_model);
+    if let Some(effort) = effort.filter(|value| !value.trim().is_empty()) {
+        cmd.arg("--effort").arg(effort);
+    }
     cmd.arg("-p").arg(&text);
     for path in &image_paths {
         cmd.arg("--image").arg(path);

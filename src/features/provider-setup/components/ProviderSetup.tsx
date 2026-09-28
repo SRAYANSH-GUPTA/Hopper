@@ -36,7 +36,7 @@ export function ProviderSetup({ enabled = true, onboarding = false, targetKey, r
       {!status && !busy && <button className="secondary" onClick={() => void setup.refresh()}>Check providers</button>}
       {status && !status.supported && <p>Install providers on a desktop or connect Hopper to a remote host.</p>}
       {status?.supported && status.providers.map((provider) => {
-        const key = provider.id === "claude" ? "claudeEnabled" : "antigravityEnabled";
+        const key = provider.id === "codex" ? "codexEnabled" : provider.id === "claude" ? "claudeEnabled" : "antigravityEnabled";
         const selected = preferences?.[key] ?? false;
         const ready = setup.verified[provider.id];
         return (
@@ -64,7 +64,7 @@ export function ProviderSetup({ enabled = true, onboarding = false, targetKey, r
                     </>
                   )}
                 </div>
-                {remote && <p className="provider-setup-note">On the host, run <code>{provider.id === "claude" ? "claude auth login" : "agy"}</code>, complete sign-in, then test here.</p>}
+                {remote && <p className="provider-setup-note">On the host, run <code>{provider.id === "codex" ? "codex login" : provider.id === "claude" ? "claude auth login" : "agy"}</code>, complete sign-in, then test here.</p>}
                 {provider.id === "antigravity" && (
                   <label className="provider-setup-permissions">
                     <input type="checkbox" checked={preferences?.antigravityAutoApprove ?? false} disabled={Boolean(busy)} onChange={(event) => setup.setPreferences((prev) => prev && ({ ...prev, antigravityAutoApprove: event.target.checked }))} />

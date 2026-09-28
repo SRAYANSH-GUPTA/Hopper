@@ -2035,7 +2035,7 @@ export default function MainApp() {
       remote={appSettings.backendMode === "remote"}
       targetKey={`${appSettings.backendMode}:${appSettings.remoteBackendHost}`}
       onConfigured={async (preferences) => {
-        const provider = preferences.claudeEnabled ? "claude" : "antigravity";
+        const provider = preferences.codexEnabled ? "codex" : preferences.claudeEnabled ? "claude" : "antigravity";
         await queueSaveSettings({ ...appSettings, localProvider: provider });
       }}
     />

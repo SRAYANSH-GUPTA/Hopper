@@ -1,29 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { subscribeWindowDragDrop } from "../../../services/dragDrop";
-
-const imageExtensions = [
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".tiff",
-  ".tif",
-  ".heic",
-  ".heif",
-];
-
-function isImagePath(path: string) {
-  const lower = path.toLowerCase();
-  return imageExtensions.some((ext) => lower.endsWith(ext));
-}
+import { isImageAttachment } from "../utils/attachments";
 
 function isImageFile(file: File) {
   if (file.type.startsWith("image/")) {
     return true;
   }
-  return isImagePath(file.name);
+  return isImageAttachment(file.name);
 }
 
 function getFilePath(file: File) {
@@ -95,12 +78,20 @@ function readFilesAsDataUrls(files: File[]) {
   ).then((items) => items.filter(Boolean));
 }
 
-async function resolveImageAttachments(files: File[]) {
-  const paths = files.map(getFilePath).filter(Boolean);
-  if (paths.length > 0) {
-    return paths;
-  }
-  return readFilesAsDataUrls(files);
+async function resolveAttachments(files: File[]) {
+  const resolved = await Promise.all(
+    files.map(async (file) => {
+      const path = getFilePath(file);
+      if (path) {
+        return path;
+      }
+      if (!isImageFile(file)) {
+        return "";
+      }
+      return (await readFilesAsDataUrls([file]))[0] ?? "";
+    }),
+  );
+  return resolved.filter(Boolean);
 }
 
 function getDragPosition(position: { x: number; y: number }) {
@@ -172,12 +163,11 @@ export function useComposerImageDrop({
         if (!isInside) {
           return;
         }
-        const imagePaths = (event.payload.paths ?? [])
+        const attachmentPaths = (event.payload.paths ?? [])
           .map((path) => path.trim())
-          .filter(Boolean)
-          .filter(isImagePath);
-        if (imagePaths.length > 0) {
-          onAttachImages?.(imagePaths);
+          .filter(Boolean);
+        if (attachmentPaths.length > 0) {
+          onAttachImages?.(attachmentPaths);
         }
       }
     });
@@ -220,9 +210,12 @@ export function useComposerImageDrop({
     const files = collectFilesFromTransfer(
       event.dataTransfer?.files,
       event.dataTransfer?.items,
-    ).filter(isImageFile);
+    );
     if (files.length > 0) {
-      onAttachImages?.(await resolveImageAttachments(files));
+      const attachments = await resolveAttachments(files);
+      if (attachments.length > 0) {
+        onAttachImages?.(attachments);
+      }
     }
   };
 
@@ -233,7 +226,7 @@ export function useComposerImageDrop({
     let files = collectFilesFromTransfer(
       event.clipboardData?.files,
       event.clipboardData?.items,
-    ).filter(isImageFile);
+    );
 
     if (files.length === 0) {
       // Fallback: Webviews (like WebKitGTK in Tauri on Linux) sometimes do not populate
@@ -266,10 +259,8 @@ export function useComposerImageDrop({
       return;
     }
 
-    if (event.cancelable) {
-      event.preventDefault();
-    }
-    const valid = await resolveImageAttachments(files);
+    event.preventDefault();
+    const valid = await resolveAttachments(files);
     if (valid.length > 0) {
       onAttachImages?.(valid);
     }

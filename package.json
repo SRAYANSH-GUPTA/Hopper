@@ -10,7 +10,7 @@
     "dev": "vite",
     "prebuild": "npm run sync:material-icons",
     "build": "tsc && vite build",
-    "build:appimage": "NO_STRIP=1 tauri build --bundles appimage",
+    "build:appimage": "NO_STRIP=true tauri build --bundles appimage",
     "doctor": "sh scripts/doctor.sh",
     "doctor:strict": "sh scripts/doctor.sh --strict",
     "doctor:win": "node scripts/doctor.mjs --strict",

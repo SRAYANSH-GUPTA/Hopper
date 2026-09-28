@@ -196,7 +196,7 @@ describe("useComposerImageDrop", () => {
     hook.unmount();
   });
 
-  it("filters tauri drag-drop paths and respects drop target", async () => {
+  it("accepts all tauri drag-drop file paths and respects drop target", async () => {
     const onAttachImages = vi.fn();
     const hook = renderImageDropHook({ disabled: false, onAttachImages });
 
@@ -240,7 +240,10 @@ describe("useComposerImageDrop", () => {
       });
     });
 
-    expect(onAttachImages).toHaveBeenCalledWith(["/tmp/photo.png"]);
+    expect(onAttachImages).toHaveBeenCalledWith([
+      "/tmp/photo.png",
+      "/tmp/note.txt",
+    ]);
 
     hook.unmount();
   });

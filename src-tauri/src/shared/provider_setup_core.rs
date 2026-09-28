@@ -14,18 +14,21 @@ static SETUP_OPERATION: Mutex<()> = Mutex::const_new(());
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum SetupProvider {
+    Codex,
     Claude,
     Antigravity,
 }
 impl SetupProvider {
     pub(crate) fn bin(self) -> &'static str {
         match self {
+            Self::Codex => "codex",
             Self::Claude => "claude",
             Self::Antigravity => "agy",
         }
     }
     fn label(self) -> &'static str {
         match self {
+            Self::Codex => "Codex",
             Self::Claude => "Claude Code",
             Self::Antigravity => "Antigravity",
         }
@@ -36,6 +39,7 @@ impl SetupProvider {
 #[serde(default, rename_all = "camelCase")]
 pub(crate) struct SetupPreferences {
     pub completed: bool,
+    pub codex_enabled: bool,
     pub claude_enabled: bool,
     pub antigravity_enabled: bool,
     pub antigravity_auto_approve: bool,
@@ -192,7 +196,11 @@ async fn checked_output(
 pub(crate) async fn setup_status() -> Result<Value, String> {
     let preferences = read_preferences()?;
     let mut providers = Vec::new();
-    for provider in [SetupProvider::Claude, SetupProvider::Antigravity] {
+    for provider in [
+        SetupProvider::Codex,
+        SetupProvider::Claude,
+        SetupProvider::Antigravity,
+    ] {
         let path = resolve_provider_bin(provider).await;
         let mut version = None;
         let mut authenticated = None;
@@ -213,6 +221,10 @@ pub(crate) async fn setup_status() -> Result<Value, String> {
                         .ok()
                         .and_then(|v| v.get("loggedIn").and_then(Value::as_bool));
                 }
+            } else if provider == SetupProvider::Codex {
+                let mut cmd = tokio_command(path);
+                cmd.args(["login", "status"]);
+                authenticated = Some(checked_output(cmd, 8).await.is_ok());
             }
         }
         providers.push(json!({"id": provider, "label": provider.label(), "installed": path.is_some(), "path": path, "version": version, "authenticated": authenticated}));
@@ -225,6 +237,8 @@ pub(crate) async fn setup_status() -> Result<Value, String> {
 
 fn installer_url(provider: SetupProvider, windows: bool) -> &'static str {
     match (provider, windows) {
+        (SetupProvider::Codex, false) => "https://chatgpt.com/codex/install.sh",
+        (SetupProvider::Codex, true) => "https://chatgpt.com/codex/install.ps1",
         (SetupProvider::Claude, false) => "https://claude.ai/install.sh",
         (SetupProvider::Claude, true) => "https://claude.ai/install.ps1",
         (SetupProvider::Antigravity, false) => "https://antigravity.google/cli/install.sh",
@@ -325,10 +339,10 @@ async fn open_login(provider: SetupProvider) -> Result<Value, String> {
     let path = resolve_provider_bin(provider)
         .await
         .ok_or("Install this provider first")?;
-    let args = if provider == SetupProvider::Claude {
-        " auth login"
-    } else {
-        ""
+    let args = match provider {
+        SetupProvider::Codex => " login",
+        SetupProvider::Claude => " auth login",
+        SetupProvider::Antigravity => "",
     };
     #[cfg(target_os = "macos")]
     {
@@ -394,15 +408,27 @@ async fn verify(provider: SetupProvider) -> Result<Value, String> {
     let path = resolve_provider_bin(provider)
         .await
         .ok_or("Install this provider first")?;
-    // Antigravity's print prompt consumes model quota, so use its account-safe
-    // model discovery command for the connection check instead.
+    // Prefer account-safe commands that do not consume model quota.
+    if provider == SetupProvider::Codex {
+        let mut command = tokio_command(path);
+        command.args(["login", "status"]);
+        checked_output(command, 30).await.map_err(|e| {
+            format!("Connection check failed. Sign in and check account access. {e}")
+        })?;
+        return Ok(
+            json!({"verified": true, "message": "Connection verified. Ready to use in Hopper."}),
+        );
+    }
+    // Antigravity uses its account-safe model discovery command.
     if provider == SetupProvider::Antigravity {
         let mut command = tokio_command(path);
         command.arg("models");
         checked_output(command, 30).await.map_err(|e| {
             format!("Connection check failed. Sign in and check account access. {e}")
         })?;
-        return Ok(json!({"verified": true, "message": "Connection verified. Ready to use in Hopper."}));
+        return Ok(
+            json!({"verified": true, "message": "Connection verified. Ready to use in Hopper."}),
+        );
     }
     // An isolated empty directory prevents this check from reading a user's project.
     let dir = std::env::temp_dir().join(format!("hopper-provider-check-{}", uuid::Uuid::new_v4()));
@@ -447,6 +473,7 @@ async fn verify(provider: SetupProvider) -> Result<Value, String> {
 
 fn verification_succeeded(provider: SetupProvider, value: &Value) -> bool {
     match provider {
+        SetupProvider::Codex => false,
         SetupProvider::Claude => {
             value.get("is_error").and_then(Value::as_bool) == Some(false)
                 && value
@@ -537,6 +564,10 @@ mod tests {
     #[test]
     fn only_known_provider_installers_are_selected() {
         assert!(serde_json::from_str::<SetupProvider>("\"arbitrary-command\"").is_err());
+        assert_eq!(
+            installer_url(SetupProvider::Codex, false),
+            "https://chatgpt.com/codex/install.sh"
+        );
         assert_eq!(
             installer_url(SetupProvider::Claude, false),
             "https://claude.ai/install.sh"

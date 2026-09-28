@@ -15,7 +15,9 @@ use crate::types::{
     WorktreeSetupStatus,
 };
 
-use super::connect::{kill_session_by_id, take_live_shared_session, workspace_session_spawn_lock};
+use super::connect::{
+    kill_session_by_id, take_live_shared_session, uses_codex_provider, workspace_session_spawn_lock,
+};
 use super::helpers::{
     copy_agents_md_from_parent_to_worktree, normalize_setup_script, workspace_path_to_string,
     worktree_setup_marker_path, AGENTS_MD_FILE_NAME,
@@ -221,10 +223,15 @@ where
     };
 
     let _spawn_guard = workspace_session_spawn_lock().lock().await;
-    let existing_session = take_live_shared_session(sessions).await;
-    let session = if let Some(existing_session) = existing_session {
-        existing_session
+    let use_codex = uses_codex_provider(app_settings).await;
+    let existing_session = if use_codex {
+        take_live_shared_session(sessions).await
     } else {
+        None
+    };
+    let session = if let Some(existing_session) = existing_session {
+        Some(existing_session)
+    } else if use_codex {
         let (default_bin, codex_args) = {
             let settings = app_settings.lock().await;
             (
@@ -233,7 +240,9 @@ where
             )
         };
         let codex_home = resolve_workspace_codex_home(&entry, Some(&parent_entry));
-        spawn_session(entry.clone(), default_bin, codex_args, codex_home).await?
+        Some(spawn_session(entry.clone(), default_bin, codex_args, codex_home).await?)
+    } else {
+        None
     };
 
     {
@@ -243,10 +252,12 @@ where
         write_workspaces(storage_path, &list)?;
     }
 
-    session
-        .register_workspace_with_path(&entry.id, Some(&entry.path))
-        .await;
-    sessions.lock().await.insert(entry.id.clone(), session);
+    if let Some(session) = session {
+        session
+            .register_workspace_with_path(&entry.id, Some(&entry.path))
+            .await;
+        sessions.lock().await.insert(entry.id.clone(), session);
+    }
 
     Ok(WorkspaceInfo {
         id: entry.id,

@@ -3,6 +3,8 @@ import type { AppSettings } from "@/types";
 export type ProviderStaticModel = {
   id: string;
   label: string;
+  supportedReasoningEfforts?: string[];
+  defaultReasoningEffort?: string | null;
 };
 
 export type ProviderConfig = {
@@ -56,13 +58,7 @@ export const PROVIDERS: ProviderConfig[] = [
   {
     id: "claude",
     label: "Claude",
-    staticModels: [
-      { id: "claude-fable-5", label: "Fable 5" },
-      { id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
-      { id: "claude-opus-4-8", label: "Opus 4.8" },
-      { id: "claude-opus-4-6", label: "Opus 4.6" },
-      { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
-    ],
+    staticModels: null, // fetched dynamically from the Claude Code model catalog
     defaultModelId: "claude-sonnet-4-6",
     getModelId: (s) => s.claudeModelId ?? "claude-sonnet-4-6",
     setModelId: (modelId) => ({ claudeModelId: modelId }),

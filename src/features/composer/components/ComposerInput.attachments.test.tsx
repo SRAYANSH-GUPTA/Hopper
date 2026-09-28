@@ -174,7 +174,7 @@ function setMockFileReader() {
 }
 
 describe("Composer attachments integration", () => {
-  it("attaches dropped image files, filters non-images, and dedupes paths", async () => {
+  it("attaches dropped files and dedupes paths", async () => {
     const harness = renderComposerHarness({
       activeThreadId: "thread-1",
       activeWorkspaceId: "ws-1",
@@ -190,7 +190,7 @@ describe("Composer attachments integration", () => {
       dispatchDrop(textarea, [image, nonImage]);
     });
 
-    expect(getAttachmentNames(harness.container)).toEqual(["photo.png"]);
+    expect(getAttachmentNames(harness.container)).toEqual(["photo.png", "notes.txt"]);
 
     const imageTwo = new File(["data"], "second.jpg", { type: "image/jpeg" });
     (imageTwo as File & { path?: string }).path = "/tmp/second.jpg";
@@ -201,6 +201,7 @@ describe("Composer attachments integration", () => {
 
     expect(getAttachmentNames(harness.container)).toEqual([
       "photo.png",
+      "notes.txt",
       "second.jpg",
     ]);
 
@@ -282,6 +283,28 @@ describe("Composer attachments integration", () => {
 
     expect(getAttachmentNames(harness.container)).toEqual([
       "Screenshot From 2026-06-27 00-26-34.png",
+    ]);
+
+    harness.unmount();
+  });
+
+  it("attaches pasted document file urls", async () => {
+    const harness = renderComposerHarness({
+      activeThreadId: "thread-1",
+      activeWorkspaceId: "ws-1",
+    });
+    const textarea = getTextarea(harness.container);
+
+    await act(async () => {
+      dispatchTextPaste(
+        textarea,
+        "file:///home/srayansh/Documents/report.pdf\nfile:///home/srayansh/Documents/notes.docx",
+      );
+    });
+
+    expect(getAttachmentNames(harness.container)).toEqual([
+      "report.pdf",
+      "notes.docx",
     ]);
 
     harness.unmount();

@@ -15,7 +15,9 @@ use crate::storage::write_workspaces;
 use crate::types::{AppSettings, WorkspaceEntry, WorkspaceInfo, WorkspaceKind, WorkspaceSettings};
 use crate::utils::normalize_windows_namespace_path;
 
-use super::connect::{kill_session_by_id, take_live_shared_session, workspace_session_spawn_lock};
+use super::connect::{
+    kill_session_by_id, take_live_shared_session, uses_codex_provider, workspace_session_spawn_lock,
+};
 use super::helpers::{
     normalize_setup_script, normalize_workspace_path_input, workspace_path_to_string,
 };
@@ -54,10 +56,15 @@ where
     };
 
     let _spawn_guard = workspace_session_spawn_lock().lock().await;
-    let existing_session = take_live_shared_session(sessions).await;
-    let (session, spawned_new_session) = if let Some(existing_session) = existing_session {
-        (existing_session, false)
+    let use_codex = uses_codex_provider(app_settings).await;
+    let existing_session = if use_codex {
+        take_live_shared_session(sessions).await
     } else {
+        None
+    };
+    let (session, spawned_new_session) = if let Some(existing_session) = existing_session {
+        (Some(existing_session), false)
+    } else if use_codex {
         let (default_bin, codex_args) = {
             let settings = app_settings.lock().await;
             (
@@ -67,9 +74,11 @@ where
         };
         let codex_home = resolve_workspace_codex_home(&entry, None);
         (
-            spawn_session(entry.clone(), default_bin, codex_args, codex_home).await?,
+            Some(spawn_session(entry.clone(), default_bin, codex_args, codex_home).await?),
             true,
         )
+    } else {
+        (None, false)
     };
 
     if let Err(error) = {
@@ -83,16 +92,20 @@ where
             workspaces.remove(&entry.id);
         }
         if spawned_new_session {
-            let mut child = session.child.lock().await;
-            kill_child_process_tree(&mut child).await;
+            if let Some(session) = &session {
+                let mut child = session.child.lock().await;
+                kill_child_process_tree(&mut child).await;
+            }
         }
         return Err(error);
     }
 
-    session
-        .register_workspace_with_path(&entry.id, Some(&entry.path))
-        .await;
-    sessions.lock().await.insert(entry.id.clone(), session);
+    if let Some(session) = session {
+        session
+            .register_workspace_with_path(&entry.id, Some(&entry.path))
+            .await;
+        sessions.lock().await.insert(entry.id.clone(), session);
+    }
 
     Ok(WorkspaceInfo {
         id: entry.id,
@@ -205,10 +218,15 @@ where
     };
 
     let _spawn_guard = workspace_session_spawn_lock().lock().await;
-    let existing_session = take_live_shared_session(sessions).await;
-    let (session, spawned_new_session) = if let Some(existing_session) = existing_session {
-        (existing_session, false)
+    let use_codex = uses_codex_provider(app_settings).await;
+    let existing_session = if use_codex {
+        take_live_shared_session(sessions).await
     } else {
+        None
+    };
+    let (session, spawned_new_session) = if let Some(existing_session) = existing_session {
+        (Some(existing_session), false)
+    } else if use_codex {
         let (default_bin, codex_args) = {
             let settings = app_settings.lock().await;
             (
@@ -218,12 +236,14 @@ where
         };
         let codex_home = resolve_workspace_codex_home(&entry, None);
         match spawn_session(entry.clone(), default_bin, codex_args, codex_home).await {
-            Ok(session) => (session, true),
+            Ok(session) => (Some(session), true),
             Err(error) => {
                 let _ = tokio::fs::remove_dir_all(&destination_path).await;
                 return Err(error);
             }
         }
+    } else {
+        (None, false)
     };
 
     if let Err(error) = {
@@ -237,17 +257,21 @@ where
             workspaces.remove(&entry.id);
         }
         if spawned_new_session {
-            let mut child = session.child.lock().await;
-            kill_child_process_tree(&mut child).await;
+            if let Some(session) = &session {
+                let mut child = session.child.lock().await;
+                kill_child_process_tree(&mut child).await;
+            }
         }
         let _ = tokio::fs::remove_dir_all(&destination_path).await;
         return Err(error);
     }
 
-    session
-        .register_workspace_with_path(&entry.id, Some(&entry.path))
-        .await;
-    sessions.lock().await.insert(entry.id.clone(), session);
+    if let Some(session) = session {
+        session
+            .register_workspace_with_path(&entry.id, Some(&entry.path))
+            .await;
+        sessions.lock().await.insert(entry.id.clone(), session);
+    }
 
     Ok(WorkspaceInfo {
         id: entry.id,
@@ -370,10 +394,15 @@ where
     };
 
     let _spawn_guard = workspace_session_spawn_lock().lock().await;
-    let existing_session = take_live_shared_session(sessions).await;
-    let (session, spawned_new_session) = if let Some(existing_session) = existing_session {
-        (existing_session, false)
+    let use_codex = uses_codex_provider(app_settings).await;
+    let existing_session = if use_codex {
+        take_live_shared_session(sessions).await
     } else {
+        None
+    };
+    let (session, spawned_new_session) = if let Some(existing_session) = existing_session {
+        (Some(existing_session), false)
+    } else if use_codex {
         let (default_bin, codex_args) = {
             let settings = app_settings.lock().await;
             (
@@ -383,12 +412,14 @@ where
         };
         let codex_home = resolve_workspace_codex_home(&entry, None);
         match spawn_session(entry.clone(), default_bin, codex_args, codex_home).await {
-            Ok(session) => (session, true),
+            Ok(session) => (Some(session), true),
             Err(error) => {
                 let _ = tokio::fs::remove_dir_all(&clone_path).await;
                 return Err(error);
             }
         }
+    } else {
+        (None, false)
     };
 
     if let Err(error) = {
@@ -402,17 +433,21 @@ where
             workspaces.remove(&entry.id);
         }
         if spawned_new_session {
-            let mut child = session.child.lock().await;
-            kill_child_process_tree(&mut child).await;
+            if let Some(session) = &session {
+                let mut child = session.child.lock().await;
+                kill_child_process_tree(&mut child).await;
+            }
         }
         let _ = tokio::fs::remove_dir_all(&clone_path).await;
         return Err(error);
     }
 
-    session
-        .register_workspace_with_path(&entry.id, Some(&entry.path))
-        .await;
-    sessions.lock().await.insert(entry.id.clone(), session);
+    if let Some(session) = session {
+        session
+            .register_workspace_with_path(&entry.id, Some(&entry.path))
+            .await;
+        sessions.lock().await.insert(entry.id.clone(), session);
+    }
 
     Ok(WorkspaceInfo {
         id: entry.id,
@@ -620,7 +655,51 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{default_repo_name_from_url, validate_target_folder_name};
+    use super::{add_workspace_core, default_repo_name_from_url, validate_target_folder_name};
+    use crate::backend::app_server::WorkspaceSession;
+    use crate::types::{AppSettings, LocalAgentProvider, WorkspaceEntry};
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    #[test]
+    fn adding_workspace_with_non_codex_provider_does_not_spawn_codex() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let test_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+            let workspace_dir = test_dir.join("workspace");
+            std::fs::create_dir_all(&workspace_dir).unwrap();
+            let storage_path = test_dir.join("workspaces.json");
+            let workspaces = Mutex::new(HashMap::<String, WorkspaceEntry>::new());
+            let sessions = Mutex::new(HashMap::<String, Arc<WorkspaceSession>>::new());
+            let mut settings = AppSettings::default();
+            settings.local_provider = LocalAgentProvider::Claude;
+            let app_settings = Mutex::new(settings);
+            let spawn_calls = Arc::new(AtomicUsize::new(0));
+            let spawn_calls_ref = Arc::clone(&spawn_calls);
+
+            let result = add_workspace_core(
+                workspace_dir.to_string_lossy().into_owned(),
+                &workspaces,
+                &sessions,
+                &app_settings,
+                &storage_path,
+                move |_entry, _bin, _args, _home| {
+                    let spawn_calls_ref = Arc::clone(&spawn_calls_ref);
+                    async move {
+                        spawn_calls_ref.fetch_add(1, Ordering::SeqCst);
+                        Err::<Arc<WorkspaceSession>, String>("Codex should not start".into())
+                    }
+                },
+            )
+            .await;
+
+            assert!(result.is_ok());
+            assert_eq!(spawn_calls.load(Ordering::SeqCst), 0);
+            assert!(sessions.lock().await.is_empty());
+            std::fs::remove_dir_all(test_dir).unwrap();
+        });
+    }
 
     #[test]
     fn derives_repo_name_from_https_url() {

@@ -22,32 +22,14 @@ import { useComposerInputLayout } from "../hooks/useComposerInputLayout";
 import { useComposerMobileActions } from "../hooks/useComposerMobileActions";
 import type { ReviewPromptState, ReviewPromptStep } from "../../threads/hooks/useReviewPrompt";
 
-const IMAGE_PATH_EXTENSIONS = [
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".tiff",
-  ".tif",
-  ".heic",
-  ".heif",
-];
-
-function isImagePath(value: string) {
-  const lower = value.toLowerCase();
-  return IMAGE_PATH_EXTENSIONS.some((ext) => lower.endsWith(ext));
-}
-
-function isPastedImagePath(value: string) {
+function isPastedFilePath(value: string) {
   const trimmed = value.trim().replace(/^["']|["']$/g, "");
   if (!trimmed || /[\r\n]/.test(trimmed)) {
     return false;
   }
   const isAbsoluteUnixPath = trimmed.startsWith("/");
   const isAbsoluteWindowsPath = /^[A-Za-z]:[\\/]/.test(trimmed);
-  return (isAbsoluteUnixPath || isAbsoluteWindowsPath) && isImagePath(trimmed);
+  return isAbsoluteUnixPath || isAbsoluteWindowsPath;
 }
 
 function normalizeClipboardPath(value: string) {
@@ -65,23 +47,18 @@ function normalizeClipboardPath(value: string) {
   return trimmed;
 }
 
-function extractPastedImagePath(value: string) {
-  const normalized = normalizeClipboardPath(value);
-  if (isPastedImagePath(normalized)) {
-    return normalized;
-  }
-
-  for (const line of normalized.split(/\r?\n/)) {
+function extractPastedFilePaths(value: string) {
+  const paths: string[] = [];
+  for (const line of value.split(/\r?\n/)) {
+    if (line.trim().startsWith("#")) {
+      continue;
+    }
     const candidate = normalizeClipboardPath(line);
-    if (isPastedImagePath(candidate)) {
-      return candidate;
+    if (isPastedFilePath(candidate)) {
+      paths.push(candidate);
     }
   }
-
-  const matches = normalized.match(
-    /(?:file:\/\/)?(?:[A-Za-z]:[\\/]|\/)[^\r\n]+?\.(?:png|jpe?g|gif|webp|bmp|tiff?|heic|heif)\b/gi,
-  );
-  return matches?.map(normalizeClipboardPath).find(isPastedImagePath) ?? "";
+  return Array.from(new Set(paths));
 }
 
 type ComposerInputProps = {
@@ -273,10 +250,10 @@ export function ComposerInput({
       } catch {
         // clipboardData may not be accessible in some WebView environments
       }
-      const pastedPath = extractPastedImagePath(pastedText);
-      if (pastedPath && isPastedImagePath(pastedPath)) {
+      const pastedPaths = extractPastedFilePaths(pastedText);
+      if (pastedPaths.length > 0) {
         event.preventDefault();
-        onAttachImages?.([pastedPath]);
+        onAttachImages?.(pastedPaths);
         return;
       }
       void handlePaste(event);
@@ -296,11 +273,11 @@ export function ComposerInput({
           const inserted = selBefore != null
             ? valueAfter.slice(selBefore, selBefore + (valueAfter.length - valueBefore.length))
             : valueAfter.slice(valueBefore.length);
-          const fallbackPath = extractPastedImagePath(inserted);
-          if (fallbackPath && isPastedImagePath(fallbackPath)) {
+          const fallbackPaths = extractPastedFilePaths(inserted);
+          if (fallbackPaths.length > 0) {
             const restored = valueBefore;
             onTextChange(restored, selBefore);
-            onAttachImages?.([fallbackPath]);
+            onAttachImages?.(fallbackPaths);
           }
         });
       }
@@ -369,7 +346,7 @@ export function ComposerInput({
             placeholder={
               disabled
                 ? "Review in progress. Chat will re-enable when it completes."
-                : "Ask for follow-up changes or attach images"
+                : "Ask for follow-up changes or attach files"
             }
             value={text}
             onChange={handleTextareaChange}

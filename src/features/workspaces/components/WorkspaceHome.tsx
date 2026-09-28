@@ -35,6 +35,10 @@ import { buildIconPath } from "./workspaceHomeHelpers";
 import { useWorkspaceHomeSuggestionsStyle } from "../hooks/useWorkspaceHomeSuggestionsStyle";
 import type { ThreadStatusById } from "../../../utils/threadStatus";
 import { ProviderToggle } from "../../composer/components/ComposerMetaBar";
+import {
+  appendAttachedFileContext,
+  splitComposerAttachments,
+} from "../../composer/utils/attachments";
 
 
 type WorkspaceHomeProps = {
@@ -47,7 +51,7 @@ type WorkspaceHomeProps = {
   recentThreadsUpdatedAt: number | null;
   prompt: string;
   onPromptChange: (value: string) => void;
-  onStartRun: (images?: string[]) => Promise<boolean>;
+  onStartRun: (images?: string[], promptOverride?: string) => Promise<boolean>;
   runMode: WorkspaceRunMode;
   onRunModeChange: (mode: WorkspaceRunMode) => void;
   models: ModelOption[];
@@ -299,7 +303,10 @@ export function WorkspaceHome({
     }
 
     const trimmed = prompt.trim();
-    const didStart = await onStartRun(activeImages);
+    const { images, files: attachedFiles } =
+      splitComposerAttachments(activeImages);
+    const promptWithFiles = appendAttachedFileContext(trimmed, attachedFiles);
+    const didStart = await onStartRun(images, promptWithFiles);
     if (didStart) {
       if (trimmed) {
         recordHistory(trimmed);

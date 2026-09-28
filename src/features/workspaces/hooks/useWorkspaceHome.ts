@@ -388,11 +388,14 @@ export function useWorkspaceHome({
     [],
   );
 
-  const startRun = useCallback(async (images: string[] = []) => {
+  const startRun = useCallback(async (
+    images: string[] = [],
+    promptOverride?: string,
+  ) => {
     if (!activeWorkspaceId || !activeWorkspace) {
       return false;
     }
-    const prompt = draft.trim();
+    const prompt = (promptOverride ?? draft).trim();
     const hasImages = images.length > 0;
     if ((!prompt && !hasImages) || isSubmitting) {
       return false;

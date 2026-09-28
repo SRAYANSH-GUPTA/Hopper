@@ -16,8 +16,8 @@ use super::worktree::{
     sanitize_worktree_name, unique_worktree_path, unique_worktree_path_for_rename,
 };
 
-use crate::backend::app_server::WorkspaceSession;
 use crate::antigravity;
+use crate::backend::app_server::WorkspaceSession;
 use crate::claude;
 use crate::codex::spawn_workspace_session;
 use crate::event_sink::TauriEventSink;
@@ -89,7 +89,16 @@ pub(crate) async fn list_workspaces(
         return serde_json::from_value(response).map_err(|err| err.to_string());
     }
 
-    Ok(workspaces_core::list_workspaces_core(&state.workspaces, &state.sessions).await)
+    let mut workspaces =
+        workspaces_core::list_workspaces_core(&state.workspaces, &state.sessions).await;
+    if claude::is_claude_mode(&state.app_settings).await
+        || antigravity::is_antigravity_mode(&state.app_settings).await
+    {
+        for workspace in &mut workspaces {
+            workspace.connected = true;
+        }
+    }
+    Ok(workspaces)
 }
 
 #[tauri::command]

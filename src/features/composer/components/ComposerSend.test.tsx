@@ -41,6 +41,7 @@ type HarnessProps = {
   followUpMessageBehavior?: FollowUpMessageBehavior;
   steerAvailable?: boolean;
   selectedServiceTier?: "fast" | "flex" | null;
+  attachments?: string[];
 };
 
 function ComposerHarness({
@@ -50,6 +51,7 @@ function ComposerHarness({
   followUpMessageBehavior = "queue",
   steerAvailable = false,
   selectedServiceTier = null,
+  attachments = [],
 }: HarnessProps) {
   const [draftText, setDraftText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -85,6 +87,7 @@ function ComposerHarness({
       onDraftChange={setDraftText}
       textareaRef={textareaRef}
       dictationEnabled={false}
+      attachedImages={attachments}
     />
   );
 }
@@ -118,6 +121,25 @@ describe("Composer send triggers", () => {
 
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(onSend).toHaveBeenCalledWith("from button", [], undefined, "default");
+  });
+
+  it("sends document attachments as local file context", () => {
+    const onSend = vi.fn();
+    render(
+      <ComposerHarness
+        onSend={onSend}
+        attachments={["/tmp/report.pdf", "/tmp/photo.png"]}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    expect(onSend).toHaveBeenCalledWith(
+      'Attached files (read these local paths before responding):\n- "/tmp/report.pdf"',
+      ["/tmp/photo.png"],
+      undefined,
+      "default",
+    );
   });
 
   it("shows the fast-mode indicator when enabled", () => {

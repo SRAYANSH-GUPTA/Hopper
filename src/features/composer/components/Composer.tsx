@@ -44,6 +44,10 @@ import { ComposerMetaBar } from "./ComposerMetaBar";
 import { ComposerQueue } from "./ComposerQueue";
 import { isMacPlatform } from "../../../utils/platformPaths";
 import type { CodexArgsOption } from "../../threads/utils/codexArgsProfiles";
+import {
+  appendAttachedFileContext,
+  splitComposerAttachments,
+} from "../utils/attachments";
 
 type ComposerProps = {
   onSend: (
@@ -407,12 +411,17 @@ export const Composer = memo(function Composer({
     if (trimmed) {
       recordHistory(trimmed);
     }
-    const textToSend = planCommandPrefix ? `/plan\n\n${trimmed}` : trimmed;
+    const { images, files: attachedFiles } =
+      splitComposerAttachments(attachedImages);
+    const textWithFiles = appendAttachedFileContext(trimmed, attachedFiles);
+    const textToSend = planCommandPrefix
+      ? `/plan\n\n${textWithFiles}`
+      : textWithFiles;
     const resolvedMentions = resolveBoundAppMentions(trimmed, appMentionBindings);
     if (resolvedMentions.length > 0) {
-      onSend(textToSend, attachedImages, resolvedMentions, submitIntent);
+      onSend(textToSend, images, resolvedMentions, submitIntent);
     } else {
-      onSend(textToSend, attachedImages, undefined, submitIntent);
+      onSend(textToSend, images, undefined, submitIntent);
     }
     resetHistoryNavigation();
     setComposerText("");

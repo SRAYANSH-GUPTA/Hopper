@@ -1,7 +1,7 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
-import ImagePlus from "lucide-react/dist/esm/icons/image-plus";
+import FilePlus from "lucide-react/dist/esm/icons/file-plus";
 import Mic from "lucide-react/dist/esm/icons/mic";
 import Plus from "lucide-react/dist/esm/icons/plus";
 import Square from "lucide-react/dist/esm/icons/square";
@@ -68,9 +68,9 @@ export function ComposerMobileActionsMenu({
           <PopoverMenuItem
             onClick={handleMobileAttachClick}
             disabled={disabled || !onAddAttachment}
-            icon={<ImagePlus size={14} />}
+            icon={<FilePlus size={14} />}
           >
-            Add image
+            Add file
           </PopoverMenuItem>
           {onToggleExpand && (
             <PopoverMenuItem
