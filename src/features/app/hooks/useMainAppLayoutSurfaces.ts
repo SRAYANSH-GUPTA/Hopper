@@ -409,6 +409,7 @@ function buildPrimarySurface({
       onAddWorkspace: handleAddWorkspace,
       onSelectHome: sidebarHandlers.onSelectHome,
       onSelectWorkspace: sidebarHandlers.onSelectWorkspace,
+      onProviderSwitch,
       onConnectWorkspace: sidebarHandlers.onConnectWorkspace,
       onAddAgent: handleAddAgent,
       onAddWorktreeAgent: handleAddWorktreeAgent,

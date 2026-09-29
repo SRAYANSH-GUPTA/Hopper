@@ -8,6 +8,7 @@ use tauri::WindowEvent;
 
 mod antigravity;
 mod backend;
+mod bridge;
 mod claude;
 mod marketplace;
 mod mcp;
@@ -217,6 +218,12 @@ pub fn run() {
             files::file_write,
             files::read_image_as_data_url,
             files::write_text_file,
+            bridge::bridge_import_file,
+            bridge::bridge_import_capture,
+            bridge::bridge_list_imports,
+            bridge::bridge_get_import,
+            bridge::bridge_read_artifact,
+            bridge::bridge_materialize_import,
             codex::get_config_model,
             menu::menu_set_accelerators,
             tray::set_tray_recent_threads,
@@ -260,6 +267,7 @@ pub fn run() {
             sidebar_browser::create_sidebar_browser,
             sidebar_browser::set_sidebar_browser_bounds,
             sidebar_browser::set_sidebar_browser_visible,
+            sidebar_browser::hide_sidebar_browsers,
             codex::list_mcp_server_status,
             codex::archive_thread,
             codex::compact_thread,

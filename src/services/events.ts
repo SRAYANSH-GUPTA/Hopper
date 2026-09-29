@@ -19,6 +19,16 @@ export type TerminalExitEvent = {
   terminalId: string;
 };
 
+export type SidebarBrowserDownload = {
+  webviewLabel: string;
+  url: string;
+  path: string | null;
+  fileName: string | null;
+  success: boolean;
+  imported: boolean;
+  error: string | null;
+};
+
 type SubscriptionOptions = {
   onError?: (error: unknown) => void;
 };
@@ -91,6 +101,9 @@ const dictationDownloadHub = createEventHub<DictationModelStatus>("dictation-dow
 const dictationEventHub = createEventHub<DictationEvent>("dictation-event");
 const terminalOutputHub = createEventHub<TerminalOutputEvent>("terminal-output");
 const terminalExitHub = createEventHub<TerminalExitEvent>("terminal-exit");
+const sidebarBrowserDownloadHub = createEventHub<SidebarBrowserDownload>(
+  "sidebar-browser-download",
+);
 const updaterCheckHub = createEventHub<void>("updater-check");
 const trayOpenThreadHub = createEventHub<TrayOpenThreadPayload>("tray-open-thread");
 const menuNewAgentHub = createEventHub<void>("menu-new-agent");
@@ -151,6 +164,13 @@ export function subscribeTerminalExit(
   options?: SubscriptionOptions,
 ): Unsubscribe {
   return terminalExitHub.subscribe(onEvent, options);
+}
+
+export function subscribeSidebarBrowserDownload(
+  onEvent: (event: SidebarBrowserDownload) => void,
+  options?: SubscriptionOptions,
+): Unsubscribe {
+  return sidebarBrowserDownloadHub.subscribe(onEvent, options);
 }
 
 export function subscribeUpdaterCheck(

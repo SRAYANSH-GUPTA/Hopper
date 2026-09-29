@@ -21,6 +21,8 @@ import { MarketplaceView } from "../../marketplace/components/MarketplaceView";
 import { McpView } from "../../mcp/components/McpView";
 import { AiWebView } from "../../ai-web/components/AiWebView";
 import Bot from "lucide-react/dist/esm/icons/bot";
+import Inbox from "lucide-react/dist/esm/icons/inbox";
+import { BridgeInbox } from "../../bridge/components/BridgeInbox";
 import { SidebarBottomRail } from "./SidebarBottomRail";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarSearchBar } from "./SidebarSearchBar";
@@ -53,6 +55,7 @@ import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
 import { getUsageLabels } from "../utils/usageLabels";
 import { formatRelativeTimeShort } from "../../../utils/time";
 import type { ThreadStatusById } from "../../../utils/threadStatus";
+import { hideSidebarBrowsers } from "@services/tauri";
 
 const COLLAPSED_GROUPS_STORAGE_KEY = "hopper.collapsedGroups";
 const UNGROUPED_COLLAPSE_ID = "__ungrouped__";
@@ -139,6 +142,7 @@ type SidebarProps = {
   onAddWorkspace: () => void;
   onSelectHome: () => void;
   onSelectWorkspace: (id: string) => void;
+  onProviderSwitch?: (providerId: string) => void;
   onConnectWorkspace: (workspace: WorkspaceInfo) => void;
   onAddAgent: (workspace: WorkspaceInfo) => void;
   onAddWorktreeAgent: (workspace: WorkspaceInfo) => void;
@@ -209,6 +213,7 @@ export const Sidebar = memo(function Sidebar({
   onAddWorkspace,
   onSelectHome,
   onSelectWorkspace,
+  onProviderSwitch = () => {},
   onConnectWorkspace,
   onAddAgent,
   onAddWorktreeAgent,
@@ -238,7 +243,13 @@ export const Sidebar = memo(function Sidebar({
   planPanelNode,
   agentMd,
 }: SidebarProps) {
-  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "marketplace" | "mcp" | "ai">("explorer");
+  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "marketplace" | "mcp" | "ai" | "bridge">("explorer");
+
+  useEffect(() => {
+    if (activeView !== "ai") {
+      void hideSidebarBrowsers().catch(() => {});
+    }
+  }, [activeView]);
   const [expandedWorkspaces, setExpandedWorkspaces] = useState(
     new Set<string>(),
   );
@@ -897,6 +908,17 @@ export const Sidebar = memo(function Sidebar({
           >
             <Bot size={20} aria-hidden />
           </button>
+          <button
+            type="button"
+            className={`sidebar-activity-btn ds-tooltip-trigger${activeView === "bridge" ? " is-active" : ""}`}
+            onClick={() => setActiveView("bridge")}
+            aria-label="Bridge Inbox"
+            aria-pressed={activeView === "bridge"}
+            data-tooltip="Bridge Inbox"
+            data-tooltip-placement="right"
+          >
+            <Inbox size={20} aria-hidden />
+          </button>
         </div>
       </div>
 
@@ -917,6 +939,16 @@ export const Sidebar = memo(function Sidebar({
         ) : activeView === "ai" ? (
           <div className="sidebar-ai-panel" style={{ height: "100%" }}>
             <AiWebView />
+          </div>
+        ) : activeView === "bridge" ? (
+          <div className="sidebar-bridge-panel">
+            <BridgeInbox
+              workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
+              onSelectWorkspace={onSelectWorkspace}
+              onProviderSwitch={onProviderSwitch}
+              onAddAgent={onAddAgent}
+            />
           </div>
         ) : (
           <>

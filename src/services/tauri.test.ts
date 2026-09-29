@@ -46,6 +46,7 @@ import {
   tailscaleStatus,
   pickImageFiles,
   pickAttachmentFiles,
+  pickBridgeImportFile,
   pickWorkspacePaths,
   providerUsageOutput,
   writeGlobalAgentsMd,
@@ -165,6 +166,20 @@ describe("tauri invoke wrappers", () => {
       "/tmp/notes.docx",
     ]);
     expect(openMock).toHaveBeenCalledWith({ multiple: true });
+  });
+
+  it("allows any generated file to be selected for Bridge", async () => {
+    const openMock = vi.mocked(open);
+    openMock.mockResolvedValueOnce("/tmp/ChatGPT project brief.docx");
+
+    await expect(pickBridgeImportFile()).resolves.toBe(
+      "/tmp/ChatGPT project brief.docx",
+    );
+    expect(openMock).toHaveBeenCalledWith({
+      title: "Import into Hopper Bridge",
+      multiple: false,
+      directory: false,
+    });
   });
 
   it("returns null when markdown export is cancelled", async () => {

@@ -10,6 +10,7 @@ import "./styles/ds-tooltip.css";
 import "./styles/buttons.css";
 import "./styles/sidebar.css";
 import "./styles/ai-web.css";
+import "./styles/bridge.css";
 import "./styles/home.css";
 import "./styles/workspace-home.css";
 import "./styles/main.css";

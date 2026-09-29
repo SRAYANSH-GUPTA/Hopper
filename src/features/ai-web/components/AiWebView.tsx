@@ -1,8 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageSquare, ExternalLink, Sparkles, Flame, Blocks, RefreshCw } from "lucide-react";
+import { MessageSquare, ExternalLink, Sparkles, Flame, Blocks, RefreshCw, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Webview } from "@tauri-apps/api/webview";
-import { createSidebarBrowser, setSidebarBrowserBounds, setSidebarBrowserVisible } from "@services/tauri";
+import {
+  bridgeImportFile,
+  createSidebarBrowser,
+  setSidebarBrowserBounds,
+  setSidebarBrowserVisible,
+} from "@services/tauri";
+import {
+  subscribeSidebarBrowserDownload,
+  type SidebarBrowserDownload,
+} from "@services/events";
 
 type Chatbot = "claude" | "chatgpt" | "copilot" | "gemini" | "mistral";
 
@@ -16,6 +25,10 @@ const CHATBOTS: { id: Chatbot; label: string; url: string; icon: React.ReactNode
 
 let webviewCounter = 0;
 const SIDEBAR_RESIZE_GUTTER = 8;
+
+type DownloadNotice = SidebarBrowserDownload & {
+  state: "importing" | "imported" | "error";
+};
 
 // Persist webview instances and active chatbot across component unmounts so
 // switching sidebar tabs doesn't destroy the session.
@@ -48,6 +61,7 @@ export function AiWebView() {
   const [activeChatbot, setActiveChatbot] = useState<Chatbot | null>(persistedActiveChatbot);
   const [webviewError, setWebviewError] = useState<string | null>(null);
   const [isWebviewLoading, setIsWebviewLoading] = useState(false);
+  const [downloadNotice, setDownloadNotice] = useState<DownloadNotice | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const webviewRef = useRef<Webview | null>(null);
   const readyWebviewRef = useRef<Webview | null>(null);
@@ -166,6 +180,36 @@ export function AiWebView() {
     };
   }, [syncWebviewBounds]);
 
+  useEffect(
+    () => subscribeSidebarBrowserDownload((download) => {
+      if (download.webviewLabel !== webviewRef.current?.label) return;
+      setDownloadNotice({
+        ...download,
+        state: download.imported ? "imported" : "error",
+      });
+    }, {
+      onError: (error) => console.error("Failed to watch embedded browser downloads:", error),
+    }),
+    [],
+  );
+
+  const handleImportDownload = async () => {
+    if (!downloadNotice?.path) return;
+    setDownloadNotice((current) => (
+      current ? { ...current, state: "importing", error: null } : current
+    ));
+    try {
+      await bridgeImportFile(downloadNotice.path);
+      setDownloadNotice((current) => (
+        current ? { ...current, state: "imported" } : current
+      ));
+    } catch (error) {
+      setDownloadNotice((current) => (
+        current ? { ...current, state: "error", error: String(error) } : current
+      ));
+    }
+  };
+
   const handleContinue = () => {
     if (selectedChatbot) {
       persistedActiveChatbot = selectedChatbot;
@@ -271,6 +315,32 @@ export function AiWebView() {
             </button>
           </div>
         </div>
+
+        <div className="ai-webview-bridge-hint">
+          Download a generated file here and Hopper will add it to Bridge Inbox automatically.
+        </div>
+
+        {downloadNotice && (
+          <div className={`ai-webview-download is-${downloadNotice.state}`} role="status">
+            <div>
+              <strong>{downloadNotice.fileName || "Assistant download"}</strong>
+              {downloadNotice.state === "importing" && <span>Adding the unchanged file to Bridge…</span>}
+              {downloadNotice.state === "imported" && <span>Downloaded and added to Bridge Inbox. No workspace files were changed.</span>}
+              {downloadNotice.state === "error" && <span>{downloadNotice.error}</span>}
+            </div>
+            {downloadNotice.state === "error" && downloadNotice.path && (
+              <button type="button" onClick={() => void handleImportDownload()}>Try import</button>
+            )}
+            <button
+              className="ai-webview-download-dismiss"
+              type="button"
+              onClick={() => setDownloadNotice(null)}
+              aria-label="Dismiss download notice"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
 
         {/* Webview container — the native webview is positioned over this element */}
         <div

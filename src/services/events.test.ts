@@ -7,6 +7,7 @@ import {
   subscribeMenuCycleCollaborationMode,
   subscribeMenuCycleModel,
   subscribeMenuNewAgent,
+  subscribeSidebarBrowserDownload,
   subscribeTerminalOutput,
 } from "./events";
 
@@ -88,6 +89,37 @@ describe("events subscriptions", () => {
     expect(onEvent).toHaveBeenCalledTimes(1);
 
     cleanup();
+  });
+
+  it("delivers embedded browser download paths to Bridge consumers", () => {
+    let listener: EventCallback<{
+      webviewLabel: string;
+      url: string;
+      path: string | null;
+      fileName: string | null;
+      success: boolean;
+      imported: boolean;
+      error: string | null;
+    }> = () => {};
+    vi.mocked(listen).mockImplementation((_event, handler) => {
+      listener = handler as typeof listener;
+      return Promise.resolve(vi.fn());
+    });
+
+    const onEvent = vi.fn();
+    subscribeSidebarBrowserDownload(onEvent);
+    const payload = {
+      webviewLabel: "ai-chatbot-1",
+      url: "https://chatgpt.com/download/report",
+      path: "/tmp/report.docx",
+      fileName: "report.docx",
+      success: true,
+      imported: true,
+      error: null,
+    };
+    listener({ event: "sidebar-browser-download", id: 1, payload });
+
+    expect(onEvent).toHaveBeenCalledWith(payload);
   });
 
   it("delivers collaboration cycle menu events to subscribers", async () => {

@@ -94,6 +94,88 @@ export async function pickAttachmentFiles(): Promise<string[]> {
   return Array.isArray(selection) ? selection : [selection];
 }
 
+export async function pickBridgeImportFile(): Promise<string | null> {
+  const selection = await open({
+    title: "Import into Hopper Bridge",
+    multiple: false,
+    directory: false,
+  });
+  return typeof selection === "string" ? selection : null;
+}
+
+export type BridgeMessage = {
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  createdAt?: string | null;
+};
+
+export type BridgeArtifact = {
+  path: string;
+  mimeType?: string | null;
+  sizeBytes: number;
+  sha256: string;
+};
+
+export type BridgeImportSummary = {
+  id: string;
+  source: string;
+  title?: string | null;
+  sourceUrl?: string | null;
+  createdAt: string;
+  messageCount: number;
+  artifacts: BridgeArtifact[];
+};
+
+export type BridgeImport = BridgeImportSummary & {
+  conversation: { messages: BridgeMessage[] };
+};
+
+export type BridgeMaterializeResult = {
+  path: string;
+  artifactCount: number;
+};
+
+export type BridgeArtifactContent = {
+  path: string;
+  mimeType?: string | null;
+  sizeBytes: number;
+  contentBase64: string;
+};
+
+export function bridgeImportFile(path: string): Promise<BridgeImport> {
+  return invoke<BridgeImport>("bridge_import_file", { path });
+}
+
+export function bridgeListImports(): Promise<BridgeImportSummary[]> {
+  return invoke<BridgeImportSummary[]>("bridge_list_imports");
+}
+
+export function bridgeGetImport(importId: string): Promise<BridgeImport> {
+  return invoke<BridgeImport>("bridge_get_import", { importId });
+}
+
+export function bridgeReadArtifact(
+  importId: string,
+  artifactPath: string,
+): Promise<BridgeArtifactContent> {
+  return invoke<BridgeArtifactContent>("bridge_read_artifact", {
+    importId,
+    artifactPath,
+  });
+}
+
+export function bridgeMaterializeImport(
+  importId: string,
+  workspaceId: string,
+  subdirectory?: string,
+): Promise<BridgeMaterializeResult> {
+  return invoke<BridgeMaterializeResult>("bridge_materialize_import", {
+    importId,
+    workspaceId,
+    subdirectory,
+  });
+}
+
 export async function exportMarkdownFile(
   content: string,
   defaultFileName = "plan.md",
@@ -1348,6 +1430,9 @@ export function setSidebarBrowserBounds(label: string, bounds: { x: number; y: n
 }
 export function setSidebarBrowserVisible(label: string, visible: boolean) {
   return invoke<void>("set_sidebar_browser_visible", { label, visible });
+}
+export function hideSidebarBrowsers() {
+  return invoke<void>("hide_sidebar_browsers");
 }
 export function createSidebarBrowser(
   label: string,

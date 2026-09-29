@@ -1,5 +1,20 @@
 //! Desktop-only lifecycle and placement of the embedded sidebar browser.
-use tauri::{Manager, Url, WebviewUrl};
+use serde::Serialize;
+use tauri::{Emitter, Manager, Url, WebviewUrl};
+
+use crate::shared::bridge_core;
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SidebarBrowserDownload {
+    webview_label: String,
+    url: String,
+    path: Option<String>,
+    file_name: Option<String>,
+    success: bool,
+    imported: bool,
+    error: Option<String>,
+}
 
 #[tauri::command]
 pub(crate) async fn create_sidebar_browser(
@@ -25,21 +40,83 @@ pub(crate) async fn create_sidebar_browser(
     }
 
     let window = app.get_window("main").ok_or("Main window not found")?;
-    let data_directory = app
+    let app_data_directory = app
         .path()
         .app_data_dir()
-        .map_err(|error| error.to_string())?
-        .join("sidebar-browser");
+        .map_err(|error| error.to_string())?;
+    let browser_data_directory = app_data_directory.join("sidebar-browser");
     let popup_app = app.clone();
     let popup_label = label.clone();
+    let download_app = app.clone();
     let builder = tauri::webview::WebviewBuilder::new(label, WebviewUrl::External(url))
-        .data_directory(data_directory)
+        .data_directory(browser_data_directory)
         .enable_clipboard_access()
         .on_new_window(move |url, _features| {
             if let Some(webview) = popup_app.get_webview(&popup_label) {
                 let _ = webview.navigate(url);
             }
             tauri::webview::NewWindowResponse::Deny
+        })
+        .on_download(move |webview, event| {
+            if let tauri::webview::DownloadEvent::Finished { url, path, success } = event {
+                let webview_label = webview.label().to_string();
+                let file_name = path
+                    .as_deref()
+                    .and_then(|path| path.file_name())
+                    .and_then(|value| value.to_str())
+                    .map(str::to_string)
+                    .or_else(|| {
+                        url.path_segments()
+                            .and_then(|mut segments| segments.next_back())
+                            .filter(|value| !value.is_empty())
+                            .map(str::to_string)
+                    });
+                let url = url.to_string();
+                let path = path.map(|value| value.to_string_lossy().to_string());
+                let import_path = path.clone();
+                let event_app = download_app.clone();
+                let emit_result = move |imported: bool, error: Option<String>| {
+                    let _ = event_app.emit(
+                        "sidebar-browser-download",
+                        SidebarBrowserDownload {
+                            webview_label,
+                            url,
+                            path,
+                            file_name,
+                            success,
+                            imported,
+                            error,
+                        },
+                    );
+                };
+                if success {
+                    if let Some(import_path) = import_path {
+                        let bridge_data_directory = app_data_directory.clone();
+                        tauri::async_runtime::spawn(async move {
+                            match bridge_core::bridge_import_file_core(
+                                &bridge_data_directory,
+                                import_path,
+                            )
+                            .await
+                            {
+                                Ok(_) => emit_result(true, None),
+                                Err(error) => emit_result(false, Some(error)),
+                            }
+                        });
+                    } else {
+                        emit_result(
+                            false,
+                            Some(
+                                "Hopper could not locate the downloaded file. Use Import file in Bridge Inbox."
+                                    .to_string(),
+                            ),
+                        );
+                    }
+                } else {
+                    emit_result(false, Some("The download did not complete.".to_string()));
+                }
+            }
+            true
         });
 
     window
@@ -182,9 +259,17 @@ pub(crate) async fn set_sidebar_browser_visible(
                 .parent()
                 .and_then(|p| p.downcast::<gtk::Fixed>().ok());
             if let Some(fixed) = fixed {
-                if visible { fixed.show_all(); } else { fixed.hide(); }
+                if visible {
+                    fixed.show_all();
+                } else {
+                    fixed.hide();
+                }
             } else {
-                if visible { browser.show(); } else { browser.hide(); }
+                if visible {
+                    browser.show();
+                } else {
+                    browser.hide();
+                }
             }
             let _ = tx.send(());
         })
@@ -194,9 +279,23 @@ pub(crate) async fn set_sidebar_browser_visible(
     }
     #[cfg(not(target_os = "linux"))]
     {
-        // On macOS and Windows the JS webview.hide()/show() path is reliable;
-        // this command is a no-op so the frontend can call it unconditionally.
-        let _ = (view, visible);
-        Ok(())
+        if visible {
+            view.show().map_err(|error| error.to_string())
+        } else {
+            view.hide().map_err(|error| error.to_string())
+        }
     }
+}
+
+#[tauri::command]
+pub(crate) async fn hide_sidebar_browsers(app: tauri::AppHandle) -> Result<(), String> {
+    let labels = app
+        .webviews()
+        .into_keys()
+        .filter(|label| label.starts_with("ai-chatbot-"))
+        .collect::<Vec<_>>();
+    for label in labels {
+        set_sidebar_browser_visible(app.clone(), label, false).await?;
+    }
+    Ok(())
 }
