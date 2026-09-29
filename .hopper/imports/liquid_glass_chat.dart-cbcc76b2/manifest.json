@@ -1,0 +1,14 @@
+{
+  "id": "cbcc76b2-04e5-4a21-b5bd-2664dc05055a",
+  "source": "file-import",
+  "title": "liquid_glass_chat.dart",
+  "createdAt": "2026-09-29T23:00:21.948335813+00:00",
+  "messageCount": 1,
+  "artifacts": [
+    {
+      "path": "liquid_glass_chat.dart",
+      "sizeBytes": 10157,
+      "sha256": "7400822881ecf847b49ec8367323d70e2a0c54ad8099e82975947bff2a3bd5bd"
+    }
+  ]
+}

@@ -1,43 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import ArrowRight from "lucide-react/dist/esm/icons/arrow-right";
-import Archive from "lucide-react/dist/esm/icons/archive";
-import Check from "lucide-react/dist/esm/icons/check";
-import Download from "lucide-react/dist/esm/icons/download";
-import FileText from "lucide-react/dist/esm/icons/file-text";
-import LoaderCircle from "lucide-react/dist/esm/icons/loader-circle";
-import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
-import ShieldCheck from "lucide-react/dist/esm/icons/shield-check";
-import type { WorkspaceInfo } from "@/types";
-import {
-  bridgeGetImport,
-  bridgeImportFile,
-  bridgeListImports,
-  bridgeMaterializeImport,
-  bridgeReadArtifact,
-  pickBridgeImportFile,
-  type BridgeArtifactContent,
-  type BridgeImport,
-  type BridgeImportSummary,
-} from "@services/tauri";
-import { subscribeSidebarBrowserDownload } from "@services/events";
-import {
-  buildImportedHandoffPrompt,
-  savePendingHandoff,
-} from "@/features/context/contextStore";
-
-type BridgeInboxProps = {
-  workspaces: WorkspaceInfo[];
-  activeWorkspaceId: string | null;
-  onSelectWorkspace: (workspaceId: string) => void;
-  onProviderSwitch: (providerId: string) => void;
-  onAddAgent: (workspace: WorkspaceInfo) => void;
-};
-
-const PROVIDERS = [
-  { id: "codex", label: "Codex" },
-  { id: "claude", label: "Claude Code" },
-  { id: "antigravity", label: "Antigravity" },
-];
+import { useMemo, useState } from "react";
+import { Archive, ArrowRight, Check, Code2, Download, Eye, FileText, FolderOpen, LoaderCircle, MessageSquare, Monitor, RefreshCw, Search, Smartphone, X } from "lucide-react";
+import { PanelFrame, PanelHeader, PanelNavItem, PanelSearchField } from "@/features/design-system/components/panel/PanelPrimitives";
+import { BRIDGE_PROVIDERS, useBridgeInbox, type BridgeInboxProps } from "@app/hooks/useBridgeInbox";
+import { createHtmlPreview, decodeArtifactText } from "@/features/bridge/utils/artifactPreview";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -45,295 +10,156 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function decodeText(content: BridgeArtifactContent): string | null {
-  if (!content.mimeType?.startsWith("text/") && !/\.(md|txt|json|html|css|js|jsx|ts|tsx|svg)$/i.test(content.path)) {
-    return null;
-  }
-  const binary = window.atob(content.contentBase64);
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
+function sourceLabel(source: string): string {
+  if (source === "file-import") return "File import";
+  if (/chatgpt/i.test(source)) return "ChatGPT";
+  if (/claude/i.test(source)) return "Claude";
+  return source;
 }
 
-export function BridgeInbox({
-  workspaces,
-  activeWorkspaceId,
-  onSelectWorkspace,
-  onProviderSwitch,
-  onAddAgent,
-}: BridgeInboxProps) {
-  const [imports, setImports] = useState<BridgeImportSummary[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedImport, setSelectedImport] = useState<BridgeImport | null>(null);
-  const [workspaceId, setWorkspaceId] = useState(activeWorkspaceId ?? "");
-  const [materializedPath, setMaterializedPath] = useState<string | null>(null);
-  const [artifactPreview, setArtifactPreview] = useState<BridgeArtifactContent | null>(null);
-  const [targetProviderId, setTargetProviderId] = useState(PROVIDERS[0].id);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    const next = await bridgeListImports();
-    setImports(next);
-    setSelectedId((current) => current ?? next[0]?.id ?? null);
-  }, []);
-
-  useEffect(() => {
-    void refresh().catch((reason) => setError(String(reason)));
-  }, [refresh]);
-
-  useEffect(() => subscribeSidebarBrowserDownload((download) => {
-    if (download.imported) {
-      void refresh().catch((reason) => setError(String(reason)));
-    }
-  }), [refresh]);
-
-  useEffect(() => {
-    if (activeWorkspaceId) setWorkspaceId(activeWorkspaceId);
-  }, [activeWorkspaceId]);
-
-  useEffect(() => {
-    setMaterializedPath(null);
-  }, [workspaceId]);
-
-  useEffect(() => {
-    setArtifactPreview(null);
-    setMaterializedPath(null);
-    if (!selectedId) {
-      setSelectedImport(null);
-      return;
-    }
-    void bridgeGetImport(selectedId)
-      .then(setSelectedImport)
-      .catch((reason) => setError(String(reason)));
-  }, [selectedId]);
-
-  const selectedWorkspace = useMemo(
-    () => workspaces.find((workspace) => workspace.id === workspaceId) ?? null,
-    [workspaceId, workspaces],
+export function BridgeInbox(props: BridgeInboxProps) {
+  const bridge = useBridgeInbox(props);
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<"preview" | "source" | "conversation">("preview");
+  const [mobilePreview, setMobilePreview] = useState(false);
+  const { selectedImport, preview, busy, workspace, provider } = bridge;
+  const visibleImports = bridge.imports.filter((item) =>
+    `${item.title ?? ""} ${item.source} ${item.artifacts.map((artifact) => artifact.path).join(" ")}`.toLowerCase().includes(search.toLowerCase()),
   );
-  const targetProvider = PROVIDERS.find((provider) => provider.id === targetProviderId) ?? PROVIDERS[0];
-
-  const handleImport = async () => {
-    const path = await pickBridgeImportFile();
-    if (!path) return;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const imported = await bridgeImportFile(path);
-      await refresh();
-      setSelectedId(imported.id);
-      setNotice("Imported into the Bridge Inbox. No workspace files were changed.");
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const materialize = async (): Promise<string> => {
-    if (!selectedImport || !selectedWorkspace) {
-      throw new Error("Choose a workspace before continuing.");
-    }
-    if (materializedPath) return materializedPath;
-    const result = await bridgeMaterializeImport(selectedImport.id, selectedWorkspace.id);
-    setMaterializedPath(result.path);
-    return result.path;
-  };
-
-  const handleMaterialize = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const path = await materialize();
-      setNotice(`Copied the reviewed bundle to ${path}.`);
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleContinue = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const path = await materialize();
-      if (!selectedImport || !selectedWorkspace) return;
-      const prompt = buildImportedHandoffPrompt(
-        {
-          source: selectedImport.source,
-          title: selectedImport.title,
-          sourceUrl: selectedImport.sourceUrl,
-          importedPath: path,
-          messages: selectedImport.conversation.messages,
-          artifacts: selectedImport.artifacts,
-        },
-        targetProvider.label,
-      );
-      onProviderSwitch(targetProvider.id);
-      savePendingHandoff(selectedWorkspace.id, prompt);
-      onSelectWorkspace(selectedWorkspace.id);
-      onAddAgent(selectedWorkspace);
-      setNotice(`Handoff prepared for ${targetProvider.label}. It will be attached to your next message.`);
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handlePreviewArtifact = async (path: string) => {
-    if (!selectedImport) return;
-    setBusy(true);
-    setError(null);
-    try {
-      setArtifactPreview(await bridgeReadArtifact(selectedImport.id, path));
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const previewText = artifactPreview ? decodeText(artifactPreview) : null;
-  const previewImage = artifactPreview?.mimeType?.startsWith("image/")
-    ? `data:${artifactPreview.mimeType};base64,${artifactPreview.contentBase64}`
-    : null;
+  const text = useMemo(() => preview ? decodeArtifactText(preview) : null, [preview]);
+  const html = useMemo(() =>
+    preview && text !== null && (preview.mimeType === "text/html" || /\.html?$/i.test(preview.path))
+      ? createHtmlPreview(text) : null,
+  [preview, text]);
+  const image = preview?.mimeType?.startsWith("image/") ? `data:${preview.mimeType};base64,${preview.contentBase64}` : null;
+  const canContinue = Boolean(selectedImport && workspace && !busy && !bridge.detailLoading);
+  const selectedArtifact = selectedImport?.artifacts.find((artifact) => artifact.path === bridge.artifactPath);
 
   return (
-    <div className="bridge-inbox">
+    <div className="bridge-inbox" aria-label="Bridge inbox">
       <header className="bridge-header">
-        <div className="bridge-title-lockup">
-          <div className="bridge-mark"><Archive size={18} /></div>
-          <div>
-            <h2>Bridge inbox</h2>
-            <p>Review assistant files before they enter your workspace.</p>
-          </div>
-        </div>
+        <div className="bridge-title"><Archive size={22} /><div><h2>Bridge</h2><p>From a conversation to your next creation.</p></div></div>
         <div className="bridge-header-actions">
-          <button className="bridge-icon-button" type="button" onClick={() => void refresh()} aria-label="Refresh inbox" title="Refresh inbox"><RefreshCw size={15} /></button>
-          <button className="bridge-primary-button" type="button" disabled={busy} onClick={() => void handleImport()}>
-            {busy ? <LoaderCircle className="bridge-spin" size={15} /> : <Download size={15} />} Import file
+          <button className="ghost icon-button" type="button" disabled={bridge.loading || Boolean(busy)} onClick={() => void bridge.refresh()} aria-label="Refresh inbox"><RefreshCw size={16} /></button>
+          <button className="secondary bridge-button" type="button" disabled={Boolean(busy)} onClick={() => void bridge.runAction("import")}>
+            {busy === "import" ? <LoaderCircle className="bridge-spin" size={16} /> : <Download size={16} />} Import file
           </button>
         </div>
       </header>
 
-      {error && <div className="bridge-alert is-error">{error}</div>}
-      {notice && <div className="bridge-alert is-success"><Check size={13} />{notice}</div>}
+      {bridge.error && (
+        <div className="bridge-feedback is-error" role="alert">
+          <div><strong>Couldn’t complete that action</strong><p>{bridge.error}</p></div>
+          <button className="ghost icon-button" type="button" onClick={() => bridge.setError(null)} aria-label="Dismiss error"><X size={16} /></button>
+        </div>
+      )}
+      {bridge.notice && <div className="bridge-feedback" role="status"><Check size={16} /><p>{bridge.notice}</p></div>}
 
       <div className="bridge-layout">
-        <aside className="bridge-queue">
-          <div className="bridge-queue-heading">
-            <span>Recent imports</span>
-            <strong>{imports.length}</strong>
-          </div>
-          <nav className="bridge-import-list" aria-label="Bridge imports">
-            {imports.length === 0 ? (
-              <div className="bridge-empty">
-                <div className="bridge-empty-icon"><Download size={18} /></div>
-                <strong>No imports yet</strong>
-                <span>Download from an assistant or choose a local file.</span>
-              </div>
-            ) : imports.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`bridge-import-card${selectedId === item.id ? " is-active" : ""}`}
-                onClick={() => setSelectedId(item.id)}
-              >
-                <span className="bridge-import-icon"><FileText size={16} /></span>
-                <span className="bridge-import-copy">
-                  <strong>{item.title || "Untitled import"}</strong>
-                  <small>{item.source} · {item.artifacts.length} {item.artifacts.length === 1 ? "file" : "files"}</small>
-                  <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleDateString()}</time>
-                </span>
-              </button>
+        <PanelFrame className="bridge-library">
+          <PanelHeader><h3>Inbox <span>{bridge.imports.length}</span></h3></PanelHeader>
+          <PanelSearchField icon={<Search />} placeholder="Find an import…" aria-label="Find an import" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <nav className="bridge-import-list" aria-label="Imported files">
+            {bridge.loading && bridge.imports.length === 0 ? <p className="bridge-quiet" role="status">Loading imports…</p> : visibleImports.map((item) => (
+              <PanelNavItem key={item.id} active={bridge.selectedId === item.id} disabled={Boolean(busy)} aria-current={bridge.selectedId === item.id ? "true" : undefined}
+                className="bridge-import-item" onClick={() => { bridge.setSelectedId(item.id); setView("preview"); }}>
+                <div className="bridge-import-heading"><span className="bridge-file-type">{item.artifacts[0]?.path.split(".").pop()?.slice(0, 5).toUpperCase() || "CHAT"}</span><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</time></div>
+                <strong title={item.title ?? ""}>{item.title || "Untitled import"}</strong>
+                <small>{sourceLabel(item.source)}<span>{item.artifacts.length} {item.artifacts.length === 1 ? "file" : "files"}</span></small>
+              </PanelNavItem>
             ))}
+            {!bridge.loading && visibleImports.length === 0 && <div className="bridge-list-empty"><Archive size={24} /><strong>{search ? "No matches" : "Your inbox is ready"}</strong><p>{search ? "Try another filename." : "Download a file inside an assistant or import one from your computer."}</p></div>}
           </nav>
-        </aside>
+          <p className="bridge-library-note">Downloads from Hopper’s AI browser arrive here.</p>
+        </PanelFrame>
 
-        <section className="bridge-detail">
-          {selectedImport ? (
+        <section className="bridge-review" aria-label="Review import">
+          {bridge.detailLoading ? <div className="bridge-empty" role="status"><LoaderCircle className="bridge-spin" size={24} /><p>Opening import…</p></div> : selectedImport ? (
             <>
-              <div className="bridge-detail-scroll">
-                <div className="bridge-file-hero">
-                  <div className="bridge-file-symbol"><FileText size={22} /></div>
-                  <div className="bridge-file-heading">
-                    <span className="bridge-source">From {selectedImport.source}</span>
-                    <h3>{selectedImport.title || "Untitled import"}</h3>
-                    <p>{selectedImport.artifacts.length} {selectedImport.artifacts.length === 1 ? "file" : "files"} · {selectedImport.conversation.messages.length} context messages</p>
+              <header className="bridge-review-heading">
+                <div><p>{sourceLabel(selectedImport.source)}</p><h3 title={selectedImport.title ?? ""}>{selectedImport.title || "Untitled import"}</h3></div>
+                <span className="bridge-review-count">{selectedImport.artifacts.length} {selectedImport.artifacts.length === 1 ? "file" : "files"}</span>
+              </header>
+              <div className="bridge-review-body">
+                <div className="bridge-canvas">
+                  <div className="bridge-tabs" role="group" aria-label="Review view">
+                    <button type="button" aria-pressed={view === "preview"} onClick={() => setView("preview")}><Eye size={15} />Preview</button>
+                    <button type="button" aria-pressed={view === "source"} onClick={() => setView("source")}><Code2 size={15} />Source</button>
+                    <button type="button" aria-pressed={view === "conversation"} onClick={() => setView("conversation")}><MessageSquare size={15} />Context</button>
                   </div>
-                  <div className="bridge-safety-note"><ShieldCheck size={15} /><span>Stored safely<br /><small>Nothing runs automatically</small></span></div>
+                  {view === "conversation" ? (
+                    <div className="bridge-conversation">
+                      <h4>Imported context</h4>
+                      {selectedImport.conversation.messages.length === 0 && <p className="bridge-quiet">No conversation was included with these files.</p>}
+                      {selectedImport.conversation.messages.map((message, index) => <article key={index}><strong>{message.role}</strong><p>{message.content}</p></article>)}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="bridge-preview-toolbar">
+                        <FileText size={14} /><span title={bridge.artifactPath}>{bridge.artifactPath || "No file selected"}</span>
+                        {selectedArtifact && <small>{formatBytes(selectedArtifact.sizeBytes)}</small>}
+                        {html && view === "preview" && <div className="bridge-preview-size" role="group" aria-label="Preview width">
+                          <button type="button" aria-label="Desktop preview" aria-pressed={!mobilePreview} onClick={() => setMobilePreview(false)}><Monitor size={15} /></button>
+                          <button type="button" aria-label="Mobile preview" aria-pressed={mobilePreview} onClick={() => setMobilePreview(true)}><Smartphone size={15} /></button>
+                        </div>}
+                      </div>
+                      <div className={`bridge-preview-stage${mobilePreview && html && view === "preview" ? " is-mobile" : ""}`}>
+                        {bridge.previewLoading ? <div className="bridge-empty" role="status"><LoaderCircle className="bridge-spin" size={22} /><p>Loading preview…</p></div>
+                          : bridge.previewError ? <div className="bridge-empty" role="alert"><FileText size={28} /><strong>Couldn’t load this file</strong><p>{bridge.previewError}</p></div>
+                          : !preview ? <div className="bridge-empty"><MessageSquare size={28} /><strong>Conversation only</strong><p>Open Context to review the imported messages.</p></div>
+                          : view === "preview" && html ? <iframe title={`Preview of ${preview.path}`} sandbox="" referrerPolicy="no-referrer" srcDoc={html} />
+                          : view === "preview" && image ? <div className="bridge-image-preview"><img src={image} alt={preview.path} /></div>
+                          : text !== null ? <pre className="bridge-source-code"><code>{text}</code></pre>
+                          : <div className="bridge-empty"><FileText size={32} /><strong>{preview.path}</strong><p>This file is ready to copy. An inline preview isn’t available for this format.</p></div>}
+                      </div>
+                      {html && view === "preview" && <p className="bridge-preview-note">Static preview. Scripts and external assets are disabled.</p>}
+                    </>
+                  )}
                 </div>
 
-                <label className="bridge-workspace-field">
-                  <span>Destination workspace</span>
-                  <select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}>
-                    <option value="">Choose where this should go…</option>
-                    {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-                  </select>
-                </label>
-
-                <div className="bridge-section">
-                  <div className="bridge-section-heading">
-                    <div><span>Files</span><strong>{selectedImport.artifacts.length}</strong></div>
-                    <small>Select a file to preview it</small>
-                  </div>
-                  {selectedImport.artifacts.length === 0 ? <p className="bridge-muted">This import contains conversation context only.</p> : (
-                    <div className="bridge-artifacts">
+                <div className="bridge-transfer">
+                  <section className="bridge-bundle-files">
+                    <h4>Included files <span>{selectedImport.artifacts.length}</span></h4>
+                    <div className="bridge-file-list">
                       {selectedImport.artifacts.map((artifact) => (
-                        <button
-                          type="button"
-                          key={artifact.path}
-                          className={artifactPreview?.path === artifact.path ? "is-active" : ""}
-                          onClick={() => void handlePreviewArtifact(artifact.path)}
-                        >
-                          <span className="bridge-artifact-icon"><FileText size={16} /></span>
-                          <span><strong>{artifact.path}</strong><small>{formatBytes(artifact.sizeBytes)} · verified {artifact.sha256.slice(0, 8)}</small></span>
-                          <ArrowRight size={14} />
+                        <button type="button" key={artifact.path} aria-pressed={bridge.artifactPath === artifact.path} title={artifact.path}
+                          onClick={() => { bridge.setArtifactPath(artifact.path); setView("preview"); }}>
+                          <FileText size={17} /><span><strong>{artifact.path}</strong><small>{formatBytes(artifact.sizeBytes)}</small></span>
+                          {bridge.artifactPath === artifact.path && <Check size={14} />}
                         </button>
                       ))}
+                      {selectedImport.artifacts.length === 0 && <p className="bridge-quiet">No files attached.</p>}
                     </div>
-                  )}
-                  {artifactPreview && (
-                    <div className="bridge-preview">
-                      <div className="bridge-preview-heading"><strong>{artifactPreview.path}</strong><span>Preview</span></div>
-                      {previewImage ? <img src={previewImage} alt={artifactPreview.path} /> : previewText !== null ? <pre>{previewText}</pre> : <p>Preview is unavailable for this file type. Hopper preserved the original file without opening or executing it.</p>}
-                    </div>
-                  )}
+                  </section>
+                  <section className="bridge-destination">
+                    <h4><FolderOpen size={17} />Continue your work</h4>
+                    <p>Bring the files and context into a project.</p>
+                    <label>Workspace
+                      <select value={bridge.workspaceId} disabled={Boolean(busy)} onChange={(event) => bridge.setWorkspaceId(event.target.value)}>
+                        <option value="">Choose a workspace…</option>
+                        {props.workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                      </select>
+                    </label>
+                    {workspace && <p className="bridge-workspace-path" title={workspace.path}>{workspace.path}</p>}
+                    <label>Agent
+                      <select value={bridge.providerId} disabled={Boolean(busy)} onChange={(event) => bridge.setProviderId(event.target.value)}>
+                        {BRIDGE_PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                      </select>
+                    </label>
+                    <button className="primary bridge-button bridge-start" type="button" disabled={!canContinue} onClick={() => void bridge.runAction("start")}>
+                      {busy === "start" ? <LoaderCircle className="bridge-spin" size={16} /> : <ArrowRight size={16} />}
+                      {busy === "start" ? "Preparing…" : `Continue in ${provider.label}`}
+                    </button>
+                    <button className="ghost bridge-button" type="button" disabled={!canContinue} onClick={() => void bridge.runAction("copy")}>
+                      {busy === "copy" ? <LoaderCircle className="bridge-spin" size={16} /> : <Download size={16} />}
+                      {busy === "copy" ? "Copying…" : "Copy files only"}
+                    </button>
+                    <p className="bridge-transfer-note">{!workspace ? "Choose a workspace to enable these actions." : "Copies files into .hopper/imports. Context is attached to your first agent message."}</p>
+                  </section>
                 </div>
-
-                <details className="bridge-context-panel">
-                  <summary>
-                    <span>Imported conversation</span>
-                    <small>{selectedImport.conversation.messages.length} messages</small>
-                  </summary>
-                  <div className="bridge-messages">
-                    {selectedImport.conversation.messages.map((message, index) => (
-                      <article key={`${message.role}-${index}`} className={`bridge-message is-${message.role}`}>
-                        <span>{message.role}</span><p>{message.content}</p>
-                      </article>
-                    ))}
-                  </div>
-                </details>
               </div>
-
-              <footer className="bridge-handoff-bar">
-                <label className="bridge-provider-field">
-                  <span>Open with</span>
-                  <select value={targetProviderId} onChange={(event) => setTargetProviderId(event.target.value)}>
-                    {PROVIDERS.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}
-                  </select>
-                </label>
-                <button className="bridge-copy-button" type="button" disabled={busy || !selectedWorkspace} onClick={() => void handleMaterialize()}><Download size={15} /> Copy only</button>
-                <button className="bridge-launch-button" type="button" disabled={busy || !selectedWorkspace} onClick={() => void handleContinue()}>
-                  {busy ? <LoaderCircle className="bridge-spin" size={16} /> : <ArrowRight size={16} />} Start in {targetProvider.label}
-                </button>
-              </footer>
             </>
-          ) : <div className="bridge-empty bridge-detail-empty"><div className="bridge-empty-icon"><Archive size={20} /></div><strong>Select an import</strong><span>Its files and context will appear here for review.</span></div>}
+          ) : <div className="bridge-empty bridge-welcome"><Archive size={38} /><h3>Bring your ideas here.</h3><p>Import a design, document, or conversation.<br />Review it, choose a project, and keep building.</p><button className="primary bridge-button" type="button" disabled={Boolean(busy)} onClick={() => void bridge.runAction("import")}><Download size={16} />Import your first file</button></div>}
         </section>
       </div>
     </div>

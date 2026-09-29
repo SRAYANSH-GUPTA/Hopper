@@ -1,0 +1,8 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Imported generated file `liquid_glass_chat.dart` for review. Hopper preserved the original file and did not open or execute it."
+    }
+  ]
+}

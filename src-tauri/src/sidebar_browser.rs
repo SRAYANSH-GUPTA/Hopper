@@ -1,5 +1,8 @@
 //! Desktop-only lifecycle and placement of the embedded sidebar browser.
 use serde::Serialize;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, Url, WebviewUrl};
 
 use crate::shared::bridge_core;
@@ -14,6 +17,88 @@ struct SidebarBrowserDownload {
     success: bool,
     imported: bool,
     error: Option<String>,
+}
+
+type RequestedDownloads = Arc<Mutex<HashMap<String, PathBuf>>>;
+
+fn remember_download_destination(
+    requested_downloads: &RequestedDownloads,
+    url: &str,
+    destination: PathBuf,
+) {
+    if let Ok(mut downloads) = requested_downloads.lock() {
+        downloads.insert(url.to_string(), destination);
+    }
+}
+
+fn resolve_download_path(
+    requested_downloads: &RequestedDownloads,
+    url: &str,
+    completed_path: Option<PathBuf>,
+) -> Option<PathBuf> {
+    let requested_path = requested_downloads
+        .lock()
+        .ok()
+        .and_then(|mut downloads| downloads.remove(url));
+    completed_path.or(requested_path)
+}
+
+fn import_finished_download(
+    app: tauri::AppHandle,
+    app_data_directory: PathBuf,
+    webview_label: String,
+    url: Url,
+    path: Option<PathBuf>,
+    success: bool,
+) {
+    let file_name = path
+        .as_deref()
+        .and_then(|path| path.file_name())
+        .and_then(|value| value.to_str())
+        .map(str::to_string)
+        .or_else(|| {
+            url.path_segments()
+                .and_then(|mut segments| segments.next_back())
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        });
+    let url = url.to_string();
+    let path = path.map(|value| value.to_string_lossy().to_string());
+    let import_path = path.clone();
+    let emit_result = move |imported: bool, error: Option<String>| {
+        let _ = app.emit(
+            "sidebar-browser-download",
+            SidebarBrowserDownload {
+                webview_label,
+                url,
+                path,
+                file_name,
+                success,
+                imported,
+                error,
+            },
+        );
+    };
+    if success {
+        if let Some(import_path) = import_path {
+            tauri::async_runtime::spawn(async move {
+                match bridge_core::bridge_import_file_core(&app_data_directory, import_path).await {
+                    Ok(_) => emit_result(true, None),
+                    Err(error) => emit_result(false, Some(error)),
+                }
+            });
+        } else {
+            emit_result(
+                false,
+                Some(
+                    "Hopper could not locate the downloaded file. Use Import file in Bridge Inbox."
+                        .to_string(),
+                ),
+            );
+        }
+    } else {
+        emit_result(false, Some("The download did not complete.".to_string()));
+    }
 }
 
 #[tauri::command]
@@ -48,6 +133,7 @@ pub(crate) async fn create_sidebar_browser(
     let popup_app = app.clone();
     let popup_label = label.clone();
     let download_app = app.clone();
+    let requested_downloads = Arc::new(Mutex::new(HashMap::<String, PathBuf>::new()));
     let builder = tauri::webview::WebviewBuilder::new(label, WebviewUrl::External(url))
         .data_directory(browser_data_directory)
         .enable_clipboard_access()
@@ -58,63 +144,26 @@ pub(crate) async fn create_sidebar_browser(
             tauri::webview::NewWindowResponse::Deny
         })
         .on_download(move |webview, event| {
-            if let tauri::webview::DownloadEvent::Finished { url, path, success } = event {
-                let webview_label = webview.label().to_string();
-                let file_name = path
-                    .as_deref()
-                    .and_then(|path| path.file_name())
-                    .and_then(|value| value.to_str())
-                    .map(str::to_string)
-                    .or_else(|| {
-                        url.path_segments()
-                            .and_then(|mut segments| segments.next_back())
-                            .filter(|value| !value.is_empty())
-                            .map(str::to_string)
-                    });
-                let url = url.to_string();
-                let path = path.map(|value| value.to_string_lossy().to_string());
-                let import_path = path.clone();
-                let event_app = download_app.clone();
-                let emit_result = move |imported: bool, error: Option<String>| {
-                    let _ = event_app.emit(
-                        "sidebar-browser-download",
-                        SidebarBrowserDownload {
-                            webview_label,
-                            url,
-                            path,
-                            file_name,
-                            success,
-                            imported,
-                            error,
-                        },
+            match event {
+                tauri::webview::DownloadEvent::Requested { url, destination } => {
+                    remember_download_destination(
+                        &requested_downloads,
+                        url.as_str(),
+                        destination.clone(),
                     );
-                };
-                if success {
-                    if let Some(import_path) = import_path {
-                        let bridge_data_directory = app_data_directory.clone();
-                        tauri::async_runtime::spawn(async move {
-                            match bridge_core::bridge_import_file_core(
-                                &bridge_data_directory,
-                                import_path,
-                            )
-                            .await
-                            {
-                                Ok(_) => emit_result(true, None),
-                                Err(error) => emit_result(false, Some(error)),
-                            }
-                        });
-                    } else {
-                        emit_result(
-                            false,
-                            Some(
-                                "Hopper could not locate the downloaded file. Use Import file in Bridge Inbox."
-                                    .to_string(),
-                            ),
-                        );
-                    }
-                } else {
-                    emit_result(false, Some("The download did not complete.".to_string()));
                 }
+                tauri::webview::DownloadEvent::Finished { url, path, success } => {
+                    let path = resolve_download_path(&requested_downloads, url.as_str(), path);
+                    import_finished_download(
+                        download_app.clone(),
+                        app_data_directory.clone(),
+                        webview.label().to_string(),
+                        url,
+                        path,
+                        success,
+                    );
+                }
+                _ => {}
             }
             true
         });
@@ -127,6 +176,29 @@ pub(crate) async fn create_sidebar_browser(
         )
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{remember_download_destination, resolve_download_path, RequestedDownloads};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn resolves_successful_download_from_requested_destination_when_finished_path_is_missing() {
+        let downloads: RequestedDownloads = Arc::new(Mutex::new(HashMap::new()));
+        let url = "blob:https://chatgpt.com/generated-file";
+        let destination = PathBuf::from("/tmp/generated-design.docx");
+
+        remember_download_destination(&downloads, url, destination.clone());
+
+        assert_eq!(
+            resolve_download_path(&downloads, url, None),
+            Some(destination)
+        );
+        assert!(downloads.lock().expect("downloads lock").is_empty());
+    }
 }
 
 #[tauri::command]

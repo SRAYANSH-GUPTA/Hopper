@@ -683,11 +683,29 @@ pub(crate) async fn bridge_materialize_import_core(
         };
         let destination = workspace_path.join(&relative_destination);
         ensure_no_symlink_components(&workspace_path, &relative_destination)?;
+        if let Some(parent) = relative_destination.parent() {
+            let mut current = workspace_path.clone();
+            for component in parent.components() {
+                current.push(component.as_os_str());
+                match fs::create_dir(&current) {
+                    Ok(()) => {}
+                    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(err) => return Err(format!("Unable to create import folder: {err}")),
+                }
+                let metadata = fs::symlink_metadata(&current).map_err(|err| err.to_string())?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(
+                        "Import folder must be a directory, not a file or symbolic link."
+                            .to_string(),
+                    );
+                }
+            }
+        }
         fs::create_dir(&destination).map_err(|err| {
             if err.kind() == std::io::ErrorKind::AlreadyExists {
                 "Materialization destination already exists; no files were overwritten.".to_string()
             } else {
-                format!("Unable to create materialization destination: {err}")
+                format!("Unable to create import destination: {err}")
             }
         })?;
         let result: Result<(), String> = (|| {
@@ -727,6 +745,130 @@ mod tests {
         let path = std::env::temp_dir().join(format!("hopper-bridge-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&path).expect("create test data directory");
         path
+    }
+
+    async fn materialization_fixture(
+        data_dir: &Path,
+    ) -> (
+        BridgeImport,
+        Mutex<HashMap<String, WorkspaceEntry>>,
+        PathBuf,
+    ) {
+        let workspace_path = data_dir.join("workspace");
+        fs::create_dir(&workspace_path).expect("create workspace");
+        let entry: WorkspaceEntry = serde_json::from_value(serde_json::json!({
+            "id": "workspace",
+            "name": "Test workspace",
+            "path": workspace_path.to_string_lossy(),
+        }))
+        .expect("workspace entry");
+        let workspaces = Mutex::new(HashMap::from([("workspace".to_string(), entry)]));
+        let capture = standalone_file_capture(
+            "design.html".to_string(),
+            b"<main>Design</main>".to_vec(),
+            None,
+        )
+        .expect("capture");
+        let imported = bridge_import_capture_core(data_dir, capture)
+            .await
+            .expect("import");
+        (imported, workspaces, workspace_path)
+    }
+
+    fn run_async_test(future: impl std::future::Future<Output = ()>) {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build runtime")
+            .block_on(future);
+    }
+
+    #[test]
+    fn materializes_into_fresh_workspace_and_preserves_existing_destination() {
+        run_async_test(async {
+            let data_dir = test_data_dir();
+            let (imported, workspaces, workspace_path) = materialization_fixture(&data_dir).await;
+            assert!(!workspace_path.join(".hopper").exists());
+            let result = bridge_materialize_import_core(
+                &data_dir,
+                &workspaces,
+                imported.summary.id.clone(),
+                "workspace".into(),
+                None,
+            )
+            .await
+            .expect("copy to fresh workspace");
+            let destination = PathBuf::from(result.path);
+            assert!(destination.starts_with(workspace_path.join(".hopper/imports")));
+            assert!(destination.join("manifest.json").is_file());
+            assert!(destination.join("conversation.json").is_file());
+            assert_eq!(result.artifact_count, 1);
+            assert_eq!(
+                fs::read(destination.join("artifacts/design.html")).unwrap(),
+                b"<main>Design</main>"
+            );
+            fs::write(destination.join("artifacts/design.html"), "local changes").unwrap();
+            let error = bridge_materialize_import_core(
+                &data_dir,
+                &workspaces,
+                imported.summary.id,
+                "workspace".into(),
+                None,
+            )
+            .await
+            .expect_err("must not overwrite");
+            assert!(error.contains("already exists"));
+            assert_eq!(
+                fs::read_to_string(destination.join("artifacts/design.html")).unwrap(),
+                "local changes"
+            );
+            fs::remove_dir_all(data_dir).unwrap();
+        });
+    }
+
+    #[test]
+    fn materializes_into_nested_custom_destination() {
+        run_async_test(async {
+            let data_dir = test_data_dir();
+            let (imported, workspaces, workspace_path) = materialization_fixture(&data_dir).await;
+            bridge_materialize_import_core(
+                &data_dir,
+                &workspaces,
+                imported.summary.id,
+                "workspace".into(),
+                Some("designs/incoming/example".into()),
+            )
+            .await
+            .expect("create nested destination");
+            assert!(workspace_path
+                .join("designs/incoming/example/artifacts/design.html")
+                .is_file());
+            fs::remove_dir_all(data_dir).unwrap();
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_materialization_parent() {
+        run_async_test(async {
+            let data_dir = test_data_dir();
+            let (imported, workspaces, workspace_path) = materialization_fixture(&data_dir).await;
+            let outside = data_dir.join("outside");
+            fs::create_dir(&outside).unwrap();
+            std::os::unix::fs::symlink(&outside, workspace_path.join(".hopper")).unwrap();
+            let error = bridge_materialize_import_core(
+                &data_dir,
+                &workspaces,
+                imported.summary.id,
+                "workspace".into(),
+                None,
+            )
+            .await
+            .expect_err("reject symlink");
+            assert!(error.contains("symbolic link"));
+            assert_eq!(fs::read_dir(outside).unwrap().count(), 0);
+            fs::remove_dir_all(data_dir).unwrap();
+        });
     }
 
     #[test]
