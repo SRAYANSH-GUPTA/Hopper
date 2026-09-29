@@ -56,6 +56,7 @@ import {
   deleteAgent,
   readAgentConfigToml,
   readImageAsDataUrl,
+  reloadSidebarBrowser,
   generateAgentDescription,
   writeAgentConfigToml,
   writeAgentMd,
@@ -179,6 +180,15 @@ describe("tauri invoke wrappers", () => {
       title: "Import into Hopper Bridge",
       multiple: false,
       directory: false,
+    });
+  });
+
+  it("reloads an embedded assistant tab without replacing it", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+
+    await expect(reloadSidebarBrowser("ai-chatbot-tab-2")).resolves.toBeUndefined();
+    expect(invoke).toHaveBeenCalledWith("reload_sidebar_browser", {
+      label: "ai-chatbot-tab-2",
     });
   });
 

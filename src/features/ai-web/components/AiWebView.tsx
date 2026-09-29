@@ -1,10 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageSquare, ExternalLink, Sparkles, Flame, Blocks, RefreshCw, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import {
+  Blocks,
+  Bot,
+  ExternalLink,
+  Flame,
+  MessageSquare,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Webview } from "@tauri-apps/api/webview";
 import {
   bridgeImportFile,
   createSidebarBrowser,
+  reloadSidebarBrowser,
   setSidebarBrowserBounds,
   setSidebarBrowserVisible,
 } from "@services/tauri";
@@ -12,28 +23,63 @@ import {
   subscribeSidebarBrowserDownload,
   type SidebarBrowserDownload,
 } from "@services/events";
+import {
+  attachAssistantWebview,
+  closeAssistantTab,
+  createAssistantTab,
+  selectAssistantProvider,
+  type AssistantBrowserTab,
+  type AssistantProviderId,
+} from "../assistantTabs";
 
-type Chatbot = "claude" | "chatgpt" | "copilot" | "gemini" | "mistral";
+type ProviderIcon = ComponentType<{ size?: number; color?: string; className?: string }>;
 
-const CHATBOTS: { id: Chatbot; label: string; url: string; icon: React.ReactNode; color: string }[] = [
-  { id: "claude", label: "Anthropic Claude", url: "https://claude.ai", icon: <Sparkles size={20} color="#E56A54" />, color: "#E56A54" },
-  { id: "chatgpt", label: "ChatGPT", url: "https://chatgpt.com", icon: <MessageSquare size={20} color="#10A37F" />, color: "#10A37F" },
-  { id: "copilot", label: "Copilot", url: "https://copilot.microsoft.com", icon: <Blocks size={20} color="#2A73E8" />, color: "#2A73E8" },
-  { id: "gemini", label: "Google Gemini", url: "https://gemini.google.com", icon: <Sparkles size={20} color="#4A90E2" />, color: "#4A90E2" },
-  { id: "mistral", label: "Le Chat Mistral", url: "https://chat.mistral.ai", icon: <Flame size={20} color="#E85D04" />, color: "#E85D04" },
+type AssistantProvider = {
+  id: AssistantProviderId;
+  label: string;
+  tabLabel: string;
+  url: string;
+  icon: ProviderIcon;
+  color: string;
+};
+
+const PROVIDERS: AssistantProvider[] = [
+  { id: "chatgpt", label: "ChatGPT", tabLabel: "ChatGPT", url: "https://chatgpt.com", icon: MessageSquare, color: "#10A37F" },
+  { id: "claude", label: "Anthropic Claude", tabLabel: "Claude", url: "https://claude.ai", icon: Sparkles, color: "#E56A54" },
+  { id: "gemini", label: "Google Gemini", tabLabel: "Gemini", url: "https://gemini.google.com", icon: Sparkles, color: "#6E9EFF" },
+  { id: "copilot", label: "Microsoft Copilot", tabLabel: "Copilot", url: "https://copilot.microsoft.com", icon: Blocks, color: "#62A8FF" },
+  { id: "mistral", label: "Le Chat Mistral", tabLabel: "Mistral", url: "https://chat.mistral.ai", icon: Flame, color: "#F28C28" },
 ];
 
-let webviewCounter = 0;
 const SIDEBAR_RESIZE_GUTTER = 8;
+let tabCounter = 0;
+let webviewCounter = 0;
+
+function nextTabId(): string {
+  tabCounter += 1;
+  return `assistant-tab-${tabCounter}`;
+}
+
+function nextWebviewLabel(): string {
+  webviewCounter += 1;
+  return `ai-chatbot-tab-${Date.now()}-${webviewCounter}`;
+}
+
+let persistedTabs: AssistantBrowserTab[] = [createAssistantTab(nextTabId())];
+let persistedActiveTabId = persistedTabs[0].id;
 
 type DownloadNotice = SidebarBrowserDownload & {
   state: "importing" | "imported" | "error";
 };
 
-// Persist webview instances and active chatbot across component unmounts so
-// switching sidebar tabs doesn't destroy the session.
-const webviewCache = new Map<Chatbot, Webview>();
-let persistedActiveChatbot: Chatbot | null = null;
+type TabRuntime = {
+  loading: boolean;
+  error: string | null;
+};
+
+function providerById(id: AssistantProviderId | null): AssistantProvider | null {
+  return PROVIDERS.find((provider) => provider.id === id) ?? null;
+}
 
 function getSidebarWebviewBounds(element: HTMLElement) {
   const panel = element.getBoundingClientRect();
@@ -56,403 +102,324 @@ function afterLayout(): Promise<void> {
   });
 }
 
+async function hideWebview(tab: AssistantBrowserTab | undefined): Promise<void> {
+  if (!tab?.webviewLabel) return;
+  const webview = await Webview.getByLabel(tab.webviewLabel);
+  if (!webview) return;
+  await setSidebarBrowserVisible(webview.label, false).catch(() => webview.hide());
+}
+
 export function AiWebView() {
-  const [selectedChatbot, setSelectedChatbot] = useState<Chatbot | null>(null);
-  const [activeChatbot, setActiveChatbot] = useState<Chatbot | null>(persistedActiveChatbot);
-  const [webviewError, setWebviewError] = useState<string | null>(null);
-  const [isWebviewLoading, setIsWebviewLoading] = useState(false);
-  const [downloadNotice, setDownloadNotice] = useState<DownloadNotice | null>(null);
+  const [tabs, setTabs] = useState<AssistantBrowserTab[]>(persistedTabs);
+  const [activeTabId, setActiveTabId] = useState(persistedActiveTabId);
+  const [runtimeByTab, setRuntimeByTab] = useState<Record<string, TabRuntime>>({});
+  const [downloadByTab, setDownloadByTab] = useState<Record<string, DownloadNotice>>({});
   const containerRef = useRef<HTMLDivElement>(null);
-  const webviewRef = useRef<Webview | null>(null);
-  const readyWebviewRef = useRef<Webview | null>(null);
+  const activeWebviewRef = useRef<Webview | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
-  const isMountedRef = useRef(true);
+  const tabsRef = useRef(tabs);
+  const activeTabIdRef = useRef(activeTabId);
+  const creatingTabsRef = useRef(new Set<string>());
+  const mountedRef = useRef(true);
 
-  // Sync the webview position/size with the container element
-  const syncWebviewBounds = useCallback(() => {
-    const webview = webviewRef.current;
-    const el = containerRef.current;
-    if (!webview || !el || readyWebviewRef.current !== webview) return;
+  const activeTab = useMemo(
+    () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0],
+    [activeTabId, tabs],
+  );
+  const activeProvider = providerById(activeTab?.providerId ?? null);
+  const activeRuntime = activeTab ? runtimeByTab[activeTab.id] : undefined;
+  const activeDownload = activeTab ? downloadByTab[activeTab.id] : undefined;
 
-    const bounds = getSidebarWebviewBounds(el);
-    void setSidebarBrowserBounds(webview.label, bounds).catch((error) => {
-      setWebviewError(String(error));
-    });
+  useEffect(() => {
+    tabsRef.current = tabs;
+    persistedTabs = tabs;
+  }, [tabs]);
+
+  useEffect(() => {
+    activeTabIdRef.current = activeTabId;
+    persistedActiveTabId = activeTabId;
+  }, [activeTabId]);
+
+  const updateRuntime = useCallback((tabId: string, patch: Partial<TabRuntime>) => {
+    setRuntimeByTab((current) => ({
+      ...current,
+      [tabId]: { ...(current[tabId] ?? { loading: false, error: null }), ...patch },
+    }));
   }, []);
 
-  // Create or reuse the native webview, preserving the session across tab switches
-  const openWebview = useCallback(async (bot: typeof CHATBOTS[number]) => {
-    const el = containerRef.current;
-    if (!el) return;
+  const syncWebviewBounds = useCallback(() => {
+    const webview = activeWebviewRef.current;
+    const element = containerRef.current;
+    if (!webview || !element) return;
+    void setSidebarBrowserBounds(webview.label, getSidebarWebviewBounds(element)).catch((error) => {
+      updateRuntime(activeTabIdRef.current, { error: String(error) });
+    });
+  }, [updateRuntime]);
 
-    // Reuse a cached webview for this chatbot to keep its session alive
-    const cached = webviewCache.get(bot.id);
-    if (cached) {
-      webviewRef.current = cached;
-      readyWebviewRef.current = cached;
-      setWebviewError(null);
-      setIsWebviewLoading(false);
+  const showTabWebview = useCallback(async (tab: AssistantBrowserTab, provider: AssistantProvider) => {
+    if (!containerRef.current || creatingTabsRef.current.has(tab.id)) return;
+    creatingTabsRef.current.add(tab.id);
+    updateRuntime(tab.id, { loading: true, error: null });
+    try {
+      let webview = tab.webviewLabel ? await Webview.getByLabel(tab.webviewLabel) : null;
+      let webviewLabel = tab.webviewLabel;
+      if (!webview) {
+        await afterLayout();
+        const element = containerRef.current;
+        if (!element) return;
+        webviewLabel = nextWebviewLabel();
+        await createSidebarBrowser(webviewLabel, provider.url, getSidebarWebviewBounds(element));
+        webview = await Webview.getByLabel(webviewLabel);
+        if (!webview) throw new Error("The assistant tab was created but could not be attached.");
+        setTabs((current) => attachAssistantWebview(current, tab.id, webviewLabel!));
+      }
       await afterLayout();
-      // If the component unmounted while we were awaiting layout, hide and bail
-      if (!isMountedRef.current) {
-        void setSidebarBrowserVisible(cached.label, false).catch(() => void cached.hide().catch(() => {}));
+      const isActive = mountedRef.current && activeTabIdRef.current === tab.id;
+      if (!isActive) {
+        await setSidebarBrowserVisible(webview.label, false).catch(() => webview.hide());
         return;
       }
+      activeWebviewRef.current = webview;
       syncWebviewBounds();
-      await setSidebarBrowserVisible(cached.label, true).catch(() => cached.show());
-      if (!isMountedRef.current) {
-        void setSidebarBrowserVisible(cached.label, false).catch(() => void cached.hide().catch(() => {}));
-        return;
-      }
-      if (observerRef.current) observerRef.current.disconnect();
-      const observer = new ResizeObserver(() => syncWebviewBounds());
-      observer.observe(el);
-      observerRef.current = observer;
-      window.addEventListener("resize", syncWebviewBounds);
+      await setSidebarBrowserVisible(webview.label, true).catch(() => webview.show());
+      updateRuntime(tab.id, { loading: false, error: null });
+    } catch (error) {
+      updateRuntime(tab.id, { loading: false, error: String(error) });
+    } finally {
+      creatingTabsRef.current.delete(tab.id);
+    }
+  }, [syncWebviewBounds, updateRuntime]);
+
+  useEffect(() => {
+    if (!activeTab?.providerId || !activeProvider || !containerRef.current) {
+      activeWebviewRef.current = null;
       return;
     }
+    void showTabWebview(activeTab, activeProvider);
+  }, [activeProvider, activeTab, showTabWebview]);
 
-    // Close any unrelated webview sitting in the ref (shouldn't normally happen)
-    if (webviewRef.current) {
-      try { await webviewRef.current.close(); } catch { /* already closed */ }
-      webviewRef.current = null;
-    }
-
-    try {
-      setIsWebviewLoading(true);
-      await afterLayout();
-      if (containerRef.current !== el || !el.isConnected) return;
-      const bounds = getSidebarWebviewBounds(el);
-      const label = `ai-chatbot-${++webviewCounter}`;
-      await createSidebarBrowser(label, bot.url, bounds);
-      const webview = await Webview.getByLabel(label);
-      if (!webview) {
-        throw new Error("The embedded browser was created but could not be attached.");
-      }
-
-      if (!isMountedRef.current) {
-        void setSidebarBrowserVisible(webview.label, false).catch(() => void webview.hide().catch(() => {}));
-        return;
-      }
-      webviewRef.current = webview;
-      readyWebviewRef.current = webview;
-      webviewCache.set(bot.id, webview);
-      setWebviewError(null);
-      setIsWebviewLoading(false);
-      syncWebviewBounds();
-
-      // Keep position in sync on resize / layout shifts
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-      const observer = new ResizeObserver(() => syncWebviewBounds());
-      observer.observe(el);
-      observerRef.current = observer;
-
-      // Also re-sync on window resize
-      window.addEventListener("resize", syncWebviewBounds);
-    } catch (err) {
-      console.error("Failed to create webview:", err);
-      setWebviewError(String(err));
-      setIsWebviewLoading(false);
-      // Fallback: open in external browser
-      void openUrl(bot.url);
-    }
-  }, [syncWebviewBounds]);
-
-  // Hide (not close) the webview on unmount so the session is preserved
   useEffect(() => {
-    isMountedRef.current = true;
+    mountedRef.current = true;
+    window.addEventListener("resize", syncWebviewBounds);
     return () => {
-      isMountedRef.current = false;
-      const webview = webviewRef.current;
-      if (webview) {
-        // Use the Rust command for reliable GTK hide on Linux; JS .hide() as fallback
-        void setSidebarBrowserVisible(webview.label, false).catch(() => {
-          void webview.hide().catch(() => {});
-        });
-      }
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-        observerRef.current = null;
-      }
+      mountedRef.current = false;
+      observerRef.current?.disconnect();
+      observerRef.current = null;
       window.removeEventListener("resize", syncWebviewBounds);
+      const tab = tabsRef.current.find((item) => item.id === activeTabIdRef.current);
+      void hideWebview(tab);
+      activeWebviewRef.current = null;
     };
   }, [syncWebviewBounds]);
 
-  useEffect(
-    () => subscribeSidebarBrowserDownload((download) => {
-      if (download.webviewLabel !== webviewRef.current?.label) return;
-      setDownloadNotice({
-        ...download,
-        state: download.imported ? "imported" : "error",
-      });
-    }, {
-      onError: (error) => console.error("Failed to watch embedded browser downloads:", error),
-    }),
-    [],
-  );
-
-  const handleImportDownload = async () => {
-    if (!downloadNotice?.path) return;
-    setDownloadNotice((current) => (
-      current ? { ...current, state: "importing", error: null } : current
-    ));
-    try {
-      await bridgeImportFile(downloadNotice.path);
-      setDownloadNotice((current) => (
-        current ? { ...current, state: "imported" } : current
-      ));
-    } catch (error) {
-      setDownloadNotice((current) => (
-        current ? { ...current, state: "error", error: String(error) } : current
-      ));
-    }
-  };
-
-  const handleContinue = () => {
-    if (selectedChatbot) {
-      persistedActiveChatbot = selectedChatbot;
-      setActiveChatbot(selectedChatbot);
-    }
-  };
-
-  // The native webview needs the active panel's container to exist first.
-  // Creating it directly in handleContinue runs before React mounts that node.
   useEffect(() => {
-    if (!activeChatbot || webviewRef.current || !containerRef.current) {
-      return;
-    }
-    const bot = CHATBOTS.find((candidate) => candidate.id === activeChatbot);
-    if (bot) {
-      void openWebview(bot);
-    }
-  }, [activeChatbot, openWebview]);
+    const element = containerRef.current;
+    if (!activeProvider || !element) return;
+    observerRef.current?.disconnect();
+    const observer = new ResizeObserver(syncWebviewBounds);
+    observer.observe(element);
+    observerRef.current = observer;
+    return () => observer.disconnect();
+  }, [activeProvider, activeTabId, syncWebviewBounds]);
 
-  const handleChange = async () => {
-    if (webviewRef.current) {
-      try { await webviewRef.current.close(); } catch { /* ok */ }
-      webviewRef.current = null;
-    }
-    if (activeChatbot) {
-      webviewCache.delete(activeChatbot);
-    }
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-      observerRef.current = null;
-    }
-    window.removeEventListener("resize", syncWebviewBounds);
-    persistedActiveChatbot = null;
-    setActiveChatbot(null);
-    setWebviewError(null);
-    setIsWebviewLoading(false);
+  useEffect(() => subscribeSidebarBrowserDownload((download) => {
+    const tab = tabsRef.current.find((item) => item.webviewLabel === download.webviewLabel);
+    if (!tab) return;
+    setDownloadByTab((current) => ({
+      ...current,
+      [tab.id]: { ...download, state: download.imported ? "imported" : "error" },
+    }));
+  }, {
+    onError: (error) => console.error("Failed to watch assistant downloads:", error),
+  }), []);
+
+  const activateTab = async (tabId: string) => {
+    if (tabId === activeTabIdRef.current) return;
+    const previous = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current);
+    activeTabIdRef.current = tabId;
+    persistedActiveTabId = tabId;
+    setActiveTabId(tabId);
+    activeWebviewRef.current = null;
+    await hideWebview(previous);
   };
 
-  const handleRefresh = () => {
-    const bot = CHATBOTS.find((b) => b.id === activeChatbot);
-    if (!bot) return;
-    // Close and remove the cached webview so openWebview creates a fresh one
-    const cached = webviewCache.get(bot.id);
-    if (cached) {
-      void cached.close().catch(() => {});
-      webviewCache.delete(bot.id);
-    }
-    webviewRef.current = null;
-    readyWebviewRef.current = null;
-    void openWebview(bot);
+  const addTab = () => {
+    const tab = createAssistantTab(nextTabId());
+    const previous = tabsRef.current.find((item) => item.id === activeTabIdRef.current);
+    const nextTabs = [...tabsRef.current, tab];
+    tabsRef.current = nextTabs;
+    activeTabIdRef.current = tab.id;
+    persistedActiveTabId = tab.id;
+    setTabs(nextTabs);
+    setActiveTabId(tab.id);
+    activeWebviewRef.current = null;
+    void hideWebview(previous);
   };
 
-  const activeBot = CHATBOTS.find((b) => b.id === activeChatbot);
+  const closeTab = (tabId: string) => {
+    const currentTabs = tabsRef.current;
+    const closingTab = currentTabs.find((tab) => tab.id === tabId);
+    const result = closeAssistantTab(currentTabs, activeTabIdRef.current, tabId, nextTabId());
+    tabsRef.current = result.tabs;
+    activeTabIdRef.current = result.activeTabId;
+    persistedActiveTabId = result.activeTabId;
+    setTabs(result.tabs);
+    setActiveTabId(result.activeTabId);
+    if (closingTab?.webviewLabel) {
+      void Webview.getByLabel(closingTab.webviewLabel).then((webview) => webview?.close()).catch(() => {});
+    }
+    if (tabId === activeTabId) activeWebviewRef.current = null;
+    setRuntimeByTab((current) => {
+      const next = { ...current };
+      delete next[tabId];
+      return next;
+    });
+    setDownloadByTab((current) => {
+      const next = { ...current };
+      delete next[tabId];
+      return next;
+    });
+  };
 
-  // ── Active webview panel ──
-  if (activeChatbot && activeBot) {
-    return (
-      <div className="mcp-view" style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-base, #111)" }}>
-        {/* Header */}
-        <div style={{
-          padding: "8px 12px",
-          borderBottom: "1px solid var(--border, #333)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          zIndex: 10,
-          position: "relative",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", fontWeight: 600, color: "var(--fg, #fff)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            {activeBot.icon}
-            <span>{activeBot.label}</span>
-          </div>
-          <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-            <button
-              type="button"
-              onClick={handleRefresh}
-              style={{ background: "transparent", border: "none", color: "var(--fg-muted, #888)", cursor: "pointer", padding: "4px", borderRadius: "4px" }}
-              title="Reload"
-            >
-              <RefreshCw size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => void openUrl(activeBot.url)}
-              style={{ background: "transparent", border: "none", color: "var(--fg-muted, #888)", cursor: "pointer", padding: "4px", borderRadius: "4px" }}
-              title="Open in browser"
-            >
-              <ExternalLink size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleChange()}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "var(--fg-muted, #888)",
-                cursor: "pointer",
-                fontSize: "11px",
-                padding: "4px 8px",
-              }}
-            >
-              Change
-            </button>
-          </div>
-        </div>
+  const chooseProvider = (providerId: AssistantProviderId) => {
+    if (!activeTab) return;
+    updateRuntime(activeTab.id, { loading: true, error: null });
+    setTabs((current) => selectAssistantProvider(current, activeTab.id, providerId));
+  };
 
-        <div className="ai-webview-bridge-hint">
-          Download a generated file here and Hopper will add it to Bridge Inbox automatically.
-        </div>
+  const reloadActiveTab = async () => {
+    if (!activeTab?.webviewLabel) return;
+    updateRuntime(activeTab.id, { error: null });
+    try {
+      await reloadSidebarBrowser(activeTab.webviewLabel);
+    } catch (error) {
+      updateRuntime(activeTab.id, { error: String(error) });
+    }
+  };
 
-        {downloadNotice && (
-          <div className={`ai-webview-download is-${downloadNotice.state}`} role="status">
-            <div>
-              <strong>{downloadNotice.fileName || "Assistant download"}</strong>
-              {downloadNotice.state === "importing" && <span>Adding the unchanged file to Bridge…</span>}
-              {downloadNotice.state === "imported" && <span>Downloaded and added to Bridge Inbox. No workspace files were changed.</span>}
-              {downloadNotice.state === "error" && <span>{downloadNotice.error}</span>}
-            </div>
-            {downloadNotice.state === "error" && downloadNotice.path && (
-              <button type="button" onClick={() => void handleImportDownload()}>Try import</button>
-            )}
-            <button
-              className="ai-webview-download-dismiss"
-              type="button"
-              onClick={() => setDownloadNotice(null)}
-              aria-label="Dismiss download notice"
-            >
-              <X size={13} />
-            </button>
-          </div>
-        )}
+  const retryImport = async () => {
+    if (!activeTab || !activeDownload?.path) return;
+    setDownloadByTab((current) => ({
+      ...current,
+      [activeTab.id]: { ...activeDownload, state: "importing", error: null },
+    }));
+    try {
+      await bridgeImportFile(activeDownload.path);
+      setDownloadByTab((current) => ({
+        ...current,
+        [activeTab.id]: { ...activeDownload, state: "imported", error: null, imported: true },
+      }));
+    } catch (error) {
+      setDownloadByTab((current) => ({
+        ...current,
+        [activeTab.id]: { ...activeDownload, state: "error", error: String(error) },
+      }));
+    }
+  };
 
-        {/* Webview container — the native webview is positioned over this element */}
-        <div
-          ref={containerRef}
-          style={{ flex: 1, width: "100%", position: "relative", background: "#1a1a1a" }}
-        >
-          {isWebviewLoading && !webviewError && (
-            <div className="ai-webview-status">Loading {activeBot.label}…</div>
-          )}
-          {webviewError && (
-            <div className="ai-webview-error">
-              <p style={{ marginBottom: "12px" }}>Could not embed {activeBot.label} inline.</p>
-              <p className="ai-webview-error-detail">{webviewError}</p>
-              <button
-                type="button"
-                onClick={() => void openUrl(activeBot.url)}
-                style={{
-                  padding: "8px 16px",
-                  background: activeBot.color,
-                  color: "#000",
-                  border: "none",
-                  borderRadius: "6px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Open in Browser Instead
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ── Selection screen ──
   return (
-    <div className="mcp-view" style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-base, #111)", alignItems: "center", justifyContent: "center", padding: "20px" }}>
-      <div style={{
-        width: "100%",
-        maxWidth: "400px",
-        border: "1px solid #E8C15A",
-        borderRadius: "12px",
-        padding: "32px 24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "24px",
-        background: "#18181a"
-      }}>
-        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: "8px" }}>
-          <h2 style={{ fontSize: "20px", fontWeight: 500, color: "#fff", margin: 0 }}>
-            Choose an AI chatbot to use in the Hopper sidebar
-          </h2>
-          <p style={{ fontSize: "13px", color: "#a1a1aa", margin: 0 }}>
-            Switch anytime. The chatbot opens right here in the sidebar.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {CHATBOTS.map((bot) => {
-            const isSelected = selectedChatbot === bot.id;
+    <div className="ai-browser">
+      <div className="ai-browser-tabbar">
+        <div className="ai-browser-tabs" role="tablist" aria-label="Assistant tabs">
+          {tabs.map((tab) => {
+            const provider = providerById(tab.providerId);
+            const Icon = provider?.icon ?? Bot;
+            const isActive = tab.id === activeTabId;
             return (
-              <button
-                key={bot.id}
-                type="button"
-                onClick={() => setSelectedChatbot(bot.id)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "12px 16px",
-                  background: isSelected ? "#27272a" : "#1f1f22",
-                  border: `1px solid ${isSelected ? "#E8C15A" : "#3f3f46"}`,
-                  borderRadius: "8px",
-                  color: "#fff",
-                  cursor: "pointer",
-                  width: "100%",
-                  textAlign: "left",
-                  fontSize: "14px",
-                  fontWeight: 500,
-                  transition: "all 0.2s ease"
-                }}
-              >
-                {bot.icon}
-                {bot.label}
-              </button>
+              <div key={tab.id} className={`ai-browser-tab${isActive ? " is-active" : ""}`}>
+                <button
+                  className="ai-browser-tab-select"
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => void activateTab(tab.id)}
+                >
+                  <Icon size={14} color={provider?.color} />
+                  <span>{provider?.tabLabel ?? "New tab"}</span>
+                </button>
+                <button className="ai-browser-tab-close" type="button" onClick={() => closeTab(tab.id)} aria-label={`Close ${provider?.tabLabel ?? "new"} tab`}>
+                  <X size={12} />
+                </button>
+              </div>
             );
           })}
         </div>
+        <button className="ai-browser-new-tab" type="button" onClick={addTab} aria-label="New assistant tab" title="New tab">
+          <Plus size={16} />
+        </button>
+      </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "8px" }}>
-          <button
-            type="button"
-            onClick={handleContinue}
-            disabled={!selectedChatbot}
-            style={{
-              width: "100%",
-              padding: "12px",
-              background: "#E8C15A",
-              color: "#000",
-              border: "none",
-              borderRadius: "8px",
-              fontSize: "14px",
-              fontWeight: 600,
-              cursor: selectedChatbot ? "pointer" : "not-allowed",
-              opacity: selectedChatbot ? 1 : 0.5,
-            }}
-          >
-            Continue
-          </button>
+      {activeProvider && (
+        <div className="ai-browser-toolbar">
+          <div className="ai-browser-location">
+            <span style={{ background: activeProvider.color }} />
+            <strong>{activeProvider.label}</strong>
+            <small>{new URL(activeProvider.url).hostname}</small>
+          </div>
+          <div className="ai-browser-actions">
+            <button type="button" onClick={() => void reloadActiveTab()} aria-label="Reload tab" title="Reload"><RefreshCw size={14} /></button>
+            <button type="button" onClick={() => void openUrl(activeProvider.url)} aria-label="Open in external browser" title="Open in browser"><ExternalLink size={14} /></button>
+          </div>
         </div>
+      )}
+
+      {activeDownload && (
+        <div className={`ai-webview-download is-${activeDownload.state}`} role="status">
+          <div>
+            <strong>{activeDownload.fileName || "Assistant download"}</strong>
+            {activeDownload.state === "importing" && <span>Adding to Bridge…</span>}
+            {activeDownload.state === "imported" && <span>Added to Bridge Inbox.</span>}
+            {activeDownload.state === "error" && <span>{activeDownload.error}</span>}
+          </div>
+          {activeDownload.state === "error" && activeDownload.path && <button type="button" onClick={() => void retryImport()}>Try again</button>}
+          <button className="ai-webview-download-dismiss" type="button" onClick={() => {
+            if (!activeTab) return;
+            setDownloadByTab((current) => {
+              const next = { ...current };
+              delete next[activeTab.id];
+              return next;
+            });
+          }} aria-label="Dismiss download notice"><X size={13} /></button>
+        </div>
+      )}
+
+      <div className="ai-browser-content">
+        {!activeProvider ? (
+          <div className="ai-browser-picker">
+            <div className="ai-browser-picker-heading">
+              <div className="ai-browser-picker-mark"><Plus size={20} /></div>
+              <h2>Open an assistant</h2>
+              <p>Each tab keeps its own conversation. Your sign-ins are shared.</p>
+            </div>
+            <div className="ai-browser-provider-grid">
+              {PROVIDERS.map((provider) => {
+                const Icon = provider.icon;
+                return (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    aria-label={`Open ${provider.tabLabel}`}
+                    onClick={() => chooseProvider(provider.id)}
+                  >
+                    <span className="ai-browser-provider-icon" style={{ color: provider.color, borderColor: `${provider.color}55` }}><Icon size={19} /></span>
+                    <span><strong>{provider.tabLabel}</strong><small>{new URL(provider.url).hostname}</small></span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div ref={containerRef} className="ai-browser-webview-host">
+            {activeRuntime?.loading && !activeRuntime.error && <div className="ai-webview-status">Opening {activeProvider.tabLabel}…</div>}
+            {activeRuntime?.error && (
+              <div className="ai-webview-error">
+                <strong>Couldn’t open this tab</strong>
+                <p className="ai-webview-error-detail">{activeRuntime.error}</p>
+                <button type="button" className="secondary" onClick={() => void openUrl(activeProvider.url)}>Open in your browser</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

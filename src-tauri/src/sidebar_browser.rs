@@ -360,6 +360,19 @@ pub(crate) async fn set_sidebar_browser_visible(
 }
 
 #[tauri::command]
+pub(crate) async fn reload_sidebar_browser(
+    app: tauri::AppHandle,
+    label: String,
+) -> Result<(), String> {
+    if !label.starts_with("ai-chatbot-") {
+        return Err("Invalid sidebar browser label".into());
+    }
+    let view = app.get_webview(&label).ok_or("Sidebar browser not found")?;
+    view.eval("window.location.reload()")
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(crate) async fn hide_sidebar_browsers(app: tauri::AppHandle) -> Result<(), String> {
     let labels = app
         .webviews()

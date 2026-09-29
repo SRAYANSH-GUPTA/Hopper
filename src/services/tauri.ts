@@ -1431,6 +1431,9 @@ export function setSidebarBrowserBounds(label: string, bounds: { x: number; y: n
 export function setSidebarBrowserVisible(label: string, visible: boolean) {
   return invoke<void>("set_sidebar_browser_visible", { label, visible });
 }
+export function reloadSidebarBrowser(label: string) {
+  return invoke<void>("reload_sidebar_browser", { label });
+}
 export function hideSidebarBrowsers() {
   return invoke<void>("hide_sidebar_browsers");
 }

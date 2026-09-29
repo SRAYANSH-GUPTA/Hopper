@@ -267,6 +267,7 @@ pub fn run() {
             sidebar_browser::create_sidebar_browser,
             sidebar_browser::set_sidebar_browser_bounds,
             sidebar_browser::set_sidebar_browser_visible,
+            sidebar_browser::reload_sidebar_browser,
             sidebar_browser::hide_sidebar_browsers,
             codex::list_mcp_server_status,
             codex::archive_thread,
