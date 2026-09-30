@@ -67,6 +67,7 @@ import { useNewAgentDraft } from "@app/hooks/useNewAgentDraft";
 import { useSystemNotificationThreadLinks } from "@app/hooks/useSystemNotificationThreadLinks";
 import { useThreadListSortKey } from "@app/hooks/useThreadListSortKey";
 import { useThreadListActions } from "@app/hooks/useThreadListActions";
+import { useProviderSwitchGuard } from "@app/hooks/useProviderSwitchGuard";
 import { useRemoteThreadLiveConnection } from "@app/hooks/useRemoteThreadLiveConnection";
 import { useTrayRecentThreads } from "@app/hooks/useTrayRecentThreads";
 import { useTraySessionUsage } from "@app/hooks/useTraySessionUsage";
@@ -587,7 +588,7 @@ export default function MainApp() {
     });
   }, [threadsByWorkspace]);
 
-  const handleProviderSwitch = useCallback((providerId: string) => {
+  const performProviderSwitch = useCallback((providerId: string) => {
     const currentThreadId = activeThreadId;
     const previousGlobal = (appSettings.localProvider ?? "codex") as LocalAgentProvider;
 
@@ -621,6 +622,9 @@ export default function MainApp() {
       setProviderSwitchCount((c) => c + 1);
     });
   }, [activeWorkspaceId, activeThreadId, appSettings, queueSaveSettings, workspaces, connectWorkspace, threadsByWorkspace]);
+
+  const providerSwitchGuard = useProviderSwitchGuard(performProviderSwitch);
+  const handleProviderSwitch = providerSwitchGuard.requestSwitch;
 
   // When switching to a thread, snapshot its provider if not yet recorded, then sync
   // global settings so the backend uses the right provider for the next message.
@@ -2039,5 +2043,14 @@ export default function MainApp() {
         await queueSaveSettings({ ...appSettings, localProvider: provider });
       }}
     />
+    {providerSwitchGuard.requestedProviderId && (
+      <ProviderSetup
+        providerId={providerSwitchGuard.requestedProviderId}
+        remote={appSettings.backendMode === "remote"}
+        targetKey={`${appSettings.backendMode}:${appSettings.remoteBackendHost}:${providerSwitchGuard.requestedProviderId}`}
+        onClose={providerSwitchGuard.closeSetup}
+        onReady={providerSwitchGuard.finishSetup}
+      />
+    )}
   </>;
 }

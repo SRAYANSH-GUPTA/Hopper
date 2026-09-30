@@ -58,6 +58,20 @@ describe("ProviderSetup", () => {
     await waitFor(() => expect(runProviderSetupAction).toHaveBeenCalledWith("codex", "install"));
   });
 
+  it("opens a focused setup dialog when a selected provider is missing", async () => {
+    const onClose = vi.fn();
+    const onReady = vi.fn();
+    render(<ProviderSetup providerId="claude" targetKey="local:claude" onClose={onClose} onReady={onReady} />);
+
+    const dialog = await screen.findByRole("dialog", { name: "Set up Claude Code" });
+    expect(within(dialog).getByText(/is not ready on this machine/)).toBeTruthy();
+    expect(within(dialog).queryByRole("checkbox", { name: "Claude Code" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Install Claude Code" }));
+
+    await waitFor(() => expect(runProviderSetupAction).toHaveBeenCalledWith("claude", "install"));
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
   it("keeps failed connection checks incomplete and retryable", async () => {
     vi.mocked(runProviderSetupAction).mockRejectedValue(new Error("Sign in first"));
     render(<ProviderSetup onboarding targetKey="local" />);

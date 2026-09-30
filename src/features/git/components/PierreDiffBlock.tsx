@@ -1,11 +1,12 @@
 import { useMemo } from "react";
-import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff, WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { parseDiff } from "../../../utils/diff";
 import { highlightLine, languageFromPath } from "../../../utils/syntax";
 import { workerFactory } from "../../../utils/diffsWorker";
 import {
   DIFF_VIEWER_SCROLL_CSS,
+  DIFF_VIEWER_HIGHLIGHTER_OPTIONS,
 } from "../../design-system/diff/diffViewerTheme";
 import {
   isFallbackRawDiffLineHighlightable,
@@ -24,17 +25,10 @@ type PierreDiffBlockProps = {
 export function PierreDiffBlock({
   diff,
   displayPath,
-  oldLines,
-  newLines,
   diffStyle = "unified",
 }: PierreDiffBlockProps) {
-  const themeMode = "pierre-dark";
-
   const poolOptions = useMemo(() => ({ workerFactory }), []);
-  const highlighterOptions = useMemo(
-    () => ({ theme: themeMode }),
-    [themeMode],
-  );
+  const highlighterOptions = DIFF_VIEWER_HIGHLIGHTER_OPTIONS;
 
   const fileDiff = useMemo(() => {
     if (!diff.trim()) {
@@ -54,10 +48,8 @@ export function PierreDiffBlock({
       ...parsed,
       name: normalizedName,
       prevName: normalizedPrevName,
-      deletionLines: oldLines,
-      additionLines: newLines,
-    } as unknown as FileDiffMetadata;
-  }, [diff, displayPath, oldLines, newLines]);
+    };
+  }, [diff, displayPath]);
 
   const parsedLines = useMemo(() => {
     const parsed = parseDiff(diff);

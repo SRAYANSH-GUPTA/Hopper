@@ -6,37 +6,32 @@ import {
   type BridgeArtifactContent, type BridgeImport, type BridgeImportSummary,
 } from "@services/tauri";
 import { subscribeSidebarBrowserDownload } from "@services/events";
-import { buildImportedHandoffPrompt, savePendingHandoff } from "@/features/context/contextStore";
+import {
+  buildImportedHandoffPrompt,
+  savePendingAttachments,
+  savePendingHandoff,
+} from "@/features/context/contextStore";
 
 export type BridgeInboxProps = {
   workspaces: WorkspaceInfo[];
   activeWorkspaceId: string | null;
-  onSelectWorkspace: (workspaceId: string) => void;
-  onProviderSwitch: (providerId: string) => void;
-  onAddAgent: (workspace: WorkspaceInfo) => void;
+  activeThreadId: string | null;
+  activeProviderLabel: string;
 };
 
-export const BRIDGE_PROVIDERS = [
-  { id: "codex", label: "Codex" },
-  { id: "claude", label: "Claude Code" },
-  { id: "antigravity", label: "Antigravity" },
-];
-
 export function useBridgeInbox({
-  workspaces, activeWorkspaceId, onSelectWorkspace, onProviderSwitch, onAddAgent,
+  workspaces, activeWorkspaceId, activeThreadId, activeProviderLabel,
 }: BridgeInboxProps) {
   const [imports, setImports] = useState<BridgeImportSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedImport, setSelectedImport] = useState<BridgeImport | null>(null);
-  const [workspaceId, setWorkspaceId] = useState(activeWorkspaceId ?? "");
-  const [providerId, setProviderId] = useState("codex");
   const [artifactPath, setArtifactPath] = useState("");
   const [preview, setPreview] = useState<BridgeArtifactContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"import" | "copy" | "start" | null>(null);
+  const [busy, setBusy] = useState<"import" | "attach" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const copiedPaths = useRef(new Map<string, string>());
@@ -66,8 +61,6 @@ export function useBridgeInbox({
   useEffect(() => subscribeSidebarBrowserDownload((download) => {
     if (download.imported) void refresh();
   }), [refresh]);
-
-  useEffect(() => { setWorkspaceId(activeWorkspaceId ?? ""); }, [activeWorkspaceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,10 +100,9 @@ export function useBridgeInbox({
     return () => { cancelled = true; };
   }, [selectedImport, artifactPath]);
 
-  const workspace = workspaces.find((item) => item.id === workspaceId);
-  const provider = BRIDGE_PROVIDERS.find((item) => item.id === providerId) ?? BRIDGE_PROVIDERS[0];
+  const workspace = workspaces.find((item) => item.id === activeWorkspaceId);
 
-  const runAction = async (action: "import" | "copy" | "start") => {
+  const runAction = async (action: "import" | "attach") => {
     if (actionPending.current) return;
     actionPending.current = true;
     setBusy(action);
@@ -125,17 +117,13 @@ export function useBridgeInbox({
         setSelectedId(imported.id);
         return;
       }
-      if (!workspace || !selectedImport) throw new Error("Choose a workspace to continue.");
+      if (!workspace || !selectedImport) throw new Error("Open a chat in a workspace first.");
       const key = JSON.stringify([selectedImport.id, workspace.id]);
       let path = copiedPaths.current.get(key);
       if (!path) {
         const result = await bridgeMaterializeImport(selectedImport.id, workspace.id);
         path = result.path;
         copiedPaths.current.set(key, path);
-      }
-      if (action === "copy") {
-        setNotice(`Files copied to ${path}`);
-        return;
       }
       const prompt = buildImportedHandoffPrompt({
         source: selectedImport.source,
@@ -144,12 +132,15 @@ export function useBridgeInbox({
         importedPath: path,
         messages: selectedImport.conversation.messages,
         artifacts: selectedImport.artifacts,
-      }, provider.label);
-      onProviderSwitch(provider.id);
-      savePendingHandoff(workspace.id, prompt);
-      onSelectWorkspace(workspace.id);
-      onAddAgent(workspace);
-      setNotice(`Ready in ${provider.label}. The imported context will accompany your first message.`);
+      }, activeProviderLabel);
+      const artifactsDirectory = `${path.replace(/[\\/]$/, "")}/artifacts`;
+      const attachmentPaths = selectedImport.artifacts.map(
+        (artifact) => `${artifactsDirectory}/${artifact.path}`,
+      );
+      savePendingHandoff(workspace.id, prompt, activeThreadId);
+      savePendingAttachments(workspace.id, attachmentPaths, activeThreadId);
+      const fileLabel = attachmentPaths.length === 1 ? "file" : "files";
+      setNotice(`${attachmentPaths.length} imported ${fileLabel} added to your chat in ${workspace.name}.`);
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -159,8 +150,8 @@ export function useBridgeInbox({
   };
 
   return {
-    imports, selectedId, setSelectedId, selectedImport, workspaceId, setWorkspaceId,
-    workspace, providerId, setProviderId, provider, artifactPath, setArtifactPath,
+    imports, selectedId, setSelectedId, selectedImport,
+    workspace, artifactPath, setArtifactPath,
     preview, loading, detailLoading, previewLoading, previewError, busy,
     error, setError, notice, refresh, runAction,
   };

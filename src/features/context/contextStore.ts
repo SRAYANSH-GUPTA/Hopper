@@ -4,6 +4,8 @@
 const MAX_RECENT_TURNS = 3;
 const STORAGE_PREFIX = "hopper.context";
 const PENDING_HANDOFF_PREFIX = "hopper.pendingHandoff";
+const PENDING_ATTACHMENTS_PREFIX = "hopper.pendingAttachments";
+const PENDING_ATTACHMENTS_EVENT = "hopper:pending-attachments";
 
 export type TurnRecord = {
   userText: string;
@@ -61,6 +63,10 @@ function contextKey(workspaceId: string, threadId: string): string {
 
 function pendingKey(workspaceId: string): string {
   return `${PENDING_HANDOFF_PREFIX}.${workspaceId}`;
+}
+
+function pendingAttachmentsKey(workspaceId: string): string {
+  return `${PENDING_ATTACHMENTS_PREFIX}.${workspaceId}`;
 }
 
 export function saveThreadContext(ctx: ThreadContext): void {
@@ -127,23 +133,77 @@ export function appendTurn(ctx: ThreadContext, turn: TurnRecord): ThreadContext 
 
 // ── Pending handoff ────────────────────────────────────────────────────────
 
-export function savePendingHandoff(workspaceId: string, prompt: string): void {
+export function savePendingHandoff(workspaceId: string, prompt: string, threadId?: string | null): void {
   try {
-    window.localStorage.setItem(pendingKey(workspaceId), prompt);
+    const key = threadId ? `${pendingKey(workspaceId)}.thread.${threadId}` : pendingKey(workspaceId);
+    const previous = window.localStorage.getItem(key);
+    window.localStorage.setItem(key, previous ? `${previous}\n\n${prompt}` : prompt);
   } catch {
     // ignore
   }
 }
 
-export function consumePendingHandoff(workspaceId: string): string | null {
+export function consumePendingHandoff(workspaceId: string, threadId?: string | null): string | null {
   try {
+    const threadKey = threadId ? `${pendingKey(workspaceId)}.thread.${threadId}` : null;
+    const threadContext = threadKey ? window.localStorage.getItem(threadKey) : null;
+    if (threadKey) window.localStorage.removeItem(threadKey);
     const key = pendingKey(workspaceId);
     const val = window.localStorage.getItem(key);
     if (val) window.localStorage.removeItem(key);
-    return val;
+    return [val, threadContext].filter(Boolean).join("\n\n") || null;
   } catch {
     return null;
   }
+}
+
+export function savePendingAttachments(workspaceId: string, paths: string[], threadId?: string | null): void {
+  const nextPaths = paths.map((path) => path.trim()).filter(Boolean);
+  if (nextPaths.length === 0) return;
+
+  try {
+    const key = threadId ? `${pendingAttachmentsKey(workspaceId)}.thread.${threadId}` : pendingAttachmentsKey(workspaceId);
+    const stored = window.localStorage.getItem(key);
+    const existing = stored ? JSON.parse(stored) : [];
+    const existingPaths = Array.isArray(existing)
+      ? existing.filter((path): path is string => typeof path === "string")
+      : [];
+    window.localStorage.setItem(
+      key,
+      JSON.stringify(Array.from(new Set([...existingPaths, ...nextPaths]))),
+    );
+    window.dispatchEvent(new CustomEvent(PENDING_ATTACHMENTS_EVENT, {
+      detail: { workspaceId },
+    }));
+  } catch {
+    // localStorage quota errors are non-fatal
+  }
+}
+
+export function consumePendingAttachments(workspaceId: string, threadId?: string | null): string[] {
+  try {
+    const key = threadId ? `${pendingAttachmentsKey(workspaceId)}.thread.${threadId}` : pendingAttachmentsKey(workspaceId);
+    const stored = window.localStorage.getItem(key);
+    if (!stored) return [];
+    window.localStorage.removeItem(key);
+    const paths = JSON.parse(stored);
+    return Array.isArray(paths)
+      ? paths.filter((path): path is string => typeof path === "string" && path.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function subscribePendingAttachments(
+  handler: (workspaceId: string) => void,
+): () => void {
+  const listener = (event: Event) => {
+    const workspaceId = (event as CustomEvent<{ workspaceId?: string }>).detail?.workspaceId;
+    if (workspaceId) handler(workspaceId);
+  };
+  window.addEventListener(PENDING_ATTACHMENTS_EVENT, listener);
+  return () => window.removeEventListener(PENDING_ATTACHMENTS_EVENT, listener);
 }
 
 // ── Prompt builder ─────────────────────────────────────────────────────────

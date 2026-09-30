@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribeWindowDragDrop } from "../../../services/dragDrop";
 import { isImageAttachment } from "../utils/attachments";
+import { useComposerDropSurface } from "../context/ComposerDropSurfaceContext";
 
 function isImageFile(file: File) {
   if (file.type.startsWith("image/")) {
@@ -130,6 +131,11 @@ export function useComposerImageDrop({
   const [isDragOver, setIsDragOver] = useState(false);
   const dropTargetRef = useRef<HTMLDivElement | null>(null);
   const lastClientPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const dropSurface = useComposerDropSurface();
+  const setDragActive = useCallback((active: boolean) => {
+    setIsDragOver(active);
+    dropSurface?.setDragActive(active);
+  }, [dropSurface]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -137,29 +143,30 @@ export function useComposerImageDrop({
       return undefined;
     }
     unlisten = subscribeWindowDragDrop((event) => {
-      if (!dropTargetRef.current) {
+      const dropTarget = dropSurface?.targetRef.current ?? dropTargetRef.current;
+      if (!dropTarget) {
         return;
       }
       if (event.payload.type === "leave") {
-        setIsDragOver(false);
+        setDragActive(false);
         return;
       }
       const position = normalizeDragPosition(
         event.payload.position,
         lastClientPositionRef.current,
       );
-      const rect = dropTargetRef.current.getBoundingClientRect();
+      const rect = dropTarget.getBoundingClientRect();
       const isInside =
         position.x >= rect.left &&
         position.x <= rect.right &&
         position.y >= rect.top &&
         position.y <= rect.bottom;
       if (event.payload.type === "over" || event.payload.type === "enter") {
-        setIsDragOver(isInside);
+        setDragActive(isInside);
         return;
       }
       if (event.payload.type === "drop") {
-        setIsDragOver(false);
+        setDragActive(false);
         if (!isInside) {
           return;
         }
@@ -176,7 +183,7 @@ export function useComposerImageDrop({
         unlisten();
       }
     };
-  }, [disabled, onAttachImages]);
+  }, [disabled, dropSurface, onAttachImages, setDragActive]);
 
   const handleDragOver = (event: React.DragEvent<HTMLElement>) => {
     if (disabled) {
@@ -185,7 +192,7 @@ export function useComposerImageDrop({
     if (isDragFileTransfer(event.dataTransfer?.types)) {
       lastClientPositionRef.current = { x: event.clientX, y: event.clientY };
       event.preventDefault();
-      setIsDragOver(true);
+      setDragActive(true);
     }
   };
 
@@ -195,7 +202,7 @@ export function useComposerImageDrop({
 
   const handleDragLeave = () => {
     if (isDragOver) {
-      setIsDragOver(false);
+      setDragActive(false);
       lastClientPositionRef.current = null;
     }
   };
@@ -205,7 +212,7 @@ export function useComposerImageDrop({
       return;
     }
     event.preventDefault();
-    setIsDragOver(false);
+    setDragActive(false);
     lastClientPositionRef.current = null;
     const files = collectFilesFromTransfer(
       event.dataTransfer?.files,

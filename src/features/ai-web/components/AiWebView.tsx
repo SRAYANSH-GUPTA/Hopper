@@ -7,6 +7,7 @@ import {
   MessageSquare,
   Plus,
   RefreshCw,
+  Search,
   Sparkles,
   X,
 } from "lucide-react";
@@ -44,6 +45,7 @@ type AssistantProvider = {
 };
 
 const PROVIDERS: AssistantProvider[] = [
+  { id: "web", label: "Google Search", tabLabel: "Web search", url: "https://www.google.com", icon: Search, color: "#4285F4" },
   { id: "chatgpt", label: "ChatGPT", tabLabel: "ChatGPT", url: "https://chatgpt.com", icon: MessageSquare, color: "#10A37F" },
   { id: "claude", label: "Anthropic Claude", tabLabel: "Claude", url: "https://claude.ai", icon: Sparkles, color: "#E56A54" },
   { id: "gemini", label: "Google Gemini", tabLabel: "Gemini", url: "https://gemini.google.com", icon: Sparkles, color: "#6E9EFF" },
@@ -388,8 +390,8 @@ export function AiWebView() {
           <div className="ai-browser-picker">
             <div className="ai-browser-picker-heading">
               <div className="ai-browser-picker-mark"><Plus size={20} /></div>
-              <h2>Open an assistant</h2>
-              <p>Each tab keeps its own conversation. Your sign-ins are shared.</p>
+              <h2>Open a tab</h2>
+              <p>Search the web or start an assistant conversation. Each tab keeps its own session.</p>
             </div>
             <div className="ai-browser-provider-grid">
               {PROVIDERS.map((provider) => {

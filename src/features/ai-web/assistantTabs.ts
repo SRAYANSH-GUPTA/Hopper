@@ -1,4 +1,4 @@
-export type AssistantProviderId = "claude" | "chatgpt" | "copilot" | "gemini" | "mistral";
+export type AssistantProviderId = "claude" | "chatgpt" | "copilot" | "gemini" | "mistral" | "web";
 
 export type AssistantBrowserTab = {
   id: string;

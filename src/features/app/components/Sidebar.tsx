@@ -213,7 +213,6 @@ export const Sidebar = memo(function Sidebar({
   onAddWorkspace,
   onSelectHome,
   onSelectWorkspace,
-  onProviderSwitch = () => {},
   onConnectWorkspace,
   onAddAgent,
   onAddWorktreeAgent,
@@ -945,9 +944,8 @@ export const Sidebar = memo(function Sidebar({
             <BridgeInbox
               workspaces={workspaces}
               activeWorkspaceId={activeWorkspaceId}
-              onSelectWorkspace={onSelectWorkspace}
-              onProviderSwitch={onProviderSwitch}
-              onAddAgent={onAddAgent}
+              activeThreadId={activeThreadId}
+              activeProviderLabel={activeProviderLabel}
             />
           </div>
         ) : (

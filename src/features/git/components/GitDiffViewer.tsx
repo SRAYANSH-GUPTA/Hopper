@@ -7,6 +7,7 @@ import GitCommitHorizontal from "lucide-react/dist/esm/icons/git-commit-horizont
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import type { ParsedDiffLine } from "../../../utils/diff";
 import { workerFactory } from "../../../utils/diffsWorker";
+import { DIFF_VIEWER_HIGHLIGHTER_OPTIONS } from "@/features/design-system/diff/diffViewerTheme";
 import type {
   PullRequestReviewIntent,
   PullRequestSelectionRange,
@@ -193,13 +194,8 @@ export function GitDiffViewer({
     [],
   );
 
-  const themeMode = "pierre-dark";
-
   const poolOptions = useMemo(() => ({ workerFactory }), []);
-  const highlighterOptions = useMemo(
-    () => ({ theme: themeMode }),
-    [themeMode],
-  );
+  const highlighterOptions = DIFF_VIEWER_HIGHLIGHTER_OPTIONS;
 
   const indexByPath = useMemo(() => {
     const map = new Map<string, number>();

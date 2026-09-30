@@ -2,7 +2,6 @@ import { memo, useMemo } from "react";
 import {
   parsePatchFiles,
   type AnnotationSide,
-  type FileDiffMetadata,
   type SelectedLineRange,
 } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
@@ -144,10 +143,8 @@ export const DiffCard = memo(function DiffCard({
       ...parsed,
       name: normalizedName,
       prevName: normalizedPrevName,
-      deletionLines: entry.oldLines,
-      additionLines: entry.newLines,
-    } as unknown as FileDiffMetadata;
-  }, [displayPath, entry.diff, entry.newLines, entry.oldLines]);
+    };
+  }, [displayPath, entry.diff]);
 
   const placeholder = useMemo(() => {
     if (isLoading) {

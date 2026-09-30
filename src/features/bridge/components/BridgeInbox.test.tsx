@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BridgeInbox } from "./BridgeInbox";
 import { bridgeGetImport, bridgeListImports, bridgeMaterializeImport, bridgeReadArtifact, type BridgeImport } from "@services/tauri";
-import { savePendingHandoff } from "@/features/context/contextStore";
+import { savePendingAttachments, savePendingHandoff } from "@/features/context/contextStore";
 
 vi.mock("@services/tauri", () => ({
   bridgeGetImport: vi.fn(), bridgeListImports: vi.fn(), bridgeMaterializeImport: vi.fn(),
@@ -12,6 +12,7 @@ vi.mock("@services/tauri", () => ({
 vi.mock("@services/events", () => ({ subscribeSidebarBrowserDownload: () => () => {} }));
 vi.mock("@/features/context/contextStore", async (original) => ({
   ...await original<typeof import("@/features/context/contextStore")>(),
+  savePendingAttachments: vi.fn(),
   savePendingHandoff: vi.fn(),
 }));
 
@@ -22,7 +23,7 @@ const imported: BridgeImport = {
 };
 const props = {
   workspaces: [{ id: "workspace", name: "Hopper", path: "/workspace", connected: true, settings: { sidebarCollapsed: false } }],
-  activeWorkspaceId: "workspace", onSelectWorkspace: vi.fn(), onProviderSwitch: vi.fn(), onAddAgent: vi.fn(),
+  activeWorkspaceId: "workspace", activeThreadId: "thread-1", activeProviderLabel: "Claude Code",
 };
 
 beforeEach(() => {
@@ -38,6 +39,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Bridge review and handoff", () => {
+  it("finishes copying to the original chat when the user switches threads", async () => {
+    let finishCopy!: (result: { path: string; artifactCount: number }) => void;
+    vi.mocked(bridgeMaterializeImport).mockImplementationOnce(() => new Promise((resolve) => { finishCopy = resolve; }));
+    const view = render(<BridgeInbox {...props} />);
+    await screen.findByTitle("Preview of Portfolio.html");
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    view.rerender(<BridgeInbox {...props} activeThreadId="thread-2" />);
+    await act(async () => finishCopy({ path: "/workspace/import", artifactCount: 1 }));
+    expect(savePendingAttachments).toHaveBeenCalledWith("workspace", ["/workspace/import/artifacts/Portfolio.html"], "thread-1");
+  });
   it("opens a static HTML preview without copying files or enabling scripts", async () => {
     render(<BridgeInbox {...props} />);
     const frame = await screen.findByTitle("Preview of Portfolio.html");
@@ -54,28 +65,39 @@ describe("Bridge review and handoff", () => {
     expect(screen.getByText(/<h1>Portfolio design/)).toBeTruthy();
   });
 
-  it("reuses a successful copy when continuing in Claude Code", async () => {
+  it("attaches to the active chat without workspace or provider selectors", async () => {
     render(<BridgeInbox {...props} />);
     await screen.findByTitle("Preview of Portfolio.html");
-    fireEvent.click(screen.getByRole("button", { name: "Copy files only" }));
+    expect(screen.queryByRole("combobox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
     await screen.findByRole("status");
-    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "claude" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue in Claude Code" }));
-    await waitFor(() => expect(props.onAddAgent).toHaveBeenCalledWith(props.workspaces[0]));
     expect(bridgeMaterializeImport).toHaveBeenCalledTimes(1);
-    expect(props.onProviderSwitch).toHaveBeenCalledWith("claude");
-    expect(savePendingHandoff).toHaveBeenCalledWith("workspace", expect.stringContaining("Implement the imported design"));
+    expect(bridgeMaterializeImport).toHaveBeenCalledWith("design", "workspace");
+    expect(savePendingHandoff).toHaveBeenCalledWith("workspace", expect.stringContaining("Implement the imported design"), "thread-1");
+    expect(savePendingAttachments).toHaveBeenCalledWith("workspace", [
+      "/workspace/.hopper/imports/design/artifacts/Portfolio.html",
+    ], "thread-1");
+    expect((await screen.findByRole("status")).textContent).toContain("1 imported file added");
   });
 
   it("keeps the action available after a failed copy and does not launch an agent", async () => {
     vi.mocked(bridgeMaterializeImport).mockRejectedValueOnce(new Error("Workspace is read-only."));
     render(<BridgeInbox {...props} />);
     await screen.findByTitle("Preview of Portfolio.html");
-    fireEvent.click(screen.getByRole("button", { name: "Continue in Codex" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Workspace is read-only.");
-    expect(props.onAddAgent).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Continue in Codex" }));
-    await waitFor(() => expect(props.onAddAgent).toHaveBeenCalledTimes(1));
+    expect(savePendingAttachments).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    await waitFor(() => expect(savePendingAttachments).toHaveBeenCalledTimes(1));
+  });
+
+  it("requires an active workspace before adding files", async () => {
+    render(<BridgeInbox {...props} activeWorkspaceId={null} activeThreadId={null} />);
+    await screen.findByTitle("Preview of Portfolio.html");
+    expect((screen.getByRole("button", { name: "Add to chat" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(bridgeMaterializeImport).not.toHaveBeenCalled();
+    expect(savePendingHandoff).not.toHaveBeenCalled();
+    expect(savePendingAttachments).not.toHaveBeenCalled();
   });
 
   it("ignores a late response for an import the user has left", async () => {

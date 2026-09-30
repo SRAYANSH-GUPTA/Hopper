@@ -1,0 +1,15 @@
+{
+  "id": "077f4d9c-f31a-4577-91cb-350a3a942813",
+  "source": "file-import",
+  "title": "Snake_Game_Project_Specification.docx",
+  "createdAt": "2026-09-29T22:23:55.195487798+00:00",
+  "messageCount": 1,
+  "artifacts": [
+    {
+      "path": "Snake_Game_Project_Specification.docx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "sizeBytes": 41243,
+      "sha256": "d1410f12e563b644e6452c24ce8c9f76084700c139fe7963d852a57510978632"
+    }
+  ]
+}

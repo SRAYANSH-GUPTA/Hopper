@@ -3,7 +3,7 @@ import { CheckCircle2, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { ModalShell } from "@/features/design-system/components/modal/ModalShell";
 import { useProviderSetup } from "@app/hooks/useProviderSetup";
 import { useSetupDialogFocus } from "@app/hooks/useSetupDialogFocus";
-import type { ProviderSetupPreferences } from "@services/tauri";
+import type { ProviderSetupPreferences, SetupProviderId } from "@services/tauri";
 import "@/styles/provider-setup.css";
 
 type Props = {
@@ -12,40 +12,58 @@ type Props = {
   targetKey: string;
   remote?: boolean;
   onConfigured?: (preferences: ProviderSetupPreferences) => Promise<void>;
+  providerId?: SetupProviderId | null;
+  onClose?: () => void;
+  onReady?: (providerId: SetupProviderId) => void;
 };
 
-export function ProviderSetup({ enabled = true, onboarding = false, targetKey, remote = false, onConfigured }: Props) {
+const PROVIDER_LABELS: Record<SetupProviderId, string> = {
+  codex: "Codex",
+  claude: "Claude Code",
+  antigravity: "Antigravity",
+};
+
+export function ProviderSetup({ enabled = true, onboarding = false, targetKey, remote = false, onConfigured, providerId = null, onClose, onReady }: Props) {
   const setup = useProviderSetup(enabled, targetKey);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const visible = enabled && (!onboarding || (!setup.closed && ((setup.status?.supported && !setup.status.preferences.completed) || (!setup.status && setup.error))));
-  useSetupDialogFocus(contentRef, Boolean(visible && onboarding));
+  const focused = providerId !== null;
+  const visible = enabled && (focused || !onboarding || (!setup.closed && ((setup.status?.supported && !setup.status.preferences.completed) || (!setup.status && setup.error))));
+  const modal = focused || onboarding;
+  const focusedLabel = providerId ? PROVIDER_LABELS[providerId] : null;
+  const providers = setup.status?.providers.filter((provider) => !providerId || provider.id === providerId) ?? [];
+  useSetupDialogFocus(contentRef, Boolean(visible && modal));
   if (!visible) return null;
   const { preferences, status, busy, error, message } = setup;
   const content = (
     <div className="provider-setup" ref={contentRef} tabIndex={-1} onKeyDown={(event) => {
-      if (onboarding && event.key === "Escape" && !setup.busy) {
+      if (modal && event.key === "Escape" && !setup.busy) {
         event.stopPropagation();
-        setup.dismiss();
+        if (focused) onClose?.();
+        else setup.dismiss();
       }
     }}>
       <div>
-        <h2 className="ds-modal-title">Connect your coding agents</h2>
-        <p className="ds-modal-subtitle">Choose the providers you want to use. Hopper can install them and help you sign in with your own account.</p>
+        <h2 className="ds-modal-title">{focused ? `Set up ${focusedLabel}` : "Connect your coding agents"}</h2>
+        <p className="ds-modal-subtitle">{focused
+          ? `${focusedLabel} is not ready on this machine. Install it, sign in, and verify the connection without leaving Hopper.`
+          : "Choose the providers you want to use. Hopper can install them and help you sign in with your own account."}</p>
         {remote && <p className="provider-setup-note">These actions run on your remote host. Complete sign-in in a terminal on that host.</p>}
       </div>
       {!status && !busy && <button className="secondary" onClick={() => void setup.refresh()}>Check providers</button>}
       {status && !status.supported && <p>Install providers on a desktop or connect Hopper to a remote host.</p>}
-      {status?.supported && status.providers.map((provider) => {
+      {status?.supported && providers.map((provider) => {
         const key = provider.id === "codex" ? "codexEnabled" : provider.id === "claude" ? "claudeEnabled" : "antigravityEnabled";
-        const selected = preferences?.[key] ?? false;
+        const selected = focused || (preferences?.[key] ?? false);
         const ready = setup.verified[provider.id];
         return (
           <section className="provider-setup-provider" key={provider.id} aria-label={provider.label}>
             <div className="provider-setup-provider-heading">
-              <label className="provider-setup-choice">
-                <input type="checkbox" checked={selected} disabled={Boolean(busy)} onChange={(event) => setup.setPreferences((prev) => prev && ({ ...prev, [key]: event.target.checked }))} />
-                <strong>{provider.label}</strong>
-              </label>
+              {focused ? <strong>{provider.label}</strong> : (
+                <label className="provider-setup-choice">
+                  <input type="checkbox" checked={selected} disabled={Boolean(busy)} onChange={(event) => setup.setPreferences((prev) => prev && ({ ...prev, [key]: event.target.checked }))} />
+                  <strong>{provider.label}</strong>
+                </label>
+              )}
               <span className={`provider-setup-status${ready ? " is-ready" : ""}`}>
                 {ready && <CheckCircle2 size={14} aria-hidden />}
                 {ready ? "Connection verified" : provider.installed ? provider.authenticated ? "Signed in · test connection" : "Installed" : "Not installed"}
@@ -81,13 +99,19 @@ export function ProviderSetup({ enabled = true, onboarding = false, targetKey, r
       {message && !busy && <p role="status" className="provider-setup-feedback">{message}</p>}
       {error && <p role="alert" className="provider-setup-error">{error}</p>}
       <div className="ds-modal-actions">
-        <button className="ghost" disabled={Boolean(busy)} onClick={() => void setup.refresh()}>Refresh</button>
-        {onboarding ? <>
+        {focused ? <>
+          <button className="secondary" disabled={Boolean(busy)} onClick={onClose}>Cancel</button>
+          <button className="ghost" disabled={Boolean(busy)} onClick={() => void setup.refresh()}>Check again</button>
+          <button className="primary" disabled={Boolean(busy) || !providerId || !setup.verified[providerId]} onClick={() => providerId && onReady?.(providerId)}>Use {focusedLabel}</button>
+        </> : <>
+          <button className="ghost" disabled={Boolean(busy)} onClick={() => void setup.refresh()}>Refresh</button>
+          {onboarding ? <>
           <button className="secondary" disabled={Boolean(busy)} onClick={() => preferences ? void setup.finish(true) : setup.dismiss()}>Set up later</button>
           <button className="primary" disabled={Boolean(busy) || !setup.canFinish} onClick={() => void setup.finish(false, onConfigured)}>Start using Hopper</button>
-        </> : <button className="primary" disabled={Boolean(busy) || !preferences} onClick={() => void setup.finish(true)}>Save setup preferences</button>}
+          </> : <button className="primary" disabled={Boolean(busy) || !preferences} onClick={() => void setup.finish(true)}>Save setup preferences</button>}
+        </>}
       </div>
     </div>
   );
-  return onboarding ? <ModalShell ariaLabel="Provider setup" cardClassName="provider-setup-modal">{content}</ModalShell> : content;
+  return modal ? <ModalShell ariaLabel={focused ? `Set up ${focusedLabel}` : "Provider setup"} cardClassName="provider-setup-modal">{content}</ModalShell> : content;
 }

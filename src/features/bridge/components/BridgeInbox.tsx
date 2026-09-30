@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Archive, ArrowRight, Check, Code2, Download, Eye, FileText, FolderOpen, LoaderCircle, MessageSquare, Monitor, RefreshCw, Search, Smartphone, X } from "lucide-react";
 import { PanelFrame, PanelHeader, PanelNavItem, PanelSearchField } from "@/features/design-system/components/panel/PanelPrimitives";
-import { BRIDGE_PROVIDERS, useBridgeInbox, type BridgeInboxProps } from "@app/hooks/useBridgeInbox";
+import { useBridgeInbox, type BridgeInboxProps } from "@app/hooks/useBridgeInbox";
 import { createHtmlPreview, decodeArtifactText } from "@/features/bridge/utils/artifactPreview";
 
 function formatBytes(bytes: number): string {
@@ -22,7 +22,7 @@ export function BridgeInbox(props: BridgeInboxProps) {
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"preview" | "source" | "conversation">("preview");
   const [mobilePreview, setMobilePreview] = useState(false);
-  const { selectedImport, preview, busy, workspace, provider } = bridge;
+  const { selectedImport, preview, busy, workspace } = bridge;
   const visibleImports = bridge.imports.filter((item) =>
     `${item.title ?? ""} ${item.source} ${item.artifacts.map((artifact) => artifact.path).join(" ")}`.toLowerCase().includes(search.toLowerCase()),
   );
@@ -132,34 +132,19 @@ export function BridgeInbox(props: BridgeInboxProps) {
                     </div>
                   </section>
                   <section className="bridge-destination">
-                    <h4><FolderOpen size={17} />Continue your work</h4>
-                    <p>Bring the files and context into a project.</p>
-                    <label>Workspace
-                      <select value={bridge.workspaceId} disabled={Boolean(busy)} onChange={(event) => bridge.setWorkspaceId(event.target.value)}>
-                        <option value="">Choose a workspace…</option>
-                        {props.workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                      </select>
-                    </label>
+                    <h4><FolderOpen size={17} />Add to your chat</h4>
+                    <p>{workspace ? `Files will be saved in ${workspace.name} and attached to your current chat.` : "Open a chat in a workspace to add these files."}</p>
                     {workspace && <p className="bridge-workspace-path" title={workspace.path}>{workspace.path}</p>}
-                    <label>Agent
-                      <select value={bridge.providerId} disabled={Boolean(busy)} onChange={(event) => bridge.setProviderId(event.target.value)}>
-                        {BRIDGE_PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                      </select>
-                    </label>
-                    <button className="primary bridge-button bridge-start" type="button" disabled={!canContinue} onClick={() => void bridge.runAction("start")}>
-                      {busy === "start" ? <LoaderCircle className="bridge-spin" size={16} /> : <ArrowRight size={16} />}
-                      {busy === "start" ? "Preparing…" : `Continue in ${provider.label}`}
+                    <button className="primary bridge-button bridge-start" type="button" disabled={!canContinue} onClick={() => void bridge.runAction("attach")}>
+                      {busy === "attach" ? <LoaderCircle className="bridge-spin" size={16} /> : <ArrowRight size={16} />}
+                      {busy === "attach" ? "Adding…" : "Add to chat"}
                     </button>
-                    <button className="ghost bridge-button" type="button" disabled={!canContinue} onClick={() => void bridge.runAction("copy")}>
-                      {busy === "copy" ? <LoaderCircle className="bridge-spin" size={16} /> : <Download size={16} />}
-                      {busy === "copy" ? "Copying…" : "Copy files only"}
-                    </button>
-                    <p className="bridge-transfer-note">{!workspace ? "Choose a workspace to enable these actions." : "Copies files into .hopper/imports. Context is attached to your first agent message."}</p>
+                    <p className="bridge-transfer-note">Files appear as attachments. Send your next message when you’re ready.</p>
                   </section>
                 </div>
               </div>
             </>
-          ) : <div className="bridge-empty bridge-welcome"><Archive size={38} /><h3>Bring your ideas here.</h3><p>Import a design, document, or conversation.<br />Review it, choose a project, and keep building.</p><button className="primary bridge-button" type="button" disabled={Boolean(busy)} onClick={() => void bridge.runAction("import")}><Download size={16} />Import your first file</button></div>}
+          ) : <div className="bridge-empty bridge-welcome"><Archive size={38} /><h3>Bring your ideas here.</h3><p>Import a design, document, or conversation.<br />Review it and add it to your chat.</p><button className="primary bridge-button" type="button" disabled={Boolean(busy)} onClick={() => void bridge.runAction("import")}><Download size={16} />Import your first file</button></div>}
         </section>
       </div>
     </div>

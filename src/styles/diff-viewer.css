@@ -320,7 +320,7 @@
   gap: 8px;
   font-size: 12px;
   color: var(--text-muted);
-  background: var(--surface-messages);
+  background: var(--surface-card);
   padding: 12px 12px 10px;
   margin: 0;
   border-bottom: 1px solid var(--border-subtle);
@@ -483,8 +483,8 @@
   contain: layout style;
   isolation: isolate;
   --diffs-font-family: var(--code-font-family);
-  --diffs-font-size: var(--code-font-size, 11px);
-  --diffs-line-height: var(--code-line-height, 1.28);
+  --diffs-font-size: max(12px, var(--code-font-size, 12px));
+  --diffs-line-height: 20px;
   --diffs-tab-size: 2;
 }
 

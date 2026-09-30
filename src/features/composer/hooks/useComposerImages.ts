@@ -1,4 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  consumePendingAttachments,
+  subscribePendingAttachments,
+} from "@/features/context/contextStore";
 import { pickAttachmentFiles } from "../../../services/tauri";
 
 type UseComposerImagesArgs = {
@@ -18,6 +22,31 @@ export function useComposerImages({
   );
 
   const activeImages = imagesByThread[draftKey] ?? [];
+
+  const consumeBridgeAttachments = useCallback((workspaceId: string) => {
+    if (workspaceId !== activeWorkspaceId) return;
+    const paths = consumePendingAttachments(workspaceId, activeThreadId);
+    if (paths.length === 0) return;
+    const workspaceDraftKey = activeThreadId ?? `draft-${workspaceId}`;
+    setImagesByThread((prev) => ({
+      ...prev,
+      [workspaceDraftKey]: Array.from(new Set([
+        ...(prev[workspaceDraftKey] ?? []),
+        ...paths,
+      ])),
+    }));
+  }, [activeThreadId, activeWorkspaceId]);
+
+  useEffect(() => {
+    if (activeWorkspaceId) {
+      consumeBridgeAttachments(activeWorkspaceId);
+    }
+  }, [activeThreadId, activeWorkspaceId, consumeBridgeAttachments]);
+
+  useEffect(
+    () => subscribePendingAttachments(consumeBridgeAttachments),
+    [consumeBridgeAttachments],
+  );
 
   const attachImages = useCallback(
     (paths: string[]) => {

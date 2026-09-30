@@ -1,0 +1,15 @@
+{
+  "id": "d6cb05d2-c0e8-452b-951f-629d1ec07ce8",
+  "source": "file-import",
+  "title": "student_flutter_quiz_app_system_design.docx",
+  "createdAt": "2026-09-30T06:04:25.772063682+00:00",
+  "messageCount": 1,
+  "artifacts": [
+    {
+      "path": "student_flutter_quiz_app_system_design.docx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "sizeBytes": 42422,
+      "sha256": "9e96fe29baad6cea9951eba389ca2f1890861fb50088e877977a94a4b1b7d407"
+    }
+  ]
+}

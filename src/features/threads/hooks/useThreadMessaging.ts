@@ -154,7 +154,7 @@ export function useThreadMessaging({
         return { status: "blocked" };
       }
       // Prepend handoff context if provider was just switched.
-      const handoff = consumePendingHandoff(workspace.id);
+      const handoff = consumePendingHandoff(workspace.id, threadId);
       let finalText = handoff
         ? `${handoff}\n\n---\n\n**User:** ${messageText}`
         : messageText;

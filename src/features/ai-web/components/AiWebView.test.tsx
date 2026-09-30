@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AiWebView } from "./AiWebView";
 
 const mocks = vi.hoisted(() => {
@@ -41,8 +41,25 @@ vi.mock("@services/tauri", () => ({
 }));
 
 afterEach(() => cleanup());
+beforeEach(() => vi.clearAllMocks());
 
 describe("AI assistant browser tabs", () => {
+  it("opens web search in its own browser tab", async () => {
+    render(<AiWebView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Web search" }));
+
+    await waitFor(() => expect(mocks.createSidebarBrowser).toHaveBeenCalledWith(
+      expect.any(String),
+      "https://www.google.com",
+      expect.any(Object),
+    ));
+    expect(screen.getByRole("tab", { name: "Web search" })).toBeTruthy();
+    expect(screen.getByText("Google Search")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("Opening Web search…")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Close Web search tab" }));
+  });
+
   it("opens, switches, and closes independent tabs for the same assistant", async () => {
     render(<AiWebView />);
 

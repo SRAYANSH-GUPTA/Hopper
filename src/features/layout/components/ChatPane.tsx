@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { ComposerDropSurfaceContext } from "@/features/composer/context/ComposerDropSurfaceContext";
 
 type ChatPaneProps = {
   messagesNode: ReactNode;
@@ -7,8 +8,10 @@ type ChatPaneProps = {
 };
 
 export function ChatPane({ messagesNode, composerNode, className }: ChatPaneProps) {
+  const paneRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
   const [composerHeight, setComposerHeight] = useState(0);
+  const [fileDragActive, setFileDragActive] = useState(false);
 
   useEffect(() => {
     if (!composerNode) {
@@ -44,15 +47,25 @@ export function ChatPane({ messagesNode, composerNode, className }: ChatPaneProp
       }) satisfies CSSProperties,
     [composerHeight],
   );
+  const dropSurface = useMemo(
+    () => ({ targetRef: paneRef, setDragActive: setFileDragActive }),
+    [],
+  );
 
   return (
-    <div className={`chat-pane${className ? ` ${className}` : ""}`} style={paneStyle}>
-      <div className="chat-pane-messages">{messagesNode}</div>
-      {composerNode ? (
-        <div className="chat-pane-composer" ref={composerRef}>
-          {composerNode}
-        </div>
-      ) : null}
-    </div>
+    <ComposerDropSurfaceContext.Provider value={dropSurface}>
+      <div
+        ref={paneRef}
+        className={`chat-pane${fileDragActive ? " is-file-drag-over" : ""}${className ? ` ${className}` : ""}`}
+        style={paneStyle}
+      >
+        <div className="chat-pane-messages">{messagesNode}</div>
+        {composerNode ? (
+          <div className="chat-pane-composer" ref={composerRef}>
+            {composerNode}
+          </div>
+        ) : null}
+      </div>
+    </ComposerDropSurfaceContext.Provider>
   );
 }

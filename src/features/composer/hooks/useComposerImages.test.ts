@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { savePendingAttachments } from "@/features/context/contextStore";
 import { useComposerImages } from "./useComposerImages";
 
 vi.mock("../../../services/tauri", () => ({
@@ -58,6 +59,20 @@ function renderComposerImages(
 }
 
 describe("useComposerImages", () => {
+  it("keeps imports on their target thread when the active chat changes", () => {
+    const hook = renderComposerImages({ activeThreadId: "thread-2", activeWorkspaceId: "ws-1" });
+    act(() => savePendingAttachments("ws-1", ["/workspace/report.docx"], "thread-1"));
+    expect(hook.result.activeImages).toEqual([]);
+    hook.rerender({ activeThreadId: "thread-1", activeWorkspaceId: "ws-1" });
+    expect(hook.result.activeImages).toEqual(["/workspace/report.docx"]);
+    act(() => savePendingAttachments("ws-1", ["/workspace/design.html"], "thread-1"));
+    expect(hook.result.activeImages).toEqual(["/workspace/report.docx", "/workspace/design.html"]);
+    hook.unmount();
+  });
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it("attaches images and deduplicates paths", () => {
     const hook = renderComposerImages({
       activeThreadId: "thread-1",
@@ -129,6 +144,41 @@ describe("useComposerImages", () => {
 
     hook.rerender({ activeThreadId: "thread-1", activeWorkspaceId: "ws-1" });
     expect(hook.result.activeImages).toEqual(["/tmp/a.png"]);
+
+    hook.unmount();
+  });
+
+  it("shows bridge files when the new workspace draft opens", () => {
+    const hook = renderComposerImages({
+      activeThreadId: "thread-1",
+      activeWorkspaceId: "ws-1",
+    });
+
+    act(() => {
+      savePendingAttachments("ws-1", ["/workspace/.hopper/imports/design/artifacts/Portfolio.html"]);
+    });
+    expect(hook.result.activeImages).toEqual([]);
+
+    hook.rerender({ activeThreadId: null, activeWorkspaceId: "ws-1" });
+    expect(hook.result.activeImages).toEqual([
+      "/workspace/.hopper/imports/design/artifacts/Portfolio.html",
+    ]);
+
+    hook.unmount();
+  });
+
+  it("shows bridge files immediately when the workspace draft is already open", () => {
+    const hook = renderComposerImages({
+      activeThreadId: null,
+      activeWorkspaceId: "ws-1",
+    });
+
+    act(() => {
+      savePendingAttachments("ws-1", ["/workspace/.hopper/imports/design/artifacts/Portfolio.html"]);
+    });
+    expect(hook.result.activeImages).toEqual([
+      "/workspace/.hopper/imports/design/artifacts/Portfolio.html",
+    ]);
 
     hook.unmount();
   });

@@ -1,4 +1,5 @@
-import type { MouseEvent, ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
+import PanelLeft from "lucide-react/dist/esm/icons/panel-left";
 import { MainTopbar } from "../../app/components/MainTopbar";
 import { ChatPane } from "./ChatPane";
 
@@ -32,7 +33,6 @@ export function TabletLayout({
   showWorkspace,
   sidebarNode,
   tabletTab,
-  onSidebarResizeStart,
   topbarLeftNode,
   topbarActionsNode,
   messagesNode,
@@ -41,18 +41,27 @@ export function TabletLayout({
   gitDiffViewerNode,
   debugPanelNode,
 }: TabletLayoutProps) {
+  const [projectsOpen, setProjectsOpen] = useState(false);
+
   return (
     <>
-      {tabletNavNode}
-      <div className="tablet-projects">{sidebarNode}</div>
-      <div
-        className="projects-resizer"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize projects"
-        onMouseDown={onSidebarResizeStart}
-      />
-      <section className="tablet-main">
+      <div className="tablet-toolbar">
+        <button
+          type="button"
+          className="tablet-nav-item"
+          aria-expanded={projectsOpen}
+          aria-controls="tablet-projects"
+          onClick={() => setProjectsOpen((open) => !open)}
+        >
+          <PanelLeft size={18} aria-hidden />
+          <span>{projectsOpen ? "Close projects" : "Projects"}</span>
+        </button>
+        <div onClick={() => setProjectsOpen(false)}>{tabletNavNode}</div>
+      </div>
+      {projectsOpen && (
+        <div id="tablet-projects" className="tablet-projects">{sidebarNode}</div>
+      )}
+      <section className="tablet-main" hidden={projectsOpen}>
         {approvalToastsNode}
         {updateToastNode}
         {errorToastsNode}

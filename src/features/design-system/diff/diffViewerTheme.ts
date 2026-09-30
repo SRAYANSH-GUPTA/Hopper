@@ -1,4 +1,17 @@
 export const DIFF_VIEWER_SCROLL_CSS = `
+:host {
+  color-scheme: inherit;
+  --diffs-bg-buffer-override: var(--surface-messages);
+  --diffs-bg-context-override: var(--surface-messages);
+  --diffs-bg-context-gutter-override: var(--surface-card);
+  --diffs-bg-separator-override: var(--surface-card);
+  --diffs-fg-number-override: var(--text-muted);
+  --diffs-addition-color-override: var(--status-success, #78b887);
+  --diffs-deletion-color-override: var(--status-error, #e08080);
+  --diffs-bg-addition-override: color-mix(in srgb, var(--diffs-addition-color-override) 12%, var(--surface-messages));
+  --diffs-bg-deletion-override: color-mix(in srgb, var(--diffs-deletion-color-override) 12%, var(--surface-messages));
+}
+
 [data-column-number],
 [data-buffer],
 [data-separator-wrapper],
@@ -28,18 +41,19 @@ diffs-container,
 [data-diffs-header],
 [data-diffs],
 [data-error-wrapper] {
-  --diffs-light-bg: var(--ds-diff-lib-bg-light);
-  --diffs-dark-bg: var(--ds-diff-lib-bg-dark);
+  --diffs-light-bg: var(--surface-messages);
+  --diffs-dark-bg: var(--surface-messages);
+  --diffs-bg: var(--surface-messages);
 }
 
 [data-diffs-header][data-theme-type='light'],
 [data-diffs][data-theme-type='light'] {
-  --diffs-bg: var(--ds-diff-lib-bg-light);
+  --diffs-bg: var(--surface-messages);
 }
 
 [data-diffs-header][data-theme-type='dark'],
 [data-diffs][data-theme-type='dark'] {
-  --diffs-bg: var(--ds-diff-lib-bg-dark);
+  --diffs-bg: var(--surface-messages);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -47,7 +61,7 @@ diffs-container,
   [data-diffs]:not([data-theme-type]),
   [data-diffs-header][data-theme-type='system'],
   [data-diffs][data-theme-type='system'] {
-    --diffs-bg: var(--ds-diff-lib-bg-system-dark);
+    --diffs-bg: var(--surface-messages);
   }
 }
 
@@ -56,7 +70,7 @@ diffs-container,
   [data-diffs]:not([data-theme-type]),
   [data-diffs-header][data-theme-type='system'],
   [data-diffs][data-theme-type='system'] {
-    --diffs-bg: var(--ds-diff-lib-bg-system-light);
+    --diffs-bg: var(--surface-messages);
   }
 }
 `;

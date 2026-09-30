@@ -2,6 +2,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ComposerDropSurfaceContext, type ComposerDropSurface } from "../context/ComposerDropSurfaceContext";
 import { useComposerImageDrop } from "./useComposerImageDrop";
 
 let mockOnDragDropEvent:
@@ -28,12 +29,18 @@ type RenderedHook = {
   unmount: () => void;
 };
 
-function renderImageDropHook(options: { disabled: boolean; onAttachImages?: (paths: string[]) => void }): RenderedHook {
+function renderImageDropHook(options: { disabled: boolean; onAttachImages?: (paths: string[]) => void }, dropSurface?: ComposerDropSurface): RenderedHook {
   let result: HookResult | undefined;
 
-  function Test() {
+  function HookProbe() {
     result = useComposerImageDrop(options);
     return null;
+  }
+
+  function Test() {
+    return dropSurface
+      ? React.createElement(ComposerDropSurfaceContext.Provider, { value: dropSurface }, React.createElement(HookProbe))
+      : React.createElement(HookProbe);
   }
 
   const container = document.createElement("div");
@@ -245,6 +252,33 @@ describe("useComposerImageDrop", () => {
       "/tmp/note.txt",
     ]);
 
+    hook.unmount();
+  });
+
+  it("uses the full chat pane as the native file drop target", async () => {
+    const onAttachImages = vi.fn();
+    const setDragActive = vi.fn();
+    const surface = document.createElement("div");
+    surface.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 500, bottom: 500 } as DOMRect);
+    const hook = renderImageDropHook(
+      { disabled: false, onAttachImages },
+      { targetRef: { current: surface }, setDragActive },
+    );
+    const input = document.createElement("div");
+    input.getBoundingClientRect = () =>
+      ({ left: 400, top: 400, right: 500, bottom: 500 } as DOMRect);
+    hook.result.dropTargetRef.current = input;
+
+    await act(async () => Promise.resolve());
+    act(() => {
+      mockOnDragDropEvent?.({
+        payload: { type: "drop", position: { x: 100, y: 100 }, paths: ["/tmp/report.pdf"] },
+      });
+    });
+
+    expect(onAttachImages).toHaveBeenCalledWith(["/tmp/report.pdf"]);
+    expect(setDragActive).toHaveBeenCalledWith(false);
     hook.unmount();
   });
 
