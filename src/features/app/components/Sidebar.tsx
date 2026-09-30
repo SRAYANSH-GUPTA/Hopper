@@ -23,6 +23,8 @@ import { AiWebView } from "../../ai-web/components/AiWebView";
 import Bot from "lucide-react/dist/esm/icons/bot";
 import Inbox from "lucide-react/dist/esm/icons/inbox";
 import { BridgeInbox } from "../../bridge/components/BridgeInbox";
+import { TasksView } from "../../tasks/components/TasksView";
+import ClipboardCheck from "lucide-react/dist/esm/icons/clipboard-check";
 import { SidebarBottomRail } from "./SidebarBottomRail";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarSearchBar } from "./SidebarSearchBar";
@@ -242,13 +244,14 @@ export const Sidebar = memo(function Sidebar({
   planPanelNode,
   agentMd,
 }: SidebarProps) {
-  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "marketplace" | "mcp" | "ai" | "bridge">("explorer");
+  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "tasks" | "marketplace" | "mcp" | "ai" | "bridge">("explorer");
 
   useEffect(() => {
     if (activeView !== "ai") {
       void hideSidebarBrowsers().catch(() => {});
     }
   }, [activeView]);
+
   const [expandedWorkspaces, setExpandedWorkspaces] = useState(
     new Set<string>(),
   );
@@ -876,6 +879,17 @@ export const Sidebar = memo(function Sidebar({
           )}
           <button
             type="button"
+            className={`sidebar-activity-btn ds-tooltip-trigger${activeView === "tasks" ? " is-active" : ""}`}
+            onClick={() => setActiveView("tasks")}
+            aria-label="My Tasks"
+            aria-pressed={activeView === "tasks"}
+            data-tooltip="My Tasks"
+            data-tooltip-placement="right"
+          >
+            <ClipboardCheck size={20} aria-hidden />
+          </button>
+          <button
+            type="button"
             className={`sidebar-activity-btn ds-tooltip-trigger${activeView === "marketplace" ? " is-active" : ""}`}
             onClick={() => setActiveView("marketplace")}
             aria-label="Extensions"
@@ -927,6 +941,10 @@ export const Sidebar = memo(function Sidebar({
           <div className="sidebar-git-panel">{gitPanelNode}</div>
         ) : activeView === "plan" && planPanelNode ? (
           <div className="sidebar-git-panel">{planPanelNode}</div>
+        ) : activeView === "tasks" ? (
+          <div className="sidebar-tasks-panel">
+            <TasksView />
+          </div>
         ) : activeView === "marketplace" ? (
           <div className="sidebar-marketplace-panel">
             <MarketplaceView />
