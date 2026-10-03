@@ -11,11 +11,91 @@ use uuid::Uuid;
 use crate::backend::events::{AppServerEvent, EventSink};
 use crate::types::LocalAgentProvider;
 
+mod steps;
+
 fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// Transcript polling runs every 100 ms; stop after 6 hours even if agy never exits.
+const TRANSCRIPT_MAX_POLLS: usize = 6 * 60 * 60 * 10;
+/// Keep reading for ~1 s after stdout ends so the final transcript steps arrive.
+const TRANSCRIPT_POLLS_AFTER_FINISH: usize = 10;
+
+/// Prefix of request ids Hopper issues for agy (questions and permission retries).
+pub(crate) const ANTIGRAVITY_REQUEST_PREFIX: &str = "agy-";
+
+/// The questions of an `ask_question` tool call in a PLANNER_RESPONSE step.
+fn ask_question_calls(step: &Value) -> Option<Vec<Value>> {
+    let questions: Vec<Value> = step
+        .get("tool_calls")?
+        .as_array()?
+        .iter()
+        .filter(|call| call.get("name").and_then(Value::as_str) == Some("ask_question"))
+        .filter_map(|call| call.pointer("/args/questions").and_then(Value::as_array))
+        .flatten()
+        .cloned()
+        .collect();
+    (!questions.is_empty()).then_some(questions)
+}
+
+/// Maps agy questions to question-card params. agy can't wait for answers in
+/// headless mode, so they are answered with a follow-up message.
+fn question_request_params(
+    questions: &[Value],
+    thread_id: &str,
+    turn_id: &str,
+    item_id: &str,
+) -> Value {
+    let mapped: Vec<Value> = questions
+        .iter()
+        .enumerate()
+        .map(|(index, question)| {
+            let options: Vec<Value> = question
+                .get("options")
+                .and_then(Value::as_array)
+                .map(|options| {
+                    options
+                        .iter()
+                        .filter_map(|option| match option {
+                            Value::String(label) => Some(label.clone()),
+                            _ => option.get("label").and_then(Value::as_str).map(str::to_string),
+                        })
+                        .map(|label| json!({ "label": label, "description": "" }))
+                        .collect()
+                })
+                .unwrap_or_default();
+            json!({
+                "id": format!("q{index}"),
+                "header": "",
+                "question": question.get("question").and_then(Value::as_str).unwrap_or(""),
+                "options": options,
+                "multiSelect": question.get("is_multi_select").and_then(Value::as_bool).unwrap_or(false),
+                "isOther": true,
+            })
+        })
+        .collect();
+    json!({
+        "threadId": thread_id,
+        "turnId": turn_id,
+        "itemId": item_id,
+        "answerMode": "followUp",
+        "questions": mapped,
+    })
+}
+
+/// The permission named in agy's headless auto-deny message, if `line` is one.
+fn denied_permission(line: &str) -> Option<String> {
+    if !line.contains("auto-denied") {
+        return None;
+    }
+    regex::Regex::new(r#"required the "([^"]+)" permission"#)
+        .ok()?
+        .captures(line)
+        .map(|captures| captures[1].to_string())
 }
 
 #[derive(Clone)]
@@ -25,10 +105,32 @@ struct AntigravityThread {
     created_at: i64,
 }
 
+/// What a turn was started with, kept so a permission-blocked turn can be rerun.
+#[derive(Clone, Debug, PartialEq)]
+struct TurnInput {
+    workspace_cwd: String,
+    text: String,
+    model_id: Option<String>,
+    images: Option<Vec<String>>,
+}
+
+/// Per-turn overrides.
+#[derive(Clone, Copy, Debug, Default)]
+struct TurnOptions {
+    /// Run this turn with `--dangerously-skip-permissions` regardless of the setting.
+    allow_all_permissions: bool,
+    /// Rerun of an earlier turn: don't show the user's message again.
+    replay: bool,
+}
+
 pub(crate) struct AntigravityState {
     threads: Mutex<HashMap<String, HashMap<String, AntigravityThread>>>,
     /// "workspace_id:thread_id" -> child PID for interrupt support
     running_pids: Mutex<HashMap<String, u32>>,
+    /// "workspace_id:thread_id" -> input of the thread's latest turn
+    last_turns: Mutex<HashMap<String, TurnInput>>,
+    /// Permission retry request id -> (workspace_id, thread_id)
+    pending_retries: Mutex<HashMap<String, (String, String)>>,
 }
 
 impl AntigravityState {
@@ -36,7 +138,36 @@ impl AntigravityState {
         Arc::new(Self {
             threads: Mutex::new(HashMap::new()),
             running_pids: Mutex::new(HashMap::new()),
+            last_turns: Mutex::new(HashMap::new()),
+            pending_retries: Mutex::new(HashMap::new()),
         })
+    }
+
+    async fn remember_turn(&self, workspace_id: &str, thread_id: &str, input: TurnInput) {
+        self.last_turns
+            .lock()
+            .await
+            .insert(format!("{workspace_id}:{thread_id}"), input);
+    }
+
+    async fn register_retry(&self, workspace_id: &str, thread_id: &str) -> String {
+        let request_id = format!("{ANTIGRAVITY_REQUEST_PREFIX}perm-{}", Uuid::new_v4());
+        self.pending_retries.lock().await.insert(
+            request_id.clone(),
+            (workspace_id.to_string(), thread_id.to_string()),
+        );
+        request_id
+    }
+
+    async fn take_retry(&self, request_id: &str) -> Option<(String, String, TurnInput)> {
+        let (workspace_id, thread_id) = self.pending_retries.lock().await.remove(request_id)?;
+        let input = self
+            .last_turns
+            .lock()
+            .await
+            .get(&format!("{workspace_id}:{thread_id}"))
+            .cloned()?;
+        Some((workspace_id, thread_id, input))
     }
 
     async fn register_pid(&self, workspace_id: &str, thread_id: &str, pid: u32) {
@@ -262,8 +393,56 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
     images: Option<Vec<String>>,
     event_sink: E,
 ) -> Result<Value, String> {
-    let auto_approve = crate::shared::provider_setup_core::read_preferences()?.antigravity_auto_approve;
+    let input = TurnInput {
+        workspace_cwd,
+        text,
+        model_id,
+        images,
+    };
+    run_turn(state, workspace_id, thread_id, input, TurnOptions::default(), event_sink).await
+}
+
+/// Answers a permission-retry prompt: on accept, reruns the blocked turn with
+/// all permissions allowed for that run only.
+pub(crate) async fn respond_to_permission_retry<E: EventSink + 'static>(
+    state: Arc<AntigravityState>,
+    request_id: &str,
+    accept: bool,
+    event_sink: E,
+) -> Result<(), String> {
+    let Some((workspace_id, thread_id, input)) = state.take_retry(request_id).await else {
+        return Ok(());
+    };
+    if !accept {
+        return Ok(());
+    }
+    let options = TurnOptions {
+        allow_all_permissions: true,
+        replay: true,
+    };
+    run_turn(state, workspace_id, thread_id, input, options, event_sink)
+        .await
+        .map(|_| ())
+}
+
+async fn run_turn<E: EventSink + 'static>(
+    state: Arc<AntigravityState>,
+    workspace_id: String,
+    thread_id: String,
+    input: TurnInput,
+    options: TurnOptions,
+    event_sink: E,
+) -> Result<Value, String> {
+    let auto_approve = options.allow_all_permissions
+        || crate::shared::provider_setup_core::read_preferences()?.antigravity_auto_approve;
     state.ensure_thread(&workspace_id, &thread_id).await;
+    state.remember_turn(&workspace_id, &thread_id, input.clone()).await;
+    let TurnInput {
+        workspace_cwd,
+        text,
+        model_id,
+        images,
+    } = input;
 
     let session_id = state.get_session_id(&workspace_id, &thread_id).await;
     let turn_id = Uuid::new_v4().to_string();
@@ -312,27 +491,29 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
         }
     }
 
-    let user_item_id = Uuid::new_v4().to_string();
-    let user_item = json!({
-        "type": "userMessage",
-        "id": user_item_id,
-        "turnId": turn_id,
-        "content": content_blocks
-    });
-    event_sink.emit_app_server_event(AppServerEvent {
-        workspace_id: workspace_id.clone(),
-        message: json!({
-            "method": "item/started",
-            "params": { "threadId": thread_id, "item": user_item.clone() }
-        }),
-    });
-    event_sink.emit_app_server_event(AppServerEvent {
-        workspace_id: workspace_id.clone(),
-        message: json!({
-            "method": "item/completed",
-            "params": { "threadId": thread_id, "item": user_item }
-        }),
-    });
+    if !options.replay {
+        let user_item_id = Uuid::new_v4().to_string();
+        let user_item = json!({
+            "type": "userMessage",
+            "id": user_item_id,
+            "turnId": turn_id,
+            "content": content_blocks
+        });
+        event_sink.emit_app_server_event(AppServerEvent {
+            workspace_id: workspace_id.clone(),
+            message: json!({
+                "method": "item/started",
+                "params": { "threadId": thread_id, "item": user_item.clone() }
+            }),
+        });
+        event_sink.emit_app_server_event(AppServerEvent {
+            workspace_id: workspace_id.clone(),
+            message: json!({
+                "method": "item/completed",
+                "params": { "threadId": thread_id, "item": user_item }
+            }),
+        });
+    }
 
     let agy_bin = resolve_antigravity_bin().await;
 
@@ -387,8 +568,44 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
         use tokio::io::AsyncBufReadExt;
         let mut lines = tokio::io::BufReader::new(stderr).lines();
         let mut emitted_error = false;
+        let mut prompted_permission = false;
         while let Ok(Some(line)) = lines.next_line().await {
             eprintln!("[antigravity stderr] {line}");
+            if let Some(permission) = denied_permission(&line).filter(|_| !prompted_permission) {
+                prompted_permission = true;
+                let message = format!(
+                    "agy needs the \"{permission}\" permission, which Hopper isn't granting automatically. Allow it to retry this turn."
+                );
+                event_sink_clone.emit_app_server_event(AppServerEvent {
+                    workspace_id: workspace_id_clone.clone(),
+                    message: json!({
+                        "method": "error",
+                        "params": {
+                            "threadId": thread_id_clone.clone(),
+                            "turnId": turn_id_for_stderr.clone(),
+                            "error": { "message": message },
+                            "willRetry": false
+                        }
+                    }),
+                });
+                let request_id = state_clone
+                    .register_retry(&workspace_id_clone, &thread_id_clone)
+                    .await;
+                event_sink_clone.emit_app_server_event(AppServerEvent {
+                    workspace_id: workspace_id_clone.clone(),
+                    message: json!({
+                        "method": "antigravity/requestApproval",
+                        "id": request_id,
+                        "params": {
+                            "tool": permission,
+                            "threadId": thread_id_clone.clone(),
+                            "turnId": turn_id_for_stderr.clone(),
+                            "reason": message,
+                        }
+                    }),
+                });
+                continue;
+            }
             let lower = line.to_ascii_lowercase();
             if !emitted_error && (lower.contains("quota") || lower.contains("rate limit")) {
                 emitted_error = true;
@@ -415,6 +632,9 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
         }
     });
 
+    // Set once agy's stdout ends, so the transcript tailer knows to finish up.
+    let turn_finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let turn_finished_t = turn_finished.clone();
     let current_session_clone = current_session.clone();
     let thread_id_t = thread_id.clone();
     let turn_id_t = turn_id.clone();
@@ -440,24 +660,38 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
             
             let mut pos = 0;
             let mut seen_steps = std::collections::HashSet::new();
-            
-            // Loop for up to 2 minutes waiting for process
-            for _ in 0..1200 {
+            let mut pending_questions: Option<Vec<Value>> = None;
+            let mut pending_calls = steps::PendingToolCalls::default();
+            let mut polls_after_finish = 0;
+
+            // Follow the transcript until the turn ends (bounded for safety).
+            for _ in 0..TRANSCRIPT_MAX_POLLS {
+                let finished = turn_finished_t.load(std::sync::atomic::Ordering::SeqCst);
                 if let Ok(mut file) = std::fs::File::open(&path) {
                     use std::io::{Read, Seek, SeekFrom};
                     let _ = file.seek(SeekFrom::Start(pos));
                     let mut buf = String::new();
-                    if let Ok(n) = file.read_to_string(&mut buf) {
-                        if n > 0 {
-                            pos += n as u64;
-                            for line in buf.lines() {
+                    if file.read_to_string(&mut buf).is_ok() {
+                        // Consume complete lines only; a line still being written is re-read next poll.
+                        let complete = buf.rfind('\n').map(|index| index + 1).unwrap_or(0);
+                        if complete > 0 {
+                            pos += complete as u64;
+                            for line in buf[..complete].lines() {
                                 if let Ok(val) = serde_json::from_str::<Value>(line) {
                                     let step_index = val.get("step_index").and_then(|v| v.as_i64()).unwrap_or(0);
                                     if !seen_steps.insert(step_index) { continue; }
                                     
                                     if let Some(t) = val.get("type").and_then(|v| v.as_str()) {
                                         if t == "PLANNER_RESPONSE" {
-                                            if let Some(thinking) = val.get("thinking").and_then(|v| v.as_str()) {
+                                            if let Some(questions) = ask_question_calls(&val) {
+                                                pending_questions = Some(questions);
+                                            }
+                                            pending_calls.extend_from_planner(&val);
+                                            if let Some(thinking) = val
+                                                .get("thinking")
+                                                .and_then(|v| v.as_str())
+                                                .filter(|thinking| !thinking.trim().is_empty())
+                                            {
                                                 let item_id = format!("reasoning-{}", step_index);
                                                 event_sink_t.emit_app_server_event(AppServerEvent {
                                                     workspace_id: workspace_id_t.clone(),
@@ -503,58 +737,64 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
                                                     }),
                                                 });
                                             }
-                                        } else if t != "USER_INPUT" && t != "CONVERSATION_HISTORY" && t != "EPHEMERAL_MESSAGE" && t != "CHECKPOINT" {
+                                        } else if !matches!(t, "USER_INPUT" | "CONVERSATION_HISTORY" | "EPHEMERAL_MESSAGE" | "CHECKPOINT" | "SYSTEM_MESSAGE") {
                                             let item_id = format!("tool-{}", step_index);
                                             let content = val.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                                            event_sink_t.emit_app_server_event(AppServerEvent {
-                                                workspace_id: workspace_id_t.clone(),
-                                                message: json!({
-                                                    "method": "item/started",
-                                                    "params": {
-                                                        "threadId": thread_id_t,
-                                                        "item": {
-                                                            "type": "commandExecution",
-                                                            "id": item_id,
-                                                            "turnId": turn_id_t,
-                                                            "command": t,
-                                                            "status": "in_progress"
-                                                        }
-                                                    }
-                                                }),
-                                            });
-                                            event_sink_t.emit_app_server_event(AppServerEvent {
-                                                workspace_id: workspace_id_t.clone(),
-                                                message: json!({
-                                                    "method": "item/commandExecution/outputDelta",
-                                                    "params": {
-                                                        "threadId": thread_id_t,
-                                                        "itemId": item_id,
-                                                        "delta": content
-                                                    }
-                                                }),
-                                            });
-                                            event_sink_t.emit_app_server_event(AppServerEvent {
-                                                workspace_id: workspace_id_t.clone(),
-                                                message: json!({
-                                                    "method": "item/completed",
-                                                    "params": {
-                                                        "threadId": thread_id_t,
-                                                        "item": {
-                                                            "type": "commandExecution",
-                                                            "id": item_id,
-                                                            "turnId": turn_id_t,
-                                                            "command": t,
-                                                            "status": "completed",
-                                                            "output": content
-                                                        }
-                                                    }
-                                                }),
-                                            });
+                                            let asked = if t == "ASK_QUESTION" { pending_questions.take() } else { None };
+                                            let (started, completed) = match asked.as_ref() {
+                                                Some(questions) => {
+                                                    let item = json!({
+                                                        "type": "toolCall",
+                                                        "id": item_id,
+                                                        "turnId": turn_id_t,
+                                                        "tool": "ask_question",
+                                                        "title": "Asked",
+                                                        "detail": questions
+                                                            .first()
+                                                            .and_then(|question| question.get("question").and_then(Value::as_str))
+                                                            .unwrap_or(""),
+                                                        "status": "completed",
+                                                        "output": "agy can't wait for answers in headless mode. Answer below to send your reply.",
+                                                    });
+                                                    (item.clone(), item)
+                                                }
+                                                None => {
+                                                    let call = pending_calls.take_for_step(t);
+                                                    let failed = t == "ERROR_MESSAGE"
+                                                        || val.get("error").is_some_and(|error| !error.is_null());
+                                                    steps::step_items(&item_id, &turn_id_t, t, call.as_ref(), content, failed)
+                                                }
+                                            };
+                                            for (method, item) in [("item/started", started), ("item/completed", completed)] {
+                                                event_sink_t.emit_app_server_event(AppServerEvent {
+                                                    workspace_id: workspace_id_t.clone(),
+                                                    message: json!({
+                                                        "method": method,
+                                                        "params": { "threadId": thread_id_t, "item": item }
+                                                    }),
+                                                });
+                                            }
+                                            if let Some(questions) = asked {
+                                                event_sink_t.emit_app_server_event(AppServerEvent {
+                                                    workspace_id: workspace_id_t.clone(),
+                                                    message: json!({
+                                                        "method": "item/tool/requestUserInput",
+                                                        "id": format!("{ANTIGRAVITY_REQUEST_PREFIX}q-{}", Uuid::new_v4()),
+                                                        "params": question_request_params(&questions, &thread_id_t, &turn_id_t, &item_id),
+                                                    }),
+                                                });
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+                    }
+                }
+                if finished {
+                    polls_after_finish += 1;
+                    if polls_after_finish >= TRANSCRIPT_POLLS_AFTER_FINISH {
+                        break;
                     }
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -617,6 +857,7 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
             }
         }
 
+        turn_finished.store(true, std::sync::atomic::Ordering::SeqCst);
         let full_text = full_text_buf.trim().to_string();
         eprintln!("[antigravity stdout complete] length: {}", full_text.len());
 
@@ -673,4 +914,68 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
             }
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_ask_question_calls_from_planner_steps() {
+        let step = json!({
+            "type": "PLANNER_RESPONSE",
+            "tool_calls": [
+                {"name": "view_file", "args": {"path": "a"}},
+                {"name": "ask_question", "args": {"questions": [
+                    {"question": "Which part of the UI?", "options": ["Home", "Sidebar"], "is_multi_select": true}
+                ]}}
+            ]
+        });
+        let questions = ask_question_calls(&step).unwrap();
+        assert_eq!(questions.len(), 1);
+        assert!(ask_question_calls(&json!({"tool_calls": []})).is_none());
+        assert!(ask_question_calls(&json!({})).is_none());
+
+        let params = question_request_params(&questions, "thread-1", "turn-1", "tool-74");
+        assert_eq!(params["answerMode"], "followUp");
+        assert_eq!(params["itemId"], "tool-74");
+        assert_eq!(params["questions"][0]["id"], "q0");
+        assert_eq!(params["questions"][0]["question"], "Which part of the UI?");
+        assert_eq!(params["questions"][0]["multiSelect"], true);
+        assert_eq!(params["questions"][0]["options"][1]["label"], "Sidebar");
+    }
+
+    #[test]
+    fn detects_headless_permission_denials() {
+        let line = "jetski: no output produced — a tool required the \"command\" permission that headless mode cannot prompt for, so it was auto-denied. Add an allow-rule under permissions.allow in settings.json.";
+        assert_eq!(denied_permission(line).as_deref(), Some("command"));
+        assert!(denied_permission("Created conversation 1234").is_none());
+        assert!(denied_permission("required the \"command\" permission").is_none());
+    }
+
+    #[test]
+    fn retries_only_registered_requests_once() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let state = AntigravityState::new();
+                let input = TurnInput {
+                    workspace_cwd: "/tmp".into(),
+                    text: "run ls".into(),
+                    model_id: None,
+                    images: None,
+                };
+                state.remember_turn("ws", "thread", input.clone()).await;
+                let request_id = state.register_retry("ws", "thread").await;
+                assert!(request_id.starts_with(ANTIGRAVITY_REQUEST_PREFIX));
+                assert_eq!(
+                    state.take_retry(&request_id).await,
+                    Some(("ws".into(), "thread".into(), input))
+                );
+                assert!(state.take_retry(&request_id).await.is_none());
+                assert!(state.take_retry("agy-perm-unknown").await.is_none());
+            });
+    }
 }

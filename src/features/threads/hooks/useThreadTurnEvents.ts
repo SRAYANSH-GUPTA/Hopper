@@ -261,11 +261,12 @@ export function useThreadTurnEvents({
   );
 
   const onTurnCompleted = useCallback(
-    (_workspaceId: string, threadId: string, turnId: string) => {
+    (workspaceId: string, threadId: string, turnId: string) => {
       const activeTurnId = getLatestKnownActiveTurnId(threadId);
       if (turnId && activeTurnId && turnId !== activeTurnId) {
         return;
       }
+      dispatch({ type: "clearTurnUserInputRequests", workspaceId, threadId });
       markProcessing(threadId, false);
       resetThreadTurnState(
         {
@@ -423,6 +424,7 @@ export function useThreadTurnEvents({
         return;
       }
       dispatch({ type: "ensureThread", workspaceId, threadId });
+      dispatch({ type: "clearTurnUserInputRequests", workspaceId, threadId });
       markProcessing(threadId, false);
       markReviewing(threadId, false);
       resetThreadTurnState(

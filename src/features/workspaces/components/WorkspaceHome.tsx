@@ -16,6 +16,7 @@ import type {
   SkillOption,
   WorkspaceInfo,
 } from "../../../types";
+import type { SlashCommandOption } from "../../../services/tauri";
 import { ComposerInput } from "../../composer/components/ComposerInput";
 import { useComposerImages } from "../../composer/hooks/useComposerImages";
 import { useComposerAutocompleteState } from "../../composer/hooks/useComposerAutocompleteState";
@@ -77,6 +78,8 @@ type WorkspaceHomeProps = {
   appsEnabled: boolean;
   apps: AppOption[];
   prompts: CustomPromptOption[];
+  /** Skills and custom commands installed for the active provider. */
+  slashCommands?: SlashCommandOption[];
   files: string[];
   dictationEnabled: boolean;
   dictationState: DictationSessionState;
@@ -142,6 +145,7 @@ export function WorkspaceHome({
   appsEnabled,
   apps,
   prompts,
+  slashCommands,
   files,
   dictationEnabled,
   dictationState,
@@ -206,10 +210,12 @@ export function WorkspaceHome({
     skills,
     apps,
     prompts,
+    slashCommands,
     files,
     textareaRef,
     setText: onPromptChange,
     setSelectionStart,
+    activeProviderId: activeProviderId ?? undefined,
   });
 
   const suggestionsStyle = useWorkspaceHomeSuggestionsStyle({

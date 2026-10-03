@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceInfo } from "@/types";
-import { useQueuedSend } from "./useQueuedSend";
+import { parseSlashCommand, useQueuedSend } from "./useQueuedSend";
 
 const workspace: WorkspaceInfo = {
   id: "workspace-1",
@@ -576,4 +576,36 @@ describe("useQueuedSend", () => {
     expect(options.sendUserMessage).toHaveBeenCalledWith("Held", []);
   });
 
+  it("sends Codex-only commands to Claude's CLI as typed", async () => {
+    const options = makeOptions({ provider: "claude" });
+    const { result } = renderHook((props) => useQueuedSend(props), {
+      initialProps: options,
+    });
+
+    await act(async () => {
+      await result.current.handleSend("/compact now");
+    });
+    await act(async () => {
+      await result.current.handleSend("/graphify src");
+    });
+
+    expect(options.startCompact).not.toHaveBeenCalled();
+    expect(vi.mocked(options.sendUserMessage).mock.calls.map((call) => call[0])).toEqual([
+      "/compact now",
+      "/graphify src",
+    ]);
+  });
+
+  it("intercepts Hopper's own commands for every provider", () => {
+    for (const provider of ["codex", "claude", "antigravity"] as const) {
+      const context = { appsEnabled: true, provider };
+      expect(parseSlashCommand("/new hello", context)).toBe("new");
+      expect(parseSlashCommand("/usage", context)).toBe("usage");
+    }
+    expect(parseSlashCommand("/review", { appsEnabled: true, provider: "codex" })).toBe("review");
+    expect(parseSlashCommand("/apps", { appsEnabled: true, provider: "codex" })).toBe("apps");
+    expect(parseSlashCommand("/apps", { appsEnabled: false, provider: "codex" })).toBeNull();
+    expect(parseSlashCommand("/review", { appsEnabled: true, provider: "antigravity" })).toBeNull();
+    expect(parseSlashCommand("/graphify", { appsEnabled: true, provider: "codex" })).toBeNull();
+  });
 });

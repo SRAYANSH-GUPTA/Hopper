@@ -16,7 +16,7 @@ import Wrench from "lucide-react/dist/esm/icons/wrench";
 import X from "lucide-react/dist/esm/icons/x";
 import { exportMarkdownFile } from "@services/tauri";
 import { pushErrorToast } from "@services/toasts";
-import type { ConversationItem } from "../../../types";
+import type { ConversationItem, ThreadTokenUsage } from "../../../types";
 import type { ParsedFileLocation } from "../../../utils/fileLinks";
 import { PierreDiffBlock } from "../../git/components/PierreDiffBlock";
 import {
@@ -25,6 +25,7 @@ import {
   buildToolSummary,
   exploreKindLabel,
   formatDurationMs,
+  formatTokenCount,
   formatToolStatusLabel,
   normalizeMessageImageSrc,
   toolNameFromTitle,
@@ -54,6 +55,8 @@ type WorkingIndicatorProps = {
   thinkingText?: string | null;
   showPollingFetchStatus?: boolean;
   pollingIntervalMs?: number;
+  /** The thread's token usage; the indicator shows what this turn generated. */
+  tokenUsage?: ThreadTokenUsage | null;
 };
 
 type MessageRowProps = MarkdownFileLinkProps & {
@@ -271,7 +274,7 @@ function toolIconForSummary(
   }
 
   const label = summary.label.toLowerCase();
-  if (label === "read") {
+  if (label === "read" || label === "reading") {
     return FileText;
   }
   if (label === "searched" || label === "searching") {
@@ -362,7 +365,12 @@ export const WorkingIndicator = memo(function WorkingIndicator({
   thinkingText = null,
   showPollingFetchStatus = false,
   pollingIntervalMs = 12000,
+  tokenUsage = null,
 }: WorkingIndicatorProps) {
+  const totalOutputTokens = tokenUsage?.total.outputTokens ?? 0;
+  // Output tokens counted before this turn began, so only the turn's own show.
+  const [outputTokensAtStart, setOutputTokensAtStart] = useState(totalOutputTokens);
+  const turnOutputTokens = Math.max(0, totalOutputTokens - outputTokensAtStart);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [pollCountdownSeconds, setPollCountdownSeconds] = useState(() =>
     Math.max(1, Math.ceil(pollingIntervalMs / 1000)),
@@ -371,6 +379,14 @@ export const WorkingIndicator = memo(function WorkingIndicator({
   const [showIndicator, setShowIndicator] = useState(isThinking);
   const thinkingPreviewRef = useRef<HTMLDivElement | null>(null);
   const hideTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isThinking) {
+      setOutputTokensAtStart(totalOutputTokens);
+    }
+    // Only re-baseline when a turn starts, not on every usage update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isThinking]);
 
   // Keep the indicator visible for at least 800ms after isThinking goes false,
   // so fast responses don't make it flash imperceptibly.
@@ -448,6 +464,11 @@ export const WorkingIndicator = memo(function WorkingIndicator({
               <span className="working-timer-clock">{formatDurationMs(elapsedMs)}</span>
             </div>
             <span className="working-text">{reasoningLabel || CYCLING_LABELS[cycleIndex]}</span>
+            {turnOutputTokens > 0 && (
+              <span className="working-tokens" title={`${turnOutputTokens} tokens generated this turn`}>
+                ↓ {formatTokenCount(turnOutputTokens)} tokens
+              </span>
+            )}
           </div>
           {thinkingText && (
             <div
@@ -467,7 +488,9 @@ export const WorkingIndicator = memo(function WorkingIndicator({
           <span className="turn-complete-label">
             {showPollingFetchStatus
               ? `New message will be fetched in ${pollCountdownSeconds} seconds`
-              : `Done in ${formatDurationMs(lastDurationMs)}`}
+              : `Done in ${formatDurationMs(lastDurationMs)}${
+                  turnOutputTokens > 0 ? ` · ↓ ${formatTokenCount(turnOutputTokens)} tokens` : ""
+                }`}
           </span>
           <span className="turn-complete-line" aria-hidden />
         </div>
@@ -1017,12 +1040,14 @@ export const ToolRow = memo(function ToolRow({
 });
 
 export const HandoffRow = memo(function HandoffRow({ fromProvider }: { fromProvider: string }) {
+  // Web chat transfers are tagged "<Provider> (web)" and carry context rather than a switch.
+  const verb = fromProvider.endsWith(" (web)") ? "context from" : "switched from";
   return (
-    <div className="handoff-banner" role="status" aria-label={`Switched from ${fromProvider}`}>
+    <div className="handoff-banner" role="status" aria-label={`${verb[0].toUpperCase()}${verb.slice(1)} ${fromProvider}`}>
       <span className="handoff-banner-line" aria-hidden />
       <span className="handoff-banner-pill">
         <span className="handoff-banner-icon" aria-hidden>⇄</span>
-        <span>switched from <strong>{fromProvider}</strong></span>
+        <span>{verb} <strong>{fromProvider}</strong></span>
       </span>
       <span className="handoff-banner-line" aria-hidden />
     </div>

@@ -35,14 +35,31 @@ impl SetupProvider {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub(crate) struct SetupPreferences {
     pub completed: bool,
     pub codex_enabled: bool,
     pub claude_enabled: bool,
     pub antigravity_enabled: bool,
+    #[serde(default = "default_true")]
     pub antigravity_auto_approve: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for SetupPreferences {
+    fn default() -> Self {
+        Self {
+            completed: false,
+            codex_enabled: false,
+            claude_enabled: false,
+            antigravity_enabled: false,
+            antigravity_auto_approve: true,
+        }
+    }
 }
 
 fn setup_dir() -> Result<PathBuf, String> {
@@ -538,7 +555,7 @@ mod tests {
             std::fs::read_to_string(path.with_extension("json.bak")).unwrap(),
             original
         );
-        assert!(!read_preferences_at(&path).unwrap().antigravity_auto_approve);
+        assert!(read_preferences_at(&path).unwrap().antigravity_auto_approve);
         std::fs::write(&path, "invalid").unwrap();
         assert!(save_preferences_at(&path, &SetupPreferences::default()).is_err());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "invalid");
@@ -546,20 +563,30 @@ mod tests {
     }
     #[test]
     fn hook_is_session_scoped_and_encodes_workspace_identity() {
-        let value = claude_hook_settings(1234, "token", "work space&other");
+        let value = claude_hook_settings(1234, "token", "work space&other", "thread 1", "turn-2");
         let hook = &value["hooks"]["PreToolUse"][0]["hooks"][0];
         assert_eq!(hook["type"], "http");
+        assert_eq!(hook["timeout"], CLAUDE_HOOK_TIMEOUT_SECS);
         assert_eq!(hook["headers"]["X-Hopper-Token"], "token");
         let url = reqwest::Url::parse(hook["url"].as_str().unwrap()).unwrap();
-        assert_eq!(url.query_pairs().next().unwrap().1, "work space&other");
-        assert_eq!(
-            claude_permission_response(false)["hookSpecificOutput"]["permissionDecision"],
-            "deny"
-        );
-        assert_eq!(
-            claude_permission_response(true)["hookSpecificOutput"]["permissionDecision"],
-            "allow"
-        );
+        let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(query["workspace_id"], "work space&other");
+        assert_eq!(query["thread_id"], "thread 1");
+        assert_eq!(query["turn_id"], "turn-2");
+    }
+
+    #[test]
+    fn hook_responses_carry_decisions_and_updated_input() {
+        let deny = claude_permission_response(&ClaudeHookOutcome::Deny { reason: "no".into() });
+        assert_eq!(deny["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(deny["hookSpecificOutput"]["permissionDecisionReason"], "no");
+        let allow = claude_permission_response(&ClaudeHookOutcome::Allow { updated_input: None });
+        assert_eq!(allow["hookSpecificOutput"]["permissionDecision"], "allow");
+        assert!(allow["hookSpecificOutput"].get("updatedInput").is_none());
+        let answered = claude_permission_response(&ClaudeHookOutcome::Allow {
+            updated_input: Some(json!({"answers": {"Q?": "A"}})),
+        });
+        assert_eq!(answered["hookSpecificOutput"]["updatedInput"]["answers"]["Q?"], "A");
     }
     #[test]
     fn only_known_provider_installers_are_selected() {
@@ -576,20 +603,50 @@ mod tests {
     }
 }
 
-pub(crate) fn claude_hook_settings(port: u16, token: &str, workspace_id: &str) -> Value {
+/// Longest a Claude hook may wait on Hopper; long enough for a person to answer questions.
+pub(crate) const CLAUDE_HOOK_TIMEOUT_SECS: u64 = 1800;
+
+/// Hopper's answer to a Claude Code PreToolUse hook.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ClaudeHookOutcome {
+    /// Run the tool, optionally with replaced input (e.g. AskUserQuestion answers).
+    Allow { updated_input: Option<Value> },
+    Deny { reason: String },
+}
+
+pub(crate) fn claude_hook_settings(
+    port: u16,
+    token: &str,
+    workspace_id: &str,
+    thread_id: &str,
+    turn_id: &str,
+) -> Value {
     let mut url = reqwest::Url::parse(&format!("http://127.0.0.1:{port}/permission")).unwrap();
     url.query_pairs_mut()
-        .append_pair("workspace_id", workspace_id);
+        .append_pair("workspace_id", workspace_id)
+        .append_pair("thread_id", thread_id)
+        .append_pair("turn_id", turn_id);
     json!({"hooks": {"PreToolUse": [{"matcher": ".*", "hooks": [{
-        "type": "http", "url": url.as_str(), "timeout": 130,
+        "type": "http", "url": url.as_str(), "timeout": CLAUDE_HOOK_TIMEOUT_SECS,
         "headers": {"X-Hopper-Token": token}
     }]}]}})
 }
 
-pub(crate) fn claude_permission_response(approved: bool) -> Value {
-    json!({"hookSpecificOutput": {
-        "hookEventName": "PreToolUse",
-        "permissionDecision": if approved { "allow" } else { "deny" },
-        "permissionDecisionReason": if approved { "Approved in Hopper" } else { "Declined or timed out in Hopper" }
-    }})
+pub(crate) fn claude_permission_response(outcome: &ClaudeHookOutcome) -> Value {
+    let mut output = serde_json::Map::new();
+    output.insert("hookEventName".into(), json!("PreToolUse"));
+    match outcome {
+        ClaudeHookOutcome::Allow { updated_input } => {
+            output.insert("permissionDecision".into(), json!("allow"));
+            output.insert("permissionDecisionReason".into(), json!("Approved in Hopper"));
+            if let Some(updated_input) = updated_input {
+                output.insert("updatedInput".into(), updated_input.clone());
+            }
+        }
+        ClaudeHookOutcome::Deny { reason } => {
+            output.insert("permissionDecision".into(), json!("deny"));
+            output.insert("permissionDecisionReason".into(), json!(reason));
+        }
+    }
+    json!({ "hookSpecificOutput": Value::Object(output) })
 }

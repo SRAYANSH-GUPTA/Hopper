@@ -39,11 +39,14 @@ import { useComposerDraftEffects } from "../hooks/useComposerDraftEffects";
 import { useComposerKeyDown } from "../hooks/useComposerKeyDown";
 import { useComposerSuggestionStyle } from "../hooks/useComposerSuggestionStyle";
 import { usePromptHistory } from "../hooks/usePromptHistory";
+import MessageSquare from "lucide-react/dist/esm/icons/message-square";
+import X from "lucide-react/dist/esm/icons/x";
 import { ComposerInput } from "./ComposerInput";
 import { ComposerMetaBar } from "./ComposerMetaBar";
 import { ComposerQueue } from "./ComposerQueue";
 import { isMacPlatform } from "../../../utils/platformPaths";
 import type { CodexArgsOption } from "../../threads/utils/codexArgsProfiles";
+import type { SlashCommandOption } from "../../../services/tauri";
 import {
   appendAttachedFileContext,
   splitComposerAttachments,
@@ -83,6 +86,8 @@ type ComposerProps = {
   skills: { name: string; description?: string }[];
   apps: AppOption[];
   prompts: CustomPromptOption[];
+  /** Skills and custom commands installed for the active provider. */
+  slashCommands?: SlashCommandOption[];
   files: string[];
   contextUsage?: ThreadTokenUsage | null;
   queuedMessages?: QueuedMessage[];
@@ -150,6 +155,12 @@ type ComposerProps = {
     disabled?: boolean;
     onSelect: () => void | Promise<void>;
   }[];
+  /** Context staged for the next message, such as a transferred web chat. */
+  stagedContext?: {
+    label: string;
+    title: string;
+    onRemove: () => void;
+  } | null;
   onProviderSwitch?: (providerId: string) => void;
   activeProviderId?: string;
   isPlanMode?: boolean;
@@ -196,6 +207,7 @@ export const Composer = memo(function Composer({
   skills,
   apps,
   prompts,
+  slashCommands,
   files,
   contextUsage = null,
   queuedMessages = [],
@@ -251,6 +263,7 @@ export const Composer = memo(function Composer({
   onReviewPromptConfirmCustom,
   onFileAutocompleteActiveChange,
   contextActions = [],
+  stagedContext = null,
   onProviderSwitch,
   activeProviderId,
   isPlanMode = false,
@@ -330,6 +343,7 @@ export const Composer = memo(function Composer({
     skills,
     apps,
     prompts,
+    slashCommands,
     files,
     textareaRef,
     setText: setComposerText,
@@ -616,6 +630,24 @@ export const Composer = memo(function Composer({
               {action.label}
             </button>
           ))}
+        </div>
+      ) : null}
+      {stagedContext ? (
+        <div className="composer-attachments composer-staged-context">
+          <div className="composer-attachment" title={stagedContext.title}>
+            <span className="composer-icon" aria-hidden>
+              <MessageSquare size={14} />
+            </span>
+            <span className="composer-attachment-name">{stagedContext.label}</span>
+            <button
+              type="button"
+              className="composer-attachment-remove"
+              onClick={stagedContext.onRemove}
+              aria-label={`Remove ${stagedContext.label}`}
+            >
+              <X size={12} aria-hidden />
+            </button>
+          </div>
         </div>
       ) : null}
       <div className="composer-box">

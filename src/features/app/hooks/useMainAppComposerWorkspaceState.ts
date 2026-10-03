@@ -3,6 +3,7 @@ import type {
   AppSettings,
   ConversationItem,
   DebugEntry,
+  LocalAgentProvider,
   ModelOption,
   RequestUserInputRequest,
   ServiceTier,
@@ -47,6 +48,8 @@ type UseMainAppComposerWorkspaceStateArgs = {
       }
     >;
     userInputRequests: RequestUserInputRequest[];
+    /** Provider of the active thread; decides which slash commands Hopper handles. */
+    provider: LocalAgentProvider;
   };
   settings: Pick<
     AppSettings,
@@ -124,6 +127,7 @@ export function useMainAppComposerWorkspaceState({
     activeTurnIdByThread,
     threadStatusById,
     userInputRequests,
+    provider,
   } = thread;
   const {
     models: modelOptions,
@@ -237,6 +241,7 @@ export function useMainAppComposerWorkspaceState({
     steerEnabled: settings.steerEnabled,
     followUpMessageBehavior: settings.followUpMessageBehavior,
     appsEnabled: settings.experimentalAppsEnabled,
+    provider,
     connectWorkspace,
     startThreadForWorkspace,
     sendUserMessage,

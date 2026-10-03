@@ -29,6 +29,10 @@ import { parseModelListResponse } from "@/features/models/utils/modelListRespons
 import { expandCustomPromptText } from "@utils/customPrompts";
 import { consumePendingHandoff } from "@/features/context/contextStore";
 import {
+  consumeWebChatContext,
+  WEB_CHAT_USER_MARKER,
+} from "@/features/web-chat/webChatContext";
+import {
   asString,
   extractReviewThreadId,
   extractRpcErrorMessage,
@@ -166,6 +170,11 @@ export function useThreadMessaging({
           return { status: "blocked" };
         }
         finalText = promptExpansion?.expanded ?? finalText;
+      }
+      // Prepend a conversation transferred from a web assistant tab.
+      const webChatContext = consumeWebChatContext(workspace.id, threadId);
+      if (webChatContext) {
+        finalText = `${webChatContext}${WEB_CHAT_USER_MARKER}${finalText}`;
       }
       const isProcessing = threadStatusById[threadId]?.isProcessing ?? false;
       const activeTurnId = activeTurnIdByThread[threadId] ?? null;

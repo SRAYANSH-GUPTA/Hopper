@@ -403,6 +403,63 @@ describe("useAppServerEvents", () => {
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
 
+  it("reads multi-select questions and follow-up answer mode", async () => {
+    const handlers: Handlers = {
+      onRequestUserInput: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
+          method: "item/tool/requestUserInput",
+          id: "agy-q-1",
+          params: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            itemId: "tool-74",
+            answerMode: "followUp",
+            questions: [
+              {
+                id: "q0",
+                header: "",
+                question: "Which part?",
+                multiSelect: true,
+                isOther: true,
+                options: [{ label: "Home", description: "" }],
+              },
+            ],
+          },
+        },
+      });
+    });
+    expect(handlers.onRequestUserInput).toHaveBeenCalledWith({
+      workspace_id: "ws-1",
+      request_id: "agy-q-1",
+      params: {
+        thread_id: "thread-1",
+        turn_id: "turn-1",
+        item_id: "tool-74",
+        answer_mode: "followUp",
+        questions: [
+          {
+            id: "q0",
+            header: "",
+            question: "Which part?",
+            isOther: true,
+            multiSelect: true,
+            options: [{ label: "Home", description: "" }],
+          },
+        ],
+      },
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("normalizes request user input questions and options", async () => {
     const handlers: Handlers = {
       onRequestUserInput: vi.fn(),

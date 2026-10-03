@@ -14,7 +14,7 @@ type RequestUserInputMessageProps = {
   ) => void;
 };
 
-type SelectionState = Record<string, number | null>;
+type SelectionState = Record<string, number[]>;
 type NotesState = Record<string, string>;
 
 export function RequestUserInputMessage({
@@ -53,7 +53,7 @@ export function RequestUserInputMessage({
     const nextNotes: NotesState = {};
     activeRequest.params.questions.forEach((question, index) => {
       const key = question.id || `question-${index}`;
-      nextSelections[key] = null;
+      nextSelections[key] = [];
       nextNotes[key] = "";
     });
     setSelections(nextSelections);
@@ -66,6 +66,7 @@ export function RequestUserInputMessage({
 
   const { questions } = activeRequest.params;
   const totalRequests = activeRequests.length;
+  const answersAsFollowUp = activeRequest.params.answer_mode === "followUp";
 
   const buildAnswers = () => {
     const answers: RequestUserInputResponse["answers"] = {};
@@ -75,16 +76,18 @@ export function RequestUserInputMessage({
       }
       const answerList: string[] = [];
       const key = question.id || `question-${index}`;
-      const selectedIndex = selections[key];
+      const selectedIndexes = selections[key] ?? [];
       const options = question.options ?? [];
       const hasOptions = options.length > 0;
-      if (hasOptions && selectedIndex !== null) {
-        const selected = options[selectedIndex];
-        const selectedValue =
-          selected?.label?.trim() || selected?.description?.trim() || "";
-        if (selectedValue) {
-          answerList.push(selectedValue);
-        }
+      if (hasOptions) {
+        selectedIndexes.forEach((selectedIndex) => {
+          const selected = options[selectedIndex];
+          const selectedValue =
+            selected?.label?.trim() || selected?.description?.trim() || "";
+          if (selectedValue) {
+            answerList.push(selectedValue);
+          }
+        });
       }
       const note = (notes[key] ?? "").trim();
       if (note) {
@@ -99,8 +102,17 @@ export function RequestUserInputMessage({
     return answers;
   };
 
-  const handleSelect = (questionId: string, optionIndex: number) => {
-    setSelections((current) => ({ ...current, [questionId]: optionIndex }));
+  const handleSelect = (questionId: string, optionIndex: number, multiSelect: boolean) => {
+    setSelections((current) => {
+      const selected = current[questionId] ?? [];
+      if (!multiSelect) {
+        return { ...current, [questionId]: [optionIndex] };
+      }
+      const next = selected.includes(optionIndex)
+        ? selected.filter((index) => index !== optionIndex)
+        : [...selected, optionIndex].sort((a, b) => a - b);
+      return { ...current, [questionId]: next };
+    });
   };
 
   const handleNotesChange = (questionId: string, value: string) => {
@@ -130,7 +142,8 @@ export function RequestUserInputMessage({
           {questions.length ? (
             questions.map((question, index) => {
               const questionId = question.id || `question-${index}`;
-              const selectedIndex = selections[questionId];
+              const selectedIndexes = selections[questionId] ?? [];
+              const multiSelect = Boolean(question.multiSelect);
               const options = question.options ?? [];
               const notePlaceholder = question.isOther
                 ? "Type your answer (optional)"
@@ -147,16 +160,24 @@ export function RequestUserInputMessage({
                   <div className="request-user-input-question-text">
                     {question.question}
                   </div>
+                  {options.length && multiSelect ? (
+                    <div className="request-user-input-question-hint">Select all that apply</div>
+                  ) : null}
                   {options.length ? (
-                    <div className="request-user-input-options">
+                    <div
+                      className="request-user-input-options"
+                      role={multiSelect ? "group" : "radiogroup"}
+                    >
                       {options.map((option, optionIndex) => (
                         <button
                           key={`${questionId}-${optionIndex}`}
                           type="button"
                           className={`request-user-input-option${
-                            selectedIndex === optionIndex ? " is-selected" : ""
+                            selectedIndexes.includes(optionIndex) ? " is-selected" : ""
                           }`}
-                          onClick={() => handleSelect(questionId, optionIndex)}
+                          role={multiSelect ? "checkbox" : "radio"}
+                          aria-checked={selectedIndexes.includes(optionIndex)}
+                          onClick={() => handleSelect(questionId, optionIndex, multiSelect)}
                         >
                           <div className="request-user-input-option-label">
                             {option.label}
@@ -188,9 +209,14 @@ export function RequestUserInputMessage({
             </div>
           )}
         </div>
+        {answersAsFollowUp ? (
+          <div className="request-user-input-followup-hint">
+            This agent can't pause for answers, so your answer is sent as your next message.
+          </div>
+        ) : null}
         <div className="request-user-input-actions">
           <button className="primary" onClick={handleSubmit}>
-            Submit
+            {answersAsFollowUp ? "Send answer" : "Submit"}
           </button>
         </div>
       </div>

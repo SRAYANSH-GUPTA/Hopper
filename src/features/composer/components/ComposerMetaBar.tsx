@@ -75,6 +75,29 @@ type ComposerMetaBarProps = {
   onPlanModeToggle?: (enabled: boolean) => void;
 };
 
+function compactTokens(tokens: number) {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(tokens);
+}
+
+/** How full the model's context window is, from the latest request's tokens. */
+export function buildContextMeter(usage: ThreadTokenUsage | null | undefined) {
+  const window = usage?.modelContextWindow ?? null;
+  const used = usage?.last.totalTokens ?? 0;
+  if (!usage || !window || used <= 0) {
+    return null;
+  }
+  const percent = Math.min(100, Math.round((used / window) * 100));
+  const total = usage.total.totalTokens;
+  return {
+    percent,
+    title: `${compactTokens(used)} of ${compactTokens(window)} context tokens used${
+      total > 0 ? ` · ${compactTokens(total)} tokens used in this chat` : ""
+    }`,
+  };
+}
+
 export function ComposerMetaBar({
   disabled,
   collaborationModes,
@@ -112,7 +135,7 @@ export function ComposerMetaBar({
   const modelSelectStyle = {
     "--composer-model-select-width": `${Math.max(selectedModelLabel.length + 2, 8)}ch`,
   } as CSSProperties;
-  void contextUsage; // kept for future use
+  const contextMeter = buildContextMeter(contextUsage);
 
   return (
     <div className="composer-bar">
@@ -305,6 +328,20 @@ export function ComposerMetaBar({
       </div>
       <div className="composer-context">
         <ProviderToggle disabled={disabled} activeProviderId={activeProviderId} onProviderSwitch={onProviderSwitch} />
+        {contextMeter && (
+          <span
+            className={`composer-context-usage${contextMeter.percent >= 80 ? " is-high" : ""}`}
+            title={contextMeter.title}
+            aria-label={contextMeter.title}
+          >
+            <span
+              className="composer-context-usage-ring"
+              style={{ "--context-usage": `${contextMeter.percent}%` } as CSSProperties}
+              aria-hidden
+            />
+            {contextMeter.percent}%
+          </span>
+        )}
         {charCount > 0 && (
           <span
             className="composer-char-count"

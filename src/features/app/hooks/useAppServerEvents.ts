@@ -108,6 +108,9 @@ type AppServerEventHandlers = {
 };
 
 export const METHODS_ROUTED_IN_USE_APP_SERVER_EVENTS = [
+  // Provider approval prompts, routed through isApprovalRequestMethod.
+  "antigravity/requestApproval",
+  "claude/requestApproval",
   "account/login/completed",
   "account/rateLimits/updated",
   "account/updated",
@@ -230,6 +233,7 @@ export function useAppServerEvents(handlers: AppServerEventHandlers) {
               header: String(question.header ?? ""),
               question: String(question.question ?? ""),
               isOther: Boolean(question.isOther ?? question.is_other),
+              ...(question.multiSelect ?? question.multi_select ? { multiSelect: true } : {}),
               options: options.length ? options : undefined,
             };
           })
@@ -242,6 +246,9 @@ export function useAppServerEvents(handlers: AppServerEventHandlers) {
             turn_id: String(params.turnId ?? params.turn_id ?? ""),
             item_id: String(params.itemId ?? params.item_id ?? ""),
             questions,
+            ...((params.answerMode ?? params.answer_mode) === "followUp"
+              ? { answer_mode: "followUp" as const }
+              : {}),
           },
         });
         return;

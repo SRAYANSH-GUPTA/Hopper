@@ -530,6 +530,30 @@ describe("threadReducer", () => {
     expect(removed.userInputRequests).toEqual([requestB]);
   });
 
+  it("clears a thread's in-turn questions when its turn ends but keeps follow-up ones", () => {
+    const params = { turn_id: "turn-1", item_id: "item-1", questions: [] };
+    const inTurn = { workspace_id: "ws-1", request_id: "claude-q-1", params: { ...params, thread_id: "thread-1" } };
+    const followUp = {
+      workspace_id: "ws-1",
+      request_id: "agy-q-1",
+      params: { ...params, thread_id: "thread-1", answer_mode: "followUp" as const },
+    };
+    const otherThread = { workspace_id: "ws-1", request_id: 3, params: { ...params, thread_id: "thread-2" } };
+    let state = initialState;
+    for (const request of [inTurn, followUp, otherThread]) {
+      state = threadReducer(state, { type: "addUserInputRequest", request });
+    }
+    const cleared = threadReducer(state, {
+      type: "clearTurnUserInputRequests",
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+    });
+    expect(cleared.userInputRequests).toEqual([followUp, otherThread]);
+    expect(
+      threadReducer(cleared, { type: "clearTurnUserInputRequests", workspaceId: "ws-1", threadId: "thread-9" }),
+    ).toBe(cleared);
+  });
+
   it("stores turn diff updates by thread id", () => {
     const next = threadReducer(initialState, {
       type: "setThreadTurnDiff",

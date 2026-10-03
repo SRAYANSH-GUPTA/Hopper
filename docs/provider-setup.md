@@ -33,7 +33,9 @@ Hopper does not copy account tokens, personal settings, shell profiles, or proje
 
 Claude approvals use a session-only HTTP PreToolUse hook supplied through `--settings`, without Python, curl, or writes to `~/.claude/settings.json`. The hook calls a loopback endpoint authenticated with a per-process token. Legacy Hopper shell hooks remain inactive because their environment variables are removed from the child process. Existing user configuration files remain intact.
 
-Antigravity permission bypass is **off by default**. The explicit **Allow Antigravity to run tools without asking** setting adds `--dangerously-skip-permissions` only after it is saved. With bypass off, use provider-defined permissions; tool requests requiring interactive approval may stop in headless mode. Hopper does not yet bridge Antigravity's interactive permission prompts.
+Antigravity permission bypass is **on by default**: the **Allow Antigravity to run tools without asking** setting adds `--dangerously-skip-permissions` to every agy run. With it turned off, agy's headless mode auto-denies tools that need permission; Hopper then shows an error naming the blocked permission and an approval toast whose **Allow & retry** reruns that turn once with permissions allowed (never automatically, even in full-access mode).
+
+Claude's `AskUserQuestion` calls are shown as an inline question card instead of a permission toast; the answers return to the running turn as the tool's `updatedInput`. agy cannot pause for answers in headless mode, so its questions appear in the same card and the answer is sent as the next message in that conversation.
 
 ## Terminal fallback
 

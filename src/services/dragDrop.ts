@@ -16,9 +16,32 @@ type SubscriptionOptions = {
   onError?: (error: unknown) => void;
 };
 
+const WEB_URL = /^https?:\/\//i;
+
 let unlisten: (() => void) | null = null;
 let listenPromise: Promise<() => void> | null = null;
 const listeners = new Set<Listener>();
+
+function emit(event: DragDropEvent) {
+  for (const listener of listeners) {
+    try {
+      listener(event);
+    } catch (error) {
+      console.error("[drag-drop] listener failed", error);
+    }
+  }
+}
+
+function handleNativeEvent(event: DragDropEvent) {
+  const payload = event.payload;
+  if (payload.type !== "drop" || !payload.paths?.length) {
+    emit(event);
+    return;
+  }
+  // Web links dragged from a page arrive as URI "paths"; they are not files.
+  const paths = payload.paths.filter((path) => !WEB_URL.test(path.trim()));
+  emit({ payload: { ...payload, paths } });
+}
 
 function start(options?: SubscriptionOptions) {
   if (unlisten || listenPromise) {
@@ -26,13 +49,7 @@ function start(options?: SubscriptionOptions) {
   }
   listenPromise = getCurrentWindow()
     .onDragDropEvent((event) => {
-      for (const listener of listeners) {
-        try {
-          listener(event as DragDropEvent);
-        } catch (error) {
-          console.error("[drag-drop] listener failed", error);
-        }
-      }
+      handleNativeEvent(event as DragDropEvent);
     }) as Promise<() => void>;
   listenPromise
     .then((handler) => {

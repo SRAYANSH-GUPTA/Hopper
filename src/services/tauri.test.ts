@@ -46,7 +46,9 @@ import {
   tailscaleStatus,
   pickImageFiles,
   pickAttachmentFiles,
-  pickBridgeImportFile,
+  captureWebChat,
+  getSlashCommandsList,
+  insertIntoWebChat,
   pickWorkspacePaths,
   providerUsageOutput,
   writeGlobalAgentsMd,
@@ -169,17 +171,32 @@ describe("tauri invoke wrappers", () => {
     expect(openMock).toHaveBeenCalledWith({ multiple: true });
   });
 
-  it("allows any generated file to be selected for Bridge", async () => {
-    const openMock = vi.mocked(open);
-    openMock.mockResolvedValueOnce("/tmp/ChatGPT project brief.docx");
+  it("lists slash commands for a workspace and provider", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce([]);
 
-    await expect(pickBridgeImportFile()).resolves.toBe(
-      "/tmp/ChatGPT project brief.docx",
-    );
-    expect(openMock).toHaveBeenCalledWith({
-      title: "Import into Hopper Bridge",
-      multiple: false,
-      directory: false,
+    await expect(getSlashCommandsList("ws-1", "claude")).resolves.toEqual([]);
+    expect(invoke).toHaveBeenCalledWith("slash_commands_list", {
+      workspaceId: "ws-1",
+      provider: "claude",
+    });
+  });
+
+  it("captures and pastes web assistant chats through the web chat commands", async () => {
+    const conversation = {
+      provider: "ChatGPT",
+      title: "Plan",
+      url: "https://chatgpt.com/c/1",
+      messages: [{ role: "user", content: "Hi" }],
+    };
+    vi.mocked(invoke).mockResolvedValueOnce(conversation).mockResolvedValueOnce(undefined);
+
+    await expect(captureWebChat("ai-chatbot-tab-1")).resolves.toEqual(conversation);
+    expect(invoke).toHaveBeenCalledWith("web_chat_capture", { label: "ai-chatbot-tab-1" });
+
+    await expect(insertIntoWebChat("ai-chatbot-tab-1", "Hello")).resolves.toBeUndefined();
+    expect(invoke).toHaveBeenCalledWith("web_chat_insert", {
+      label: "ai-chatbot-tab-1",
+      text: "Hello",
     });
   });
 

@@ -6,6 +6,7 @@ import type {
   OpenAppTarget,
   RequestUserInputRequest,
   RequestUserInputResponse,
+  ThreadTokenUsage,
 } from "../../../types";
 import { PlanReadyFollowupMessage } from "../../app/components/PlanReadyFollowupMessage";
 import { RequestUserInputMessage } from "../../app/components/RequestUserInputMessage";
@@ -30,6 +31,8 @@ type MessagesProps = {
   workspaceId?: string | null;
   isThinking: boolean;
   isLoadingMessages?: boolean;
+  /** The active thread's token usage, shown live while the agent works. */
+  tokenUsage?: ThreadTokenUsage | null;
   processingStartedAt?: number | null;
   lastDurationMs?: number | null;
   showPollingFetchStatus?: boolean;
@@ -56,6 +59,7 @@ export const Messages = memo(function Messages({
   workspaceId = null,
   isThinking,
   isLoadingMessages = false,
+  tokenUsage = null,
   processingStartedAt = null,
   lastDurationMs = null,
   showPollingFetchStatus = false,
@@ -298,6 +302,8 @@ export const Messages = memo(function Messages({
         {planFollowupNode}
         {userInputNode}
         <WorkingIndicator
+          key={threadId ?? "no-thread"}
+          tokenUsage={tokenUsage}
           isThinking={isThinking}
           processingStartedAt={processingStartedAt}
           lastDurationMs={lastDurationMs}

@@ -8,7 +8,6 @@ use tauri::WindowEvent;
 
 mod antigravity;
 mod backend;
-mod bridge;
 mod claude;
 mod marketplace;
 mod mcp;
@@ -37,6 +36,7 @@ mod state;
 mod sidebar_browser;
 mod storage;
 mod tailscale;
+mod web_chat;
 #[cfg(desktop)]
 mod terminal;
 #[cfg(not(desktop))]
@@ -210,7 +210,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![
+        .manage(web_chat::WebChatRegistry::default())
+        .invoke_handler(web_chat::guard_assistant_invoke(tauri::generate_handler![
             settings::get_app_settings,
             settings::update_app_settings,
             settings::get_codex_config_path,
@@ -218,12 +219,6 @@ pub fn run() {
             files::file_write,
             files::read_image_as_data_url,
             files::write_text_file,
-            bridge::bridge_import_file,
-            bridge::bridge_import_capture,
-            bridge::bridge_list_imports,
-            bridge::bridge_get_import,
-            bridge::bridge_read_artifact,
-            bridge::bridge_materialize_import,
             codex::get_config_model,
             menu::menu_set_accelerators,
             tray::set_tray_recent_threads,
@@ -269,6 +264,10 @@ pub fn run() {
             sidebar_browser::set_sidebar_browser_visible,
             sidebar_browser::reload_sidebar_browser,
             sidebar_browser::hide_sidebar_browsers,
+            web_chat::web_chat_capture,
+            web_chat::web_chat_insert,
+            web_chat::web_chat_reply,
+            web_chat::web_chat_file_import,
             codex::list_mcp_server_status,
             codex::archive_thread,
             codex::compact_thread,
@@ -322,6 +321,7 @@ pub fn run() {
             codex::skills_list,
             codex::apps_list,
             prompts::prompts_list,
+            prompts::slash_commands_list,
             prompts::prompts_create,
             prompts::prompts_update,
             prompts::prompts_delete,
@@ -359,7 +359,7 @@ pub fn run() {
             mcp::mcp_add_server,
             mcp::mcp_remove_server,
             mcp::read_text_file
-        ])
+        ]))
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
 

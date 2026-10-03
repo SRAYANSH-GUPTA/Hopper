@@ -94,86 +94,26 @@ export async function pickAttachmentFiles(): Promise<string[]> {
   return Array.isArray(selection) ? selection : [selection];
 }
 
-export async function pickBridgeImportFile(): Promise<string | null> {
-  const selection = await open({
-    title: "Import into Hopper Bridge",
-    multiple: false,
-    directory: false,
-  });
-  return typeof selection === "string" ? selection : null;
-}
-
-export type BridgeMessage = {
-  role: "user" | "assistant" | "system" | "tool";
+export type WebChatMessage = {
+  role: "user" | "assistant";
   content: string;
-  createdAt?: string | null;
 };
 
-export type BridgeArtifact = {
-  path: string;
-  mimeType?: string | null;
-  sizeBytes: number;
-  sha256: string;
+export type WebChatConversation = {
+  provider: string;
+  title: string | null;
+  url: string;
+  messages: WebChatMessage[];
 };
 
-export type BridgeImportSummary = {
-  id: string;
-  source: string;
-  title?: string | null;
-  sourceUrl?: string | null;
-  createdAt: string;
-  messageCount: number;
-  artifacts: BridgeArtifact[];
-};
-
-export type BridgeImport = BridgeImportSummary & {
-  conversation: { messages: BridgeMessage[] };
-};
-
-export type BridgeMaterializeResult = {
-  path: string;
-  artifactCount: number;
-};
-
-export type BridgeArtifactContent = {
-  path: string;
-  mimeType?: string | null;
-  sizeBytes: number;
-  contentBase64: string;
-};
-
-export function bridgeImportFile(path: string): Promise<BridgeImport> {
-  return invoke<BridgeImport>("bridge_import_file", { path });
+/** Reads the conversation open in an embedded assistant tab. */
+export function captureWebChat(label: string): Promise<WebChatConversation> {
+  return invoke<WebChatConversation>("web_chat_capture", { label });
 }
 
-export function bridgeListImports(): Promise<BridgeImportSummary[]> {
-  return invoke<BridgeImportSummary[]>("bridge_list_imports");
-}
-
-export function bridgeGetImport(importId: string): Promise<BridgeImport> {
-  return invoke<BridgeImport>("bridge_get_import", { importId });
-}
-
-export function bridgeReadArtifact(
-  importId: string,
-  artifactPath: string,
-): Promise<BridgeArtifactContent> {
-  return invoke<BridgeArtifactContent>("bridge_read_artifact", {
-    importId,
-    artifactPath,
-  });
-}
-
-export function bridgeMaterializeImport(
-  importId: string,
-  workspaceId: string,
-  subdirectory?: string,
-): Promise<BridgeMaterializeResult> {
-  return invoke<BridgeMaterializeResult>("bridge_materialize_import", {
-    importId,
-    workspaceId,
-    subdirectory,
-  });
+/** Pastes text into an embedded assistant tab's input box without sending it. */
+export function insertIntoWebChat(label: string, text: string): Promise<void> {
+  return invoke<void>("web_chat_insert", { label, text });
 }
 
 export async function exportMarkdownFile(
@@ -905,6 +845,25 @@ export async function getAppsList(
   threadId?: string | null,
 ) {
   return invoke<any>("apps_list", { workspaceId, cursor, limit, threadId });
+}
+
+/** A skill or custom command the active provider's CLI can run. */
+export type SlashCommandOption = {
+  name: string;
+  description: string | null;
+  argumentHint: string | null;
+  kind: "skill" | "command";
+  scope: "user" | "project" | "plugin";
+  plugin: string | null;
+  /** "slash" is typed as `/name`; "mention" as `$name` (Codex skills). */
+  invocation: "slash" | "mention";
+};
+
+export async function getSlashCommandsList(
+  workspaceId: string | null,
+  provider: string,
+): Promise<SlashCommandOption[]> {
+  return invoke<SlashCommandOption[]>("slash_commands_list", { workspaceId, provider });
 }
 
 export async function getPromptsList(workspaceId: string) {

@@ -2,8 +2,6 @@ use super::*;
 
 #[path = "rpc/codex.rs"]
 mod codex;
-#[path = "rpc/bridge.rs"]
-mod bridge;
 #[path = "rpc/daemon.rs"]
 mod daemon;
 #[path = "rpc/dispatcher.rs"]

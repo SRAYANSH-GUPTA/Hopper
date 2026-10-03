@@ -408,14 +408,24 @@ export type RequestUserInputQuestion = {
   header: string;
   question: string;
   isOther?: boolean;
+  /** Allows choosing several options (Claude and agy questions). */
+  multiSelect?: boolean;
   options?: RequestUserInputOption[];
 };
+
+/**
+ * How answers reach the agent. "reply" (default) answers the live turn;
+ * "followUp" sends them as the next chat message, for agents like agy that
+ * can't pause for input.
+ */
+export type RequestUserInputAnswerMode = "reply" | "followUp";
 
 export type RequestUserInputParams = {
   thread_id: string;
   turn_id: string;
   item_id: string;
   questions: RequestUserInputQuestion[];
+  answer_mode?: RequestUserInputAnswerMode;
 };
 
 export type RequestUserInputRequest = {

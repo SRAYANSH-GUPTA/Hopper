@@ -1,4 +1,5 @@
 pub(crate) mod permission_server;
+mod stream_items;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -15,6 +16,10 @@ use uuid::Uuid;
 use crate::backend::events::{AppServerEvent, EventSink};
 use crate::types::LocalAgentProvider;
 use permission_server::ClaudePermissionServer;
+use stream_items::{
+    context_window, thinking_text, token_usage_payload, tool_completed_item, tool_started_item,
+    TokenCounts,
+};
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -37,6 +42,8 @@ pub(crate) struct ClaudeState {
     permission_server: Mutex<Option<Arc<ClaudePermissionServer>>>,
     /// "workspace_id:thread_id" -> child PID for interrupt support
     running_pids: Mutex<HashMap<String, u32>>,
+    /// "workspace_id:thread_id" -> tokens used by the thread's finished turns
+    token_totals: Mutex<HashMap<String, TokenCounts>>,
 }
 
 impl ClaudeState {
@@ -45,7 +52,24 @@ impl ClaudeState {
             threads: Mutex::new(HashMap::new()),
             permission_server: Mutex::new(None),
             running_pids: Mutex::new(HashMap::new()),
+            token_totals: Mutex::new(HashMap::new()),
         })
+    }
+
+    async fn token_total(&self, workspace_id: &str, thread_id: &str) -> TokenCounts {
+        self.token_totals
+            .lock()
+            .await
+            .get(&format!("{workspace_id}:{thread_id}"))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    async fn set_token_total(&self, workspace_id: &str, thread_id: &str, total: TokenCounts) {
+        self.token_totals
+            .lock()
+            .await
+            .insert(format!("{workspace_id}:{thread_id}"), total);
     }
 
     async fn register_pid(&self, workspace_id: &str, thread_id: &str, pid: u32) {
@@ -152,6 +176,13 @@ impl ClaudeState {
     pub(crate) async fn resolve_permission(&self, request_id: &str, approved: bool) {
         if let Some(srv) = self.permission_server.lock().await.as_ref() {
             srv.resolve(request_id, approved).await;
+        }
+    }
+
+    /// Resolve a pending AskUserQuestion request with the user's answers.
+    pub(crate) async fn resolve_question(&self, request_id: &str, answers: &Value) {
+        if let Some(srv) = self.permission_server.lock().await.as_ref() {
+            srv.resolve_question(request_id, answers).await;
         }
     }
 }
@@ -548,7 +579,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         cmd.current_dir(&workspace_cwd);
     }
     cmd.arg("--settings").arg(crate::shared::provider_setup_core::claude_hook_settings(
-        permission_server.port, &permission_server.token, &workspace_id,
+        permission_server.port, &permission_server.token, &workspace_id, &thread_id, &turn_id,
     ).to_string());
     // Older Hopper hooks stay dormant; leave the user's global file untouched.
     cmd.env_remove("CODEXMONITOR_PERMISSION_PORT");
@@ -588,12 +619,20 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     // Clone before the async move so originals are available for the return value.
     let thread_id_ret = thread_id.clone();
     let turn_id_ret = turn_id.clone();
+    let usage_model = resolved_model.to_string();
+    let prior_tokens = claude_state.token_total(&workspace_id, &thread_id).await;
 
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
         let mut new_session_id: Option<String> = None;
-        // tool_use_id -> item_id (for tool_result matching)
-        let mut tool_item_ids: HashMap<String, String> = HashMap::new();
+        // tool_use_id -> started item (completed with the tool_result)
+        let mut tool_items: HashMap<String, Value> = HashMap::new();
+        // Thinking blocks already shown, keyed "message_id:block_index"
+        let mut emitted_thinking: HashSet<String> = HashSet::new();
+        // message_id -> latest usage for that request (repeated across snapshots)
+        let mut message_usage: HashMap<String, TokenCounts> = HashMap::new();
+        let mut last_usage: Option<TokenCounts> = None;
+        let mut context_window_tokens = context_window(&usage_model, None);
         // message_id -> accumulated text (deduplicates streaming assistant events)
         let mut message_texts: HashMap<String, String> = HashMap::new();
         // message IDs that have already had item/started emitted
@@ -646,9 +685,32 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                         .and_then(|m| m.get("content"))
                         .and_then(|c| c.as_array())
                     {
-                        for block in content_arr {
+                        for (block_index, block) in content_arr.iter().enumerate() {
                             let block_type = block.get("type").and_then(|t| t.as_str());
                             match block_type {
+                                Some("thinking") => {
+                                    let key = format!("{msg_id}:{block_index}");
+                                    if let Some(thinking) = thinking_text(block) {
+                                        if emitted_thinking.insert(key.clone()) {
+                                            let item = json!({
+                                                "type": "reasoning",
+                                                "id": format!("reasoning-{key}"),
+                                                "turnId": turn_id,
+                                                "summary": "Thinking",
+                                                "content": thinking,
+                                            });
+                                            for method in ["item/started", "item/completed"] {
+                                                event_sink.emit_app_server_event(AppServerEvent {
+                                                    workspace_id: workspace_id.clone(),
+                                                    message: json!({
+                                                        "method": method,
+                                                        "params": { "threadId": thread_id, "item": item }
+                                                    }),
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
                                 Some("text") => {
                                     if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
                                         full_text.push_str(t);
@@ -662,49 +724,21 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                         .and_then(|id| id.as_str())
                                         .unwrap_or("")
                                         .to_string();
-                                    if !tool_use_id.is_empty()
-                                        && !tool_item_ids.contains_key(&tool_use_id)
-                                    {
+                                    if !tool_use_id.is_empty() && !tool_items.contains_key(&tool_use_id) {
                                         let tool_name = block
                                             .get("name")
                                             .and_then(|n| n.as_str())
-                                            .unwrap_or("unknown")
-                                            .to_string();
+                                            .unwrap_or("unknown");
                                         let tool_input =
                                             block.get("input").cloned().unwrap_or(json!({}));
-                                        let item_id = format!("tool-{tool_use_id}");
-                                        tool_item_ids
-                                            .insert(tool_use_id.clone(), item_id.clone());
-                                        // Extract a human-readable command string from the tool
-                                        // input. For the Bash tool the field is "command"; for
-                                        // other tools fall back to tool name.
-                                        let command_str = tool_input
-                                            .get("command")
-                                            .and_then(|c| c.as_str())
-                                            .map(|s| s.to_string())
-                                            .or_else(|| {
-                                                tool_input
-                                                    .get("query")
-                                                    .and_then(|q| q.as_str())
-                                                    .map(|s| s.to_string())
-                                            })
-                                            .unwrap_or_else(|| tool_name.clone());
+                                        let item =
+                                            tool_started_item(&tool_use_id, tool_name, &tool_input, &turn_id);
+                                        tool_items.insert(tool_use_id.clone(), item.clone());
                                         event_sink.emit_app_server_event(AppServerEvent {
                                             workspace_id: workspace_id.clone(),
                                             message: json!({
                                                 "method": "item/started",
-                                                "params": {
-                                                    "threadId": thread_id,
-                                                    "item": {
-                                                        "type": "commandExecution",
-                                                        "id": item_id,
-                                                        "turnId": turn_id,
-                                                        "toolUseId": tool_use_id,
-                                                        "name": tool_name,
-                                                        "command": command_str,
-                                                        "status": "running"
-                                                    }
-                                                }
+                                                "params": { "threadId": thread_id, "item": item }
                                             }),
                                         });
                                     }
@@ -712,6 +746,32 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                 _ => {}
                             }
                         }
+                    }
+
+                    // Token usage for this request; snapshots of one message repeat it.
+                    if let Some(usage) = msg_obj
+                        .and_then(|m| m.get("usage"))
+                        .and_then(TokenCounts::from_usage)
+                    {
+                        message_usage.insert(msg_id.clone(), usage);
+                        last_usage = Some(usage);
+                        let turn_total = message_usage
+                            .values()
+                            .fold(TokenCounts::default(), |sum, counts| sum.add(*counts));
+                        event_sink.emit_app_server_event(AppServerEvent {
+                            workspace_id: workspace_id.clone(),
+                            message: json!({
+                                "method": "thread/tokenUsage/updated",
+                                "params": {
+                                    "threadId": thread_id,
+                                    "tokenUsage": token_usage_payload(
+                                        prior_tokens.add(turn_total),
+                                        usage,
+                                        context_window_tokens,
+                                    ),
+                                }
+                            }),
+                        });
                     }
 
                     // Only create an agentMessage item if this message has text.
@@ -777,10 +837,10 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                     .and_then(|id| id.as_str())
                                     .unwrap_or("")
                                     .to_string();
-                                let item_id = tool_item_ids
-                                    .get(&tool_use_id)
-                                    .cloned()
-                                    .unwrap_or_else(|| format!("tool-{tool_use_id}"));
+                                let is_error = block
+                                    .get("is_error")
+                                    .and_then(Value::as_bool)
+                                    .unwrap_or(false);
                                 let output = match block.get("content") {
                                     Some(Value::String(s)) => s.clone(),
                                     Some(Value::Array(arr)) => {
@@ -803,22 +863,23 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                     Some(v) => serde_json::to_string(v).unwrap_or_default(),
                                     None => String::new(),
                                 };
+                                // Complete the started item so the row keeps its tool and target.
+                                let item = match tool_items.get(&tool_use_id) {
+                                    Some(started) => tool_completed_item(started, &output, is_error),
+                                    None => json!({
+                                        "type": "commandExecution",
+                                        "id": format!("tool-{tool_use_id}"),
+                                        "turnId": turn_id,
+                                        "toolUseId": tool_use_id,
+                                        "status": if is_error { "failed" } else { "completed" },
+                                        "aggregatedOutput": output
+                                    }),
+                                };
                                 event_sink.emit_app_server_event(AppServerEvent {
                                     workspace_id: workspace_id.clone(),
                                     message: json!({
                                         "method": "item/completed",
-                                        "params": {
-                                            "threadId": thread_id,
-                                            "item": {
-                                                "type": "commandExecution",
-                                                "id": item_id,
-                                                "turnId": turn_id,
-                                                "toolUseId": tool_use_id,
-                                                "status": "completed",
-                                                // TypeScript reads `aggregatedOutput` for this type
-                                                "aggregatedOutput": output
-                                            }
-                                        }
+                                        "params": { "threadId": thread_id, "item": item }
                                     }),
                                 });
                             }
@@ -830,6 +891,30 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                         new_session_id = Some(sid.to_string());
                     }
                     turn_completed = true;
+
+                    // The result carries the turn's authoritative usage and the real context window.
+                    context_window_tokens = context_window(&usage_model, event.get("modelUsage"));
+                    let turn_total = event
+                        .get("usage")
+                        .and_then(TokenCounts::from_usage)
+                        .unwrap_or_else(|| {
+                            message_usage
+                                .values()
+                                .fold(TokenCounts::default(), |sum, counts| sum.add(*counts))
+                        });
+                    let last = last_usage.unwrap_or(turn_total);
+                    let thread_total = prior_tokens.add(turn_total);
+                    claude_state.set_token_total(&workspace_id, &thread_id, thread_total).await;
+                    event_sink.emit_app_server_event(AppServerEvent {
+                        workspace_id: workspace_id.clone(),
+                        message: json!({
+                            "method": "thread/tokenUsage/updated",
+                            "params": {
+                                "threadId": thread_id,
+                                "tokenUsage": token_usage_payload(thread_total, last, context_window_tokens),
+                            }
+                        }),
+                    });
 
                     // Complete all agent message items that were streamed.
                     for (msg_id, text) in &message_texts {

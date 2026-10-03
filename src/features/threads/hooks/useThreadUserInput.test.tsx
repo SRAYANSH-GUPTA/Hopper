@@ -66,4 +66,47 @@ describe("useThreadUserInput", () => {
       workspaceId: "ws-1",
     });
   });
+
+  it("sends follow-up answers as a chat message instead of replying to the turn", async () => {
+    vi.mocked(respondToUserInputRequest).mockClear();
+    const dispatch = vi.fn();
+    const sendUserMessageToThread = vi.fn().mockResolvedValue(undefined);
+    const workspace = {
+      id: "ws-1",
+      name: "W",
+      path: "/tmp/w",
+      connected: true,
+      settings: { sidebarCollapsed: false },
+    };
+    const { result } = renderHook(() =>
+      useThreadUserInput({ dispatch, activeWorkspace: workspace, sendUserMessageToThread }),
+    );
+    const request = {
+      workspace_id: "ws-1",
+      request_id: "agy-q-1",
+      params: {
+        thread_id: "thread-1",
+        turn_id: "turn-1",
+        item_id: "tool-74",
+        answer_mode: "followUp" as const,
+        questions: [{ id: "q0", header: "", question: "Which part?", multiSelect: true }],
+      },
+    };
+    await act(async () => {
+      await result.current.handleUserInputSubmit(request, {
+        answers: { q0: { answers: ["Home", "Sidebar", "user_note: both"] } },
+      });
+    });
+    expect(respondToUserInputRequest).not.toHaveBeenCalled();
+    expect(sendUserMessageToThread).toHaveBeenCalledWith(
+      workspace,
+      "thread-1",
+      "Answers to your questions:\n\nQ: Which part?\nA: Home, Sidebar, both",
+    );
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "removeUserInputRequest",
+      requestId: "agy-q-1",
+      workspaceId: "ws-1",
+    });
+  });
 });

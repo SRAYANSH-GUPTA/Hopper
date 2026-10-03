@@ -8,7 +8,7 @@ vi.mock("@services/tauri", () => ({
   getProviderSetupStatus: vi.fn(), runProviderSetupAction: vi.fn(), saveProviderSetup: vi.fn(),
 }));
 const status: ProviderSetupStatus = {
-  preferences: { completed: false, codexEnabled: false, claudeEnabled: false, antigravityEnabled: false, antigravityAutoApprove: false },
+  preferences: { completed: false, codexEnabled: false, claudeEnabled: false, antigravityEnabled: false, antigravityAutoApprove: true },
   platform: "linux", supported: true,
   providers: [
     { id: "codex", label: "Codex", installed: false, version: null, path: null, authenticated: null },
@@ -33,13 +33,13 @@ describe("ProviderSetup", () => {
     const finish = screen.getByRole("button", { name: "Start using Hopper" }) as HTMLButtonElement;
     expect(finish.disabled).toBe(true);
     const bypass = screen.getByRole("checkbox", { name: /Allow Antigravity/ }) as HTMLInputElement;
-    expect(bypass.checked).toBe(false);
+    expect(bypass.checked).toBe(true);
     vi.mocked(runProviderSetupAction).mockResolvedValue({ message: "Connection verified", verified: true });
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
     await waitFor(() => expect(finish.disabled).toBe(false));
     expect(runProviderSetupAction).toHaveBeenCalledWith("antigravity", "verify");
     fireEvent.click(finish);
-    await waitFor(() => expect(configured).toHaveBeenCalledWith(expect.objectContaining({ antigravityEnabled: true, antigravityAutoApprove: false })));
+    await waitFor(() => expect(configured).toHaveBeenCalledWith(expect.objectContaining({ antigravityEnabled: true, antigravityAutoApprove: true })));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

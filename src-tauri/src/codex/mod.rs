@@ -1063,9 +1063,25 @@ pub(crate) async fn respond_to_server_request(
     // Route them to the permission server instead of Codex.
     if let Value::String(ref id_str) = request_id {
         if id_str.starts_with("claude-") {
-            let approved = result.get("decision").and_then(|d| d.as_str()) == Some("accept");
-            state.claude_state.resolve_permission(id_str, approved).await;
+            // AskUserQuestion answers arrive as `{ answers }`; approvals as `{ decision }`.
+            if let Some(answers) = result.get("answers") {
+                state.claude_state.resolve_question(id_str, answers).await;
+            } else {
+                let approved = result.get("decision").and_then(|d| d.as_str()) == Some("accept");
+                state.claude_state.resolve_permission(id_str, approved).await;
+            }
             return Ok(());
+        }
+        // agy permission retries; agy questions are answered with a follow-up message instead.
+        if id_str.starts_with(antigravity::ANTIGRAVITY_REQUEST_PREFIX) {
+            let accept = result.get("decision").and_then(|d| d.as_str()) == Some("accept");
+            return antigravity::respond_to_permission_retry(
+                Arc::clone(&state.antigravity_state),
+                id_str,
+                accept,
+                TauriEventSink::new(app.clone()),
+            )
+            .await;
         }
     }
 

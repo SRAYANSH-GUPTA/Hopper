@@ -118,6 +118,12 @@
   color: var(--text-muted);
 }
 
+.request-user-input-question-hint,
+.request-user-input-followup-hint {
+  font-size: 11px;
+  color: var(--text-subtle);
+}
+
 .plan-ready-followup-change {
   background: #0b0f1a;
   color: #ffffff;

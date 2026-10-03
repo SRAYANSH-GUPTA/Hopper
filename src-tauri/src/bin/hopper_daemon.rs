@@ -80,6 +80,7 @@ use backend::events::{AppServerEvent, EventSink, TerminalExit, TerminalOutput};
 use shared::codex_core::CodexLoginCancelState;
 use shared::process_core::kill_child_process_tree;
 use shared::prompts_core::{self, CustomPromptEntry};
+use shared::slash_commands_core;
 use shared::{
     agents_config_core, codex_aux_core, codex_core, files_core, git_core, git_ui_core,
     local_usage_core, settings_core, workspaces_core, worktree_core,
@@ -1174,6 +1175,14 @@ impl DaemonState {
 
     async fn create_git_branch(&self, workspace_id: String, name: String) -> Result<(), String> {
         git_ui_core::create_git_branch_core(&self.workspaces, workspace_id, name).await
+    }
+
+    async fn slash_commands_list(
+        &self,
+        workspace_id: Option<String>,
+        provider: String,
+    ) -> Result<Vec<slash_commands_core::SlashCommandEntry>, String> {
+        slash_commands_core::slash_commands_list_core(&self.workspaces, workspace_id, provider).await
     }
 
     async fn prompts_list(&self, workspace_id: String) -> Result<Vec<CustomPromptEntry>, String> {

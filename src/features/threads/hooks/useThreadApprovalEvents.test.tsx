@@ -82,4 +82,24 @@ describe("useThreadApprovalEvents", () => {
     expect(respondToServerRequest).not.toHaveBeenCalled();
     expect(dispatch).toHaveBeenCalledWith({ type: "addApproval", approval });
   });
+
+  it("always shows agy permission retries, even in full-access mode", () => {
+    const dispatch = vi.fn();
+    const approval: ApprovalRequest = {
+      workspace_id: "ws-1",
+      request_id: "agy-perm-1",
+      method: "antigravity/requestApproval",
+      params: { tool: "command" },
+    };
+    const { result } = renderHook(() =>
+      useThreadApprovalEvents({
+        dispatch,
+        approvalAllowlistRef: { current: {} },
+        accessMode: "full-access",
+      }),
+    );
+    act(() => result.current(approval));
+    expect(respondToServerRequest).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({ type: "addApproval", approval });
+  });
 });

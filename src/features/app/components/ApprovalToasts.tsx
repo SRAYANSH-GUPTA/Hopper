@@ -97,16 +97,25 @@ export function ApprovalToasts({
         const params = request.params ?? {};
         const commandInfo = getApprovalCommandInfo(params);
         const isClaude = request.method === "claude/requestApproval";
+        const isAntigravityRetry = request.method === "antigravity/requestApproval";
+        const isProviderTool = isClaude || isAntigravityRetry;
 
-        const tool = isClaude
+        const tool = isProviderTool
           ? String(params.tool ?? "Tool")
           : request.method.replace(/^codex\/requestApproval\/?/, "") || request.method;
 
-        const detail = primaryDetail(
-          isClaude
-            ? (Object.fromEntries(Object.entries(params).filter(([k]) => k !== "tool")))
-            : params,
-        );
+        const detail = isAntigravityRetry
+          ? String(params.reason ?? "")
+          : primaryDetail(
+              isClaude
+                ? (Object.fromEntries(Object.entries(params).filter(([k]) => k !== "tool")))
+                : params,
+            );
+        const label = isAntigravityRetry
+          ? "agy was blocked from using a tool"
+          : isClaude
+            ? "Claude needs permission"
+            : "Approval needed";
 
         return (
           <ToastCard
@@ -116,13 +125,11 @@ export function ApprovalToasts({
           >
             {/* Header row */}
             <div className="approval-v2-header">
-              <div className={`approval-v2-icon ${isClaude ? toolColor(tool) : "approval-icon--default"}`}>
-                {isClaude ? toolIcon(tool) : "◆"}
+              <div className={`approval-v2-icon ${isProviderTool ? toolColor(tool) : "approval-icon--default"}`}>
+                {isProviderTool ? toolIcon(tool) : "◆"}
               </div>
               <div className="approval-v2-header-text">
-                <span className="approval-v2-label">
-                  {isClaude ? "Claude needs permission" : "Approval needed"}
-                </span>
+                <span className="approval-v2-label">{label}</span>
                 {workspaceName && (
                   <span className="approval-v2-workspace">{workspaceName}</span>
                 )}
@@ -162,7 +169,7 @@ export function ApprovalToasts({
                 className="approval-v2-btn approval-v2-btn--approve"
                 onClick={() => onDecision(request, "accept")}
               >
-                Approve
+                {isAntigravityRetry ? "Allow & retry" : "Approve"}
                 <kbd className="approval-v2-kbd">↵</kbd>
               </button>
             </ToastActions>

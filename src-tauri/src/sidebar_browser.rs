@@ -5,100 +5,40 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, Url, WebviewUrl};
 
-use crate::shared::bridge_core;
+use crate::web_chat;
 
-#[derive(Clone, Serialize)]
+/// Emitted when a download from an assistant tab finishes, so Hopper can offer
+/// to send that file to the chat.
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SidebarBrowserDownload {
+struct WebChatDownload {
     webview_label: String,
-    url: String,
-    path: Option<String>,
-    file_name: Option<String>,
-    success: bool,
-    imported: bool,
-    error: Option<String>,
+    path: String,
+    file_name: String,
 }
 
 type RequestedDownloads = Arc<Mutex<HashMap<String, PathBuf>>>;
 
-fn remember_download_destination(
-    requested_downloads: &RequestedDownloads,
-    url: &str,
-    destination: PathBuf,
-) {
-    if let Ok(mut downloads) = requested_downloads.lock() {
-        downloads.insert(url.to_string(), destination);
-    }
-}
-
-fn resolve_download_path(
-    requested_downloads: &RequestedDownloads,
+/// Where a finished download landed. Some platforms only report the
+/// destination when the download is requested, so fall back to that.
+fn finished_download(
+    requested: &RequestedDownloads,
+    webview_label: &str,
     url: &str,
     completed_path: Option<PathBuf>,
-) -> Option<PathBuf> {
-    let requested_path = requested_downloads
-        .lock()
-        .ok()
-        .and_then(|mut downloads| downloads.remove(url));
-    completed_path.or(requested_path)
-}
-
-fn import_finished_download(
-    app: tauri::AppHandle,
-    app_data_directory: PathBuf,
-    webview_label: String,
-    url: Url,
-    path: Option<PathBuf>,
     success: bool,
-) {
-    let file_name = path
-        .as_deref()
-        .and_then(|path| path.file_name())
-        .and_then(|value| value.to_str())
-        .map(str::to_string)
-        .or_else(|| {
-            url.path_segments()
-                .and_then(|mut segments| segments.next_back())
-                .filter(|value| !value.is_empty())
-                .map(str::to_string)
-        });
-    let url = url.to_string();
-    let path = path.map(|value| value.to_string_lossy().to_string());
-    let import_path = path.clone();
-    let emit_result = move |imported: bool, error: Option<String>| {
-        let _ = app.emit(
-            "sidebar-browser-download",
-            SidebarBrowserDownload {
-                webview_label,
-                url,
-                path,
-                file_name,
-                success,
-                imported,
-                error,
-            },
-        );
-    };
-    if success {
-        if let Some(import_path) = import_path {
-            tauri::async_runtime::spawn(async move {
-                match bridge_core::bridge_import_file_core(&app_data_directory, import_path).await {
-                    Ok(_) => emit_result(true, None),
-                    Err(error) => emit_result(false, Some(error)),
-                }
-            });
-        } else {
-            emit_result(
-                false,
-                Some(
-                    "Hopper could not locate the downloaded file. Use Import file in Bridge Inbox."
-                        .to_string(),
-                ),
-            );
-        }
-    } else {
-        emit_result(false, Some("The download did not complete.".to_string()));
+) -> Option<WebChatDownload> {
+    let requested_path = requested.lock().ok().and_then(|mut paths| paths.remove(url));
+    if !success {
+        return None;
     }
+    let path = completed_path.or(requested_path)?;
+    let file_name = path.file_name()?.to_string_lossy().into_owned();
+    Some(WebChatDownload {
+        webview_label: webview_label.to_string(),
+        path: path.to_string_lossy().into_owned(),
+        file_name,
+    })
 }
 
 #[tauri::command]
@@ -125,43 +65,47 @@ pub(crate) async fn create_sidebar_browser(
     }
 
     let window = app.get_window("main").ok_or("Main window not found")?;
-    let app_data_directory = app
+    let browser_data_directory = app
         .path()
         .app_data_dir()
-        .map_err(|error| error.to_string())?;
-    let browser_data_directory = app_data_directory.join("sidebar-browser");
+        .map_err(|error| error.to_string())?
+        .join("sidebar-browser");
     let popup_app = app.clone();
     let popup_label = label.clone();
     let download_app = app.clone();
-    let requested_downloads = Arc::new(Mutex::new(HashMap::<String, PathBuf>::new()));
+    let requested_downloads: RequestedDownloads = Arc::new(Mutex::new(HashMap::new()));
     let builder = tauri::webview::WebviewBuilder::new(label, WebviewUrl::External(url))
         .data_directory(browser_data_directory)
         .enable_clipboard_access()
+        .initialization_script(web_chat::WEB_CHAT_SCRIPT)
+        // Assistant sites handle their own file drops (uploads). Hopper's native
+        // handler would swallow them and report positions in the wrong frame.
+        .disable_drag_drop_handler()
         .on_new_window(move |url, _features| {
             if let Some(webview) = popup_app.get_webview(&popup_label) {
                 let _ = webview.navigate(url);
             }
             tauri::webview::NewWindowResponse::Deny
         })
+        // Downloads save to the system's default download folder; finished
+        // ones are offered to the Hopper chat.
         .on_download(move |webview, event| {
             match event {
                 tauri::webview::DownloadEvent::Requested { url, destination } => {
-                    remember_download_destination(
-                        &requested_downloads,
-                        url.as_str(),
-                        destination.clone(),
-                    );
+                    if let Ok(mut paths) = requested_downloads.lock() {
+                        paths.insert(url.to_string(), destination.clone());
+                    }
                 }
                 tauri::webview::DownloadEvent::Finished { url, path, success } => {
-                    let path = resolve_download_path(&requested_downloads, url.as_str(), path);
-                    import_finished_download(
-                        download_app.clone(),
-                        app_data_directory.clone(),
-                        webview.label().to_string(),
-                        url,
+                    if let Some(download) = finished_download(
+                        &requested_downloads,
+                        webview.label(),
+                        url.as_str(),
                         path,
                         success,
-                    );
+                    ) {
+                        let _ = download_app.emit("web-chat-download-finished", download);
+                    }
                 }
                 _ => {}
             }
@@ -180,24 +124,40 @@ pub(crate) async fn create_sidebar_browser(
 
 #[cfg(test)]
 mod tests {
-    use super::{remember_download_destination, resolve_download_path, RequestedDownloads};
-    use std::collections::HashMap;
-    use std::path::PathBuf;
-    use std::sync::{Arc, Mutex};
+    use super::*;
 
     #[test]
-    fn resolves_successful_download_from_requested_destination_when_finished_path_is_missing() {
-        let downloads: RequestedDownloads = Arc::new(Mutex::new(HashMap::new()));
-        let url = "blob:https://chatgpt.com/generated-file";
-        let destination = PathBuf::from("/tmp/generated-design.docx");
+    fn reports_finished_downloads_with_requested_destination_fallback() {
+        let requested: RequestedDownloads = Arc::new(Mutex::new(HashMap::new()));
+        let url = "blob:https://claude.ai/abc";
+        requested
+            .lock()
+            .unwrap()
+            .insert(url.into(), PathBuf::from("/home/me/Downloads/report.pdf"));
+        let download = finished_download(&requested, "ai-chatbot-tab-1", url, None, true).unwrap();
+        assert_eq!(download.path, "/home/me/Downloads/report.pdf");
+        assert_eq!(download.file_name, "report.pdf");
+        assert_eq!(download.webview_label, "ai-chatbot-tab-1");
+        assert!(requested.lock().unwrap().is_empty());
 
-        remember_download_destination(&downloads, url, destination.clone());
+        let finished = finished_download(
+            &requested,
+            "ai-chatbot-tab-1",
+            "https://x/y",
+            Some(PathBuf::from("/tmp/data.csv")),
+            true,
+        )
+        .unwrap();
+        assert_eq!(finished.file_name, "data.csv");
+    }
 
-        assert_eq!(
-            resolve_download_path(&downloads, url, None),
-            Some(destination)
-        );
-        assert!(downloads.lock().expect("downloads lock").is_empty());
+    #[test]
+    fn ignores_failed_or_unlocated_downloads() {
+        let requested: RequestedDownloads = Arc::new(Mutex::new(HashMap::new()));
+        requested.lock().unwrap().insert("u".into(), PathBuf::from("/tmp/a.pdf"));
+        assert!(finished_download(&requested, "tab", "u", None, false).is_none());
+        assert!(requested.lock().unwrap().is_empty());
+        assert!(finished_download(&requested, "tab", "missing", None, true).is_none());
     }
 }
 

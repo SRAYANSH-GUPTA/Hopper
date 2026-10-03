@@ -12,19 +12,30 @@ function extractImageInputValue(input: Record<string, unknown>) {
   return value.trim();
 }
 
+const HANDOFF_USER_MARKER = "\n\n---\n\n**User:** ";
+const WEB_CHAT_CONTEXT_HEADING = "## Web Chat Context";
+
 export function stripHandoffPrefix(text: string): string {
+  if (text.startsWith(WEB_CHAT_CONTEXT_HEADING)) {
+    // The imported transcript is untrusted text; the user's message follows the last marker.
+    const idx = text.lastIndexOf(HANDOFF_USER_MARKER);
+    return idx !== -1 ? text.slice(idx + HANDOFF_USER_MARKER.length) : text;
+  }
   if (!text.startsWith("## Context Handoff")) {
     return text;
   }
-  const marker = "\n\n---\n\n**User:** ";
-  const idx = text.indexOf(marker);
+  const idx = text.indexOf(HANDOFF_USER_MARKER);
   if (idx !== -1) {
-    return text.slice(idx + marker.length);
+    return text.slice(idx + HANDOFF_USER_MARKER.length);
   }
   return text;
 }
 
 function extractHandoffProvider(text: string): string | undefined {
+  if (text.startsWith(WEB_CHAT_CONTEXT_HEADING)) {
+    const provider = text.match(/^Imported from (.+?) web chat/m)?.[1];
+    return provider ? `${provider} (web)` : undefined;
+  }
   if (!text.startsWith("## Context Handoff")) return undefined;
   const match = text.match(/switched from (\S+) to/);
   return match?.[1];
@@ -165,6 +176,18 @@ export function buildConversationItem(
       status: asString(item.status ?? ""),
       output: diffOutput,
       changes: normalizedChanges,
+    };
+  }
+  if (type === "toolCall") {
+    // A provider tool (Claude Code, agy) with its own title, e.g. "Read" + path.
+    return {
+      id,
+      kind: "tool",
+      toolType: type,
+      title: asString(item.title ?? item.tool ?? "Tool"),
+      detail: asString(item.detail ?? ""),
+      status: asString(item.status ?? ""),
+      output: asString(item.output ?? ""),
     };
   }
   if (type === "mcpToolCall") {

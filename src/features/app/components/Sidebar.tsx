@@ -19,10 +19,8 @@ import Store from "lucide-react/dist/esm/icons/store";
 import Plug from "lucide-react/dist/esm/icons/plug";
 import { MarketplaceView } from "../../marketplace/components/MarketplaceView";
 import { McpView } from "../../mcp/components/McpView";
-import { AiWebView } from "../../ai-web/components/AiWebView";
+import { AiWebView, type AssistantTransfer } from "../../ai-web/components/AiWebView";
 import Bot from "lucide-react/dist/esm/icons/bot";
-import Inbox from "lucide-react/dist/esm/icons/inbox";
-import { BridgeInbox } from "../../bridge/components/BridgeInbox";
 import { TasksView } from "../../tasks/components/TasksView";
 import ClipboardCheck from "lucide-react/dist/esm/icons/clipboard-check";
 import { SidebarBottomRail } from "./SidebarBottomRail";
@@ -140,6 +138,7 @@ type SidebarProps = {
   accountRateLimits: RateLimitSnapshot | null;
   usageShowRemaining: boolean;
   activeProviderLabel: string;
+  webChatTransfer?: AssistantTransfer;
   // onOpenSettings: () => void;
   onAddWorkspace: () => void;
   onSelectHome: () => void;
@@ -211,6 +210,7 @@ export const Sidebar = memo(function Sidebar({
   accountRateLimits,
   usageShowRemaining,
   activeProviderLabel,
+  webChatTransfer,
   // onOpenSettings,
   onAddWorkspace,
   onSelectHome,
@@ -244,7 +244,7 @@ export const Sidebar = memo(function Sidebar({
   planPanelNode,
   agentMd,
 }: SidebarProps) {
-  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "tasks" | "marketplace" | "mcp" | "ai" | "bridge">("explorer");
+  const [activeView, setActiveView] = useState<"explorer" | "git" | "plan" | "tasks" | "marketplace" | "mcp" | "ai">("explorer");
 
   useEffect(() => {
     if (activeView !== "ai") {
@@ -921,17 +921,6 @@ export const Sidebar = memo(function Sidebar({
           >
             <Bot size={20} aria-hidden />
           </button>
-          <button
-            type="button"
-            className={`sidebar-activity-btn ds-tooltip-trigger${activeView === "bridge" ? " is-active" : ""}`}
-            onClick={() => setActiveView("bridge")}
-            aria-label="Bridge Inbox"
-            aria-pressed={activeView === "bridge"}
-            data-tooltip="Bridge Inbox"
-            data-tooltip-placement="right"
-          >
-            <Inbox size={20} aria-hidden />
-          </button>
         </div>
       </div>
 
@@ -955,16 +944,7 @@ export const Sidebar = memo(function Sidebar({
           </div>
         ) : activeView === "ai" ? (
           <div className="sidebar-ai-panel" style={{ height: "100%" }}>
-            <AiWebView />
-          </div>
-        ) : activeView === "bridge" ? (
-          <div className="sidebar-bridge-panel">
-            <BridgeInbox
-              workspaces={workspaces}
-              activeWorkspaceId={activeWorkspaceId}
-              activeThreadId={activeThreadId}
-              activeProviderLabel={activeProviderLabel}
-            />
+            <AiWebView transfer={webChatTransfer} />
           </div>
         ) : (
           <>

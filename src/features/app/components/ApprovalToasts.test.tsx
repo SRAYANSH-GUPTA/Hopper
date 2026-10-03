@@ -57,4 +57,20 @@ describe("ApprovalToasts", () => {
     expect(onDecision).not.toHaveBeenCalled();
     document.body.removeChild(input);
   });
+
+  it("offers Allow & retry for agy permission blocks", () => {
+    const onDecision = vi.fn();
+    const agy: ApprovalRequest = {
+      workspace_id: "workspace-1",
+      request_id: "agy-perm-1",
+      method: "antigravity/requestApproval",
+      params: { tool: "command", reason: "agy needs the \"command\" permission." },
+    };
+    render(<ApprovalToasts approvals={[agy]} workspaces={workspaces} onDecision={onDecision} />);
+    expect(screen.getByText("agy was blocked from using a tool")).toBeTruthy();
+    expect(screen.getByText("command")).toBeTruthy();
+    expect(screen.queryByText("Always allow")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Allow & retry/ }));
+    expect(onDecision).toHaveBeenCalledWith(agy, "accept");
+  });
 });

@@ -7,8 +7,10 @@ export type AutocompleteItem = {
   insertText?: string;
   hint?: string;
   cursorOffset?: number;
-  group?: "Files" | "Skills" | "Apps" | "Slash" | "Prompts";
+  group?: "Files" | "Skills" | "Commands" | "Apps" | "Slash" | "Prompts";
   mentionPath?: string;
+  /** Replace the trigger character too (e.g. a `/` pick that inserts `$skill`). */
+  replaceTrigger?: boolean;
 };
 
 export type AutocompleteTrigger = {

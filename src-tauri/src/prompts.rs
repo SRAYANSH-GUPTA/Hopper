@@ -1,7 +1,33 @@
-use tauri::State;
+use serde_json::{json, Value};
+use tauri::{AppHandle, State};
 
+use crate::remote_backend;
 use crate::shared::prompts_core::{self, CustomPromptEntry};
+use crate::shared::slash_commands_core;
 use crate::state::AppState;
+
+/// Skills and custom commands the provider's CLI exposes, for the composer's `/` menu.
+#[tauri::command]
+pub(crate) async fn slash_commands_list(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    workspace_id: Option<String>,
+    provider: String,
+) -> Result<Value, String> {
+    if remote_backend::is_remote_mode(&*state).await {
+        return remote_backend::call_remote(
+            &*state,
+            app,
+            "slash_commands_list",
+            json!({ "workspaceId": workspace_id, "provider": provider }),
+        )
+        .await;
+    }
+    let commands =
+        slash_commands_core::slash_commands_list_core(&state.workspaces, workspace_id, provider)
+            .await?;
+    serde_json::to_value(commands).map_err(|err| err.to_string())
+}
 
 #[tauri::command]
 pub(crate) async fn prompts_list(

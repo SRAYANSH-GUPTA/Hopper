@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Blocks,
   Bot,
   ExternalLink,
@@ -14,16 +16,16 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Webview } from "@tauri-apps/api/webview";
 import {
-  bridgeImportFile,
   createSidebarBrowser,
   reloadSidebarBrowser,
   setSidebarBrowserBounds,
   setSidebarBrowserVisible,
 } from "@services/tauri";
 import {
-  subscribeSidebarBrowserDownload,
-  type SidebarBrowserDownload,
+  subscribeWebChatDownloadFinished,
+  subscribeWebChatFileImported,
 } from "@services/events";
+import { offerComposerFile } from "@/features/web-chat/webChatFiles";
 import {
   attachAssistantWebview,
   closeAssistantTab,
@@ -70,8 +72,19 @@ function nextWebviewLabel(): string {
 let persistedTabs: AssistantBrowserTab[] = [createAssistantTab(nextTabId())];
 let persistedActiveTabId = persistedTabs[0].id;
 
-type DownloadNotice = SidebarBrowserDownload & {
-  state: "importing" | "imported" | "error";
+/** One-click conversation transfer between an assistant tab and Hopper. */
+export type AssistantTransfer = {
+  /** Copies the tab's conversation into the active Hopper chat. Resolves to a status message. */
+  sendToHopper: (webviewLabel: string) => Promise<string>;
+  /** Pastes the active Hopper chat into the tab's input box. Resolves to a status message. */
+  pasteHopperChat: (webviewLabel: string) => Promise<string>;
+};
+
+type TransferNotice = {
+  state: "working" | "done" | "error";
+  message: string;
+  /** One-click follow-up, e.g. sending a finished download to the chat. */
+  action?: { label: string; run: () => void };
 };
 
 type TabRuntime = {
@@ -111,11 +124,11 @@ async function hideWebview(tab: AssistantBrowserTab | undefined): Promise<void> 
   await setSidebarBrowserVisible(webview.label, false).catch(() => webview.hide());
 }
 
-export function AiWebView() {
+export function AiWebView({ transfer }: { transfer?: AssistantTransfer }) {
   const [tabs, setTabs] = useState<AssistantBrowserTab[]>(persistedTabs);
   const [activeTabId, setActiveTabId] = useState(persistedActiveTabId);
   const [runtimeByTab, setRuntimeByTab] = useState<Record<string, TabRuntime>>({});
-  const [downloadByTab, setDownloadByTab] = useState<Record<string, DownloadNotice>>({});
+  const [noticeByTab, setNoticeByTab] = useState<Record<string, TransferNotice>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const activeWebviewRef = useRef<Webview | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -130,7 +143,7 @@ export function AiWebView() {
   );
   const activeProvider = providerById(activeTab?.providerId ?? null);
   const activeRuntime = activeTab ? runtimeByTab[activeTab.id] : undefined;
-  const activeDownload = activeTab ? downloadByTab[activeTab.id] : undefined;
+  const activeNotice = activeTab ? noticeByTab[activeTab.id] : undefined;
 
   useEffect(() => {
     tabsRef.current = tabs;
@@ -224,17 +237,6 @@ export function AiWebView() {
     return () => observer.disconnect();
   }, [activeProvider, activeTabId, syncWebviewBounds]);
 
-  useEffect(() => subscribeSidebarBrowserDownload((download) => {
-    const tab = tabsRef.current.find((item) => item.webviewLabel === download.webviewLabel);
-    if (!tab) return;
-    setDownloadByTab((current) => ({
-      ...current,
-      [tab.id]: { ...download, state: download.imported ? "imported" : "error" },
-    }));
-  }, {
-    onError: (error) => console.error("Failed to watch assistant downloads:", error),
-  }), []);
-
   const activateTab = async (tabId: string) => {
     if (tabId === activeTabIdRef.current) return;
     const previous = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current);
@@ -276,7 +278,7 @@ export function AiWebView() {
       delete next[tabId];
       return next;
     });
-    setDownloadByTab((current) => {
+    setNoticeByTab((current) => {
       const next = { ...current };
       delete next[tabId];
       return next;
@@ -299,25 +301,68 @@ export function AiWebView() {
     }
   };
 
-  const retryImport = async () => {
-    if (!activeTab || !activeDownload?.path) return;
-    setDownloadByTab((current) => ({
-      ...current,
-      [activeTab.id]: { ...activeDownload, state: "importing", error: null },
-    }));
+  const setNotice = (tabId: string, notice: TransferNotice | null) => {
+    setNoticeByTab((current) => {
+      const next = { ...current };
+      if (notice) next[tabId] = notice;
+      else delete next[tabId];
+      return next;
+    });
+  };
+
+  const runTransfer = async (action: keyof AssistantTransfer, workingMessage: string) => {
+    const tab = activeTab;
+    if (!transfer || !tab?.webviewLabel || noticeByTab[tab.id]?.state === "working") return;
+    setNotice(tab.id, { state: "working", message: workingMessage });
     try {
-      await bridgeImportFile(activeDownload.path);
-      setDownloadByTab((current) => ({
-        ...current,
-        [activeTab.id]: { ...activeDownload, state: "imported", error: null, imported: true },
-      }));
+      setNotice(tab.id, { state: "done", message: await transfer[action](tab.webviewLabel) });
     } catch (error) {
-      setDownloadByTab((current) => ({
-        ...current,
-        [activeTab.id]: { ...activeDownload, state: "error", error: String(error) },
-      }));
+      setNotice(tab.id, { state: "error", message: error instanceof Error ? error.message : String(error) });
     }
   };
+
+  const tabIdForWebview = useCallback(
+    (webviewLabel: string) => tabsRef.current.find((tab) => tab.webviewLabel === webviewLabel)?.id ?? null,
+    [],
+  );
+
+  // Files sent with the in-page "Send to Hopper" button.
+  useEffect(() => subscribeWebChatFileImported(({ webviewLabel, fileName }) => {
+    const tabId = tabIdForWebview(webviewLabel);
+    if (!tabId) return;
+    setNoticeByTab((current) => ({
+      ...current,
+      [tabId]: { state: "done", message: `Added ${fileName} to your Hopper chat.` },
+    }));
+  }, {
+    onError: (error) => console.error("Failed to watch web chat files:", error),
+  }), [tabIdForWebview]);
+
+  // Finished downloads, offered to the chat with one click.
+  useEffect(() => subscribeWebChatDownloadFinished(({ webviewLabel, path, fileName }) => {
+    const tabId = tabIdForWebview(webviewLabel);
+    if (!tabId) return;
+    const sent: TransferNotice = { state: "done", message: `Added ${fileName} to your Hopper chat.` };
+    setNoticeByTab((current) => ({
+      ...current,
+      [tabId]: {
+        state: "done",
+        message: `Downloaded ${fileName}.`,
+        action: {
+          label: "Send to Hopper chat",
+          run: () => {
+            offerComposerFile(path);
+            setNoticeByTab((latest) => ({ ...latest, [tabId]: sent }));
+          },
+        },
+      },
+    }));
+  }, {
+    onError: (error) => console.error("Failed to watch assistant downloads:", error),
+  }), [tabIdForWebview]);
+
+  const canTransfer = Boolean(transfer && activeProvider && activeProvider.id !== "web" && activeTab?.webviewLabel);
+  const transferBusy = activeNotice?.state === "working";
 
   return (
     <div className="ai-browser">
@@ -359,29 +404,45 @@ export function AiWebView() {
             <small>{new URL(activeProvider.url).hostname}</small>
           </div>
           <div className="ai-browser-actions">
+            {canTransfer && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void runTransfer("sendToHopper", `Reading this ${activeProvider.tabLabel} chat…`)}
+                  disabled={transferBusy}
+                  aria-label="Send chat to Hopper"
+                  title="Send this chat to Hopper"
+                >
+                  <ArrowDownToLine size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runTransfer("pasteHopperChat", "Pasting your Hopper chat…")}
+                  disabled={transferBusy}
+                  aria-label="Paste Hopper chat here"
+                  title="Paste the active Hopper chat here"
+                >
+                  <ArrowUpFromLine size={14} />
+                </button>
+              </>
+            )}
             <button type="button" onClick={() => void reloadActiveTab()} aria-label="Reload tab" title="Reload"><RefreshCw size={14} /></button>
             <button type="button" onClick={() => void openUrl(activeProvider.url)} aria-label="Open in external browser" title="Open in browser"><ExternalLink size={14} /></button>
           </div>
         </div>
       )}
 
-      {activeDownload && (
-        <div className={`ai-webview-download is-${activeDownload.state}`} role="status">
-          <div>
-            <strong>{activeDownload.fileName || "Assistant download"}</strong>
-            {activeDownload.state === "importing" && <span>Adding to Bridge…</span>}
-            {activeDownload.state === "imported" && <span>Added to Bridge Inbox.</span>}
-            {activeDownload.state === "error" && <span>{activeDownload.error}</span>}
-          </div>
-          {activeDownload.state === "error" && activeDownload.path && <button type="button" onClick={() => void retryImport()}>Try again</button>}
-          <button className="ai-webview-download-dismiss" type="button" onClick={() => {
-            if (!activeTab) return;
-            setDownloadByTab((current) => {
-              const next = { ...current };
-              delete next[activeTab.id];
-              return next;
-            });
-          }} aria-label="Dismiss download notice"><X size={13} /></button>
+      {activeNotice && activeTab && (
+        <div className={`ai-webview-notice is-${activeNotice.state}`} role="status">
+          <span>{activeNotice.message}</span>
+          {activeNotice.action && (
+            <button className="ai-webview-notice-action" type="button" onClick={activeNotice.action.run}>
+              {activeNotice.action.label}
+            </button>
+          )}
+          {activeNotice.state !== "working" && (
+            <button className="ai-webview-notice-dismiss" type="button" onClick={() => setNotice(activeTab.id, null)} aria-label="Dismiss notice"><X size={13} /></button>
+          )}
         </div>
       )}
 

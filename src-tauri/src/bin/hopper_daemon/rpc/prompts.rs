@@ -6,6 +6,18 @@ pub(super) async fn try_handle(
     params: &Value,
 ) -> Option<Result<Value, String>> {
     match method {
+        "slash_commands_list" => {
+            let provider = match parse_string(params, "provider") {
+                Ok(value) => value,
+                Err(err) => return Some(Err(err)),
+            };
+            let workspace_id = parse_optional_string(params, "workspaceId");
+            let commands = match state.slash_commands_list(workspace_id, provider).await {
+                Ok(value) => value,
+                Err(err) => return Some(Err(err)),
+            };
+            Some(serde_json::to_value(commands).map_err(|err| err.to_string()))
+        }
         "prompts_list" => {
             let workspace_id = match parse_string(params, "workspaceId") {
                 Ok(value) => value,

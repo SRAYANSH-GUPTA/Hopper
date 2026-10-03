@@ -85,8 +85,8 @@ export function ProviderSetup({ enabled = true, onboarding = false, targetKey, r
                 {remote && <p className="provider-setup-note">On the host, run <code>{provider.id === "codex" ? "codex login" : provider.id === "claude" ? "claude auth login" : "agy"}</code>, complete sign-in, then test here.</p>}
                 {provider.id === "antigravity" && (
                   <label className="provider-setup-permissions">
-                    <input type="checkbox" checked={preferences?.antigravityAutoApprove ?? false} disabled={Boolean(busy)} onChange={(event) => setup.setPreferences((prev) => prev && ({ ...prev, antigravityAutoApprove: event.target.checked }))} />
-                    <span>Allow Antigravity to run tools without asking<p className="provider-setup-note">Allows file changes and terminal commands without approval. Off by default; requests requiring approval may stop in Hopper's headless mode.</p></span>
+                    <input type="checkbox" checked={preferences?.antigravityAutoApprove ?? true} disabled={Boolean(busy)} onChange={(event) => setup.setPreferences((prev) => prev && ({ ...prev, antigravityAutoApprove: event.target.checked }))} />
+                    <span>Allow Antigravity to run tools without asking<p className="provider-setup-note">Allows file changes and terminal commands without approval. On by default to prevent requests from stopping in Hopper's headless mode.</p></span>
                   </label>
                 )}
               </>

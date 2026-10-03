@@ -155,6 +155,7 @@ export type ThreadAction =
       requestId: number | string;
       workspaceId: string;
     }
+  | { type: "clearTurnUserInputRequests"; workspaceId: string; threadId: string }
   | { type: "setThreadTokenUsage"; threadId: string; tokenUsage: ThreadTokenUsage }
   | {
       type: "setRateLimits";

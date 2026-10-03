@@ -127,6 +127,8 @@ type UseMainAppLayoutSurfacesArgs = {
   handleOpenThreadLink: LayoutNodesOptions["primary"]["messagesProps"]["onOpenThreadLink"];
   handleSelectOpenAppId: MainHeaderProps["onSelectOpenAppId"];
   handleCopyThread: MainHeaderProps["onCopyThread"];
+  webChatTransfer: SidebarProps["webChatTransfer"];
+  webChatContextChip: ComposerProps["stagedContext"];
   handleToggleTerminalWithFocus: MainHeaderProps["onToggleTerminal"];
   launchScriptState: {
     launchScript: string | null;
@@ -158,6 +160,9 @@ type UseMainAppLayoutSurfacesArgs = {
   accessMode: ComposerProps["accessMode"];
   onSelectAccessMode: ComposerProps["onSelectAccessMode"];
   skills: ComposerProps["skills"];
+  slashCommands: ComposerProps["slashCommands"];
+  /** Provider of the active thread (falls back to the default provider). */
+  activeProvider: string;
   apps: ComposerProps["apps"];
   prompts: ComposerProps["prompts"];
   composerInputRef: RefObject<HTMLTextAreaElement | null>;
@@ -302,6 +307,8 @@ function buildPrimarySurface({
   handleOpenThreadLink,
   handleSelectOpenAppId,
   handleCopyThread,
+  webChatTransfer,
+  webChatContextChip,
   handleToggleTerminalWithFocus,
   launchScriptState,
   launchScriptsState,
@@ -322,6 +329,8 @@ function buildPrimarySurface({
   accessMode,
   onSelectAccessMode,
   skills,
+  slashCommands,
+  activeProvider,
   apps,
   prompts,
   composerInputRef,
@@ -406,6 +415,7 @@ function buildPrimarySurface({
       accountRateLimits: sidebarRateLimits,
       usageShowRemaining: appSettings.usageShowRemaining,
       activeProviderLabel: PROVIDER_MAP.get(appSettings.localProvider ?? DEFAULT_PROVIDER_ID)?.label ?? "Codex",
+      webChatTransfer,
       onAddWorkspace: handleAddWorkspace,
       onSelectHome: sidebarHandlers.onSelectHome,
       onSelectWorkspace: sidebarHandlers.onSelectWorkspace,
@@ -452,6 +462,7 @@ function buildPrimarySurface({
     },
     messagesProps: {
       items: activeItems,
+      tokenUsage: activeTokenUsage,
       threadId: activeThreadId ?? null,
       workspaceId: activeWorkspace?.id ?? null,
       workspacePath: activeWorkspace?.path ?? null,
@@ -532,6 +543,7 @@ function buildPrimarySurface({
           accessMode,
           onSelectAccessMode,
           skills,
+          slashCommands,
           appsEnabled: appSettings.experimentalAppsEnabled,
           apps,
           prompts,
@@ -556,6 +568,7 @@ function buildPrimarySurface({
           dictationHint: dictationUi.dictationHint,
           onDismissDictationHint: clearDictationHint,
           contextActions: composerContextActions,
+          stagedContext: webChatContextChip,
           reviewPrompt,
           onReviewPromptClose: closeReviewPrompt,
           onReviewPromptShowPreset: showPresetStep,
@@ -576,7 +589,7 @@ function buildPrimarySurface({
           onReviewPromptUpdateCustomInstructions: updateCustomInstructions,
           onReviewPromptConfirmCustom: confirmCustom,
           onProviderSwitch,
-          activeProviderId: appSettings.localProvider,
+          activeProviderId: activeProvider,
           isPlanMode,
           onPlanModeToggle,
           planCommandPrefix: nonCodexPlanMode,
@@ -1030,6 +1043,8 @@ export function useMainAppLayoutSurfaces({
   handleOpenThreadLink,
   handleSelectOpenAppId,
   handleCopyThread,
+  webChatTransfer,
+  webChatContextChip,
   handleToggleTerminalWithFocus,
   launchScriptState,
   launchScriptsState,
@@ -1050,6 +1065,8 @@ export function useMainAppLayoutSurfaces({
   accessMode,
   onSelectAccessMode,
   skills,
+  slashCommands,
+  activeProvider,
   apps,
   prompts,
   composerInputRef,
@@ -1194,6 +1211,8 @@ export function useMainAppLayoutSurfaces({
     handleOpenThreadLink,
     handleSelectOpenAppId,
     handleCopyThread,
+    webChatTransfer,
+    webChatContextChip,
     handleToggleTerminalWithFocus,
     launchScriptState,
     launchScriptsState,
@@ -1214,6 +1233,8 @@ export function useMainAppLayoutSurfaces({
     accessMode,
     onSelectAccessMode,
     skills,
+    slashCommands,
+    activeProvider,
     apps,
     prompts,
     composerInputRef,

@@ -133,7 +133,6 @@ export function useThreads({
   rateLimitsByWorkspaceRef.current = state.rateLimitsByWorkspace;
   const { approvalAllowlistRef, handleApprovalDecision, handleApprovalRemember } =
     useThreadApprovals({ dispatch, onDebug });
-  const { handleUserInputSubmit } = useThreadUserInput({ dispatch });
   const {
     customNamesRef,
     threadActivityRef,
@@ -800,6 +799,12 @@ export function useThreads({
     updateThreadParent,
     registerDetachedReviewChild,
     renameThread,
+  });
+
+  const { handleUserInputSubmit } = useThreadUserInput({
+    dispatch,
+    activeWorkspace,
+    sendUserMessageToThread,
   });
 
   const hasLocalThreadSnapshot = useCallback(

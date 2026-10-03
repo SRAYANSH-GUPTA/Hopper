@@ -4,12 +4,20 @@ import type {
   ConversationItem,
   RequestUserInputRequest,
   RequestUserInputResponse,
+  WorkspaceInfo,
 } from "@/types";
 import { respondToUserInputRequest } from "@services/tauri";
 import type { ThreadAction } from "./useThreadsReducer";
 
 type UseThreadUserInputOptions = {
   dispatch: Dispatch<ThreadAction>;
+  /** Needed for "followUp" requests, whose answers are sent as a chat message. */
+  activeWorkspace?: WorkspaceInfo | null;
+  sendUserMessageToThread?: (
+    workspace: WorkspaceInfo,
+    threadId: string,
+    text: string,
+  ) => Promise<unknown>;
 };
 
 function asString(value: unknown) {
@@ -84,28 +92,62 @@ function buildUserInputConversationItem(
   };
 }
 
-export function useThreadUserInput({ dispatch }: UseThreadUserInputOptions) {
+/** Formats answers as a chat message for agents that can't pause for input. */
+export function buildFollowUpAnswerMessage(
+  request: RequestUserInputRequest,
+  response: RequestUserInputResponse,
+): string {
+  const lines = request.params.questions.map((question, index) => {
+    const id = question.id || `question-${index + 1}`;
+    const answers = (response.answers?.[id]?.answers ?? [])
+      .map((entry) => asString(entry).replace(/^user_note:\s*/, "").trim())
+      .filter(Boolean);
+    return `Q: ${asString(question.question).trim()}\nA: ${answers.length ? answers.join(", ") : "(no answer)"}`;
+  });
+  return ["Answers to your questions:", "", ...lines].join("\n");
+}
+
+export function useThreadUserInput({
+  dispatch,
+  activeWorkspace = null,
+  sendUserMessageToThread,
+}: UseThreadUserInputOptions) {
   const handleUserInputSubmit = useCallback(
     async (request: RequestUserInputRequest, response: RequestUserInputResponse) => {
-      await respondToUserInputRequest(
-        request.workspace_id,
-        request.request_id,
-        response.answers,
-      );
-      const item = buildUserInputConversationItem(request, response);
-      dispatch({
-        type: "upsertItem",
-        workspaceId: request.workspace_id,
-        threadId: request.params.thread_id,
-        item,
-      });
+      if (request.params.answer_mode === "followUp") {
+        if (
+          !sendUserMessageToThread ||
+          !activeWorkspace ||
+          activeWorkspace.id !== request.workspace_id
+        ) {
+          throw new Error("Open this chat's workspace to send your answer.");
+        }
+        await sendUserMessageToThread(
+          activeWorkspace,
+          request.params.thread_id,
+          buildFollowUpAnswerMessage(request, response),
+        );
+      } else {
+        await respondToUserInputRequest(
+          request.workspace_id,
+          request.request_id,
+          response.answers,
+        );
+        // Follow-up answers already appear in the thread as the sent message.
+        dispatch({
+          type: "upsertItem",
+          workspaceId: request.workspace_id,
+          threadId: request.params.thread_id,
+          item: buildUserInputConversationItem(request, response),
+        });
+      }
       dispatch({
         type: "removeUserInputRequest",
         requestId: request.request_id,
         workspaceId: request.workspace_id,
       });
     },
-    [dispatch],
+    [activeWorkspace, dispatch, sendUserMessageToThread],
   );
 
   return { handleUserInputSubmit };

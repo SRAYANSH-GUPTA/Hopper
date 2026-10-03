@@ -30,9 +30,5 @@ pub(super) async fn dispatch_rpc_request(
         return result;
     }
 
-    if let Some(result) = bridge::try_handle(state, method, params).await {
-        return result;
-    }
-
     Err(format!("unknown method: {method}"))
 }

@@ -12,6 +12,7 @@ import {
   compactThread as compactThreadService,
 } from "@services/tauri";
 import type { WorkspaceInfo } from "@/types";
+import { stageWebChatContext } from "@/features/web-chat/webChatContext";
 import { useThreadMessaging } from "./useThreadMessaging";
 
 vi.mock("@sentry/react", () => ({
@@ -156,6 +157,58 @@ describe("useThreadMessaging telemetry", () => {
     );
     expect(ensureWorkspaceRuntimeCodexArgs).toHaveBeenCalledTimes(1);
     expect(ensureWorkspaceRuntimeCodexArgs).toHaveBeenCalledWith("ws-1", "thread-1");
+  });
+
+  it("prepends a staged web chat once, then sends plain messages", async () => {
+    const { result } = renderHook(() =>
+      useThreadMessaging({
+        activeWorkspace: workspace,
+        activeThreadId: "thread-1",
+        accessMode: "current",
+        model: null,
+        effort: null,
+        collaborationMode: null,
+        reviewDeliveryMode: "inline",
+        steerEnabled: false,
+        customPrompts: [],
+        threadStatusById: {},
+        activeTurnIdByThread: {},
+        rateLimitsByWorkspace: {},
+        pendingInterruptsRef: { current: new Set<string>() },
+        dispatch: vi.fn(),
+        getCustomName: vi.fn(() => undefined),
+        markProcessing: vi.fn(),
+        markReviewing: vi.fn(),
+        setActiveTurnId: vi.fn(),
+        recordThreadActivity: vi.fn(),
+        safeMessageActivity: vi.fn(),
+        onDebug: vi.fn(),
+        pushThreadErrorMessage: vi.fn(),
+        ensureThreadForActiveWorkspace: vi.fn(async () => "thread-1"),
+        ensureThreadForWorkspace: vi.fn(async () => "thread-1"),
+        refreshThread: vi.fn(async () => null),
+        forkThreadForWorkspace: vi.fn(async () => null),
+        updateThreadParent: vi.fn(),
+      }),
+    );
+    const staged = stageWebChatContext("ws-1", "thread-1", {
+      provider: "ChatGPT",
+      title: null,
+      url: "https://chatgpt.com/c/1",
+      messages: [{ role: "user", content: "Earlier question" }],
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(workspace, "thread-1", "continue", []);
+    });
+    await act(async () => {
+      await result.current.sendUserMessageToThread(workspace, "thread-1", "again", []);
+    });
+
+    expect(vi.mocked(sendUserMessageService).mock.calls[0][2]).toBe(
+      `${staged.prompt}\n\n---\n\n**User:** continue`,
+    );
+    expect(vi.mocked(sendUserMessageService).mock.calls[1][2]).toBe("again");
   });
 
   it("forwards explicit app mentions to turn/start", async () => {

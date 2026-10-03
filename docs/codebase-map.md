@@ -35,6 +35,7 @@ If a behavior must work in both app and daemon, implement it in `src-tauri/src/s
 | Change settings model/load/update | `src/features/settings/components/SettingsView.tsx`, `src/features/settings/hooks/useAppSettings.ts`, `src/services/tauri.ts`, `src-tauri/src/settings/mod.rs`, `src-tauri/src/shared/settings_core.rs`, `src-tauri/src/types.rs`, `src/types.ts` |
 | Change Git/GitHub backend behavior | `src/features/git/hooks/*`, `src/services/tauri.ts`, `src-tauri/src/git/mod.rs`, `src-tauri/src/shared/git_ui_core.rs`, `src-tauri/src/shared/git_ui_core/*`, `src-tauri/src/shared/git_core.rs`, `src-tauri/src/bin/hopper_daemon/rpc.rs`, `src-tauri/src/bin/hopper_daemon/rpc/git.rs` |
 | Change prompts CRUD/listing behavior | `src/features/prompts/hooks/useCustomPrompts.ts`, `src/features/prompts/components/PromptPanel.tsx`, `src/services/tauri.ts`, `src-tauri/src/prompts.rs`, `src-tauri/src/shared/prompts_core.rs`, `src-tauri/src/bin/hopper_daemon/rpc.rs` |
+| Change the composer `/` menu (built-ins, installed skills/commands per provider, which commands Hopper handles itself) | `src/features/composer/hooks/useComposerAutocompleteState.ts`, `src/features/skills/hooks/useSlashCommands.ts`, `src/features/threads/hooks/useQueuedSend.ts`, `src/services/tauri.ts`, `src-tauri/src/prompts.rs`, `src-tauri/src/shared/slash_commands_core.rs`, `src-tauri/src/bin/hopper_daemon/rpc/prompts.rs` |
 | Change file read/write for Agents/config | `src/services/tauri.ts`, `src-tauri/src/files/mod.rs`, `src-tauri/src/shared/files_core.rs`, `src-tauri/src/bin/hopper_daemon/rpc.rs` |
 | Add/change daemon JSON-RPC surface | `src-tauri/src/bin/hopper_daemon/rpc.rs`, `src-tauri/src/bin/hopper_daemon/rpc/*`, `src-tauri/src/bin/hopper_daemon.rs`, matching shared core |
 
@@ -98,8 +99,10 @@ Use TS/Vite aliases for refactor-safe imports:
 - Workspace/worktree adapters: `src-tauri/src/workspaces/commands.rs`
 - Git adapters: `src-tauri/src/git/mod.rs`
 - Settings adapters: `src-tauri/src/settings/mod.rs`
-- Prompts adapters: `src-tauri/src/prompts.rs`
+- Prompts and slash-command discovery adapters: `src-tauri/src/prompts.rs`
 - File adapters: `src-tauri/src/files/mod.rs`
+- Embedded assistant tabs (desktop-only webviews): `src-tauri/src/sidebar_browser.rs`
+- Web chat transfer (one-click assistant tab ⇄ Hopper chat, per-file "Send to Hopper" for generated files and finished downloads, assistant command allowlist): `src-tauri/src/web_chat.rs`, injected page script `src-tauri/src/web_chat/web_chat.js`; frontend staging/prompt/export in `src/features/web-chat/webChatContext.ts`, orchestration in `src/features/app/hooks/useWebChatTransfer.ts`, file hand-off to the composer in `src/features/web-chat/webChatFiles.ts` + `src/features/app/hooks/useComposerController.ts`, download reporting in `src-tauri/src/sidebar_browser.rs`, toolbar actions in `src/features/ai-web/components/AiWebView.tsx`
 - Event emission implementation: `src-tauri/src/event_sink.rs`
 - Event payload definitions: `src-tauri/src/backend/events.rs`
 
@@ -125,6 +128,8 @@ All cross-runtime domain behavior belongs in `src-tauri/src/shared/*`:
 - Files read/write: `src-tauri/src/shared/files_core.rs`
 - Git and GitHub logic: `src-tauri/src/shared/git_core.rs`, `src-tauri/src/shared/git_ui_core.rs`, `src-tauri/src/shared/git_ui_core/*`
 - Prompts CRUD/listing: `src-tauri/src/shared/prompts_core.rs`
+- Installed skills/custom commands per provider (Claude, Codex, Antigravity): `src-tauri/src/shared/slash_commands_core.rs`
+- Markdown frontmatter parsing: `src-tauri/src/shared/frontmatter.rs`
 - Usage snapshot and aggregation: `src-tauri/src/shared/local_usage_core.rs`
 - Process helpers: `src-tauri/src/shared/process_core.rs`
 

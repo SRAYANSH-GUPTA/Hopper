@@ -108,6 +108,13 @@
   background: none;
 }
 
+.working-tokens {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) .working-text {
     color: var(--text-muted);

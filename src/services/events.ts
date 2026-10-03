@@ -19,14 +19,19 @@ export type TerminalExitEvent = {
   terminalId: string;
 };
 
-export type SidebarBrowserDownload = {
+export type WebChatImportedFileEvent = {
+  path: string;
+  fileName: string;
+  mimeType: string | null;
+  /** The assistant tab the file came from. */
   webviewLabel: string;
-  url: string;
-  path: string | null;
-  fileName: string | null;
-  success: boolean;
-  imported: boolean;
-  error: string | null;
+};
+
+/** A download from an assistant tab finished at `path`. */
+export type WebChatDownloadEvent = {
+  webviewLabel: string;
+  path: string;
+  fileName: string;
 };
 
 type SubscriptionOptions = {
@@ -101,9 +106,8 @@ const dictationDownloadHub = createEventHub<DictationModelStatus>("dictation-dow
 const dictationEventHub = createEventHub<DictationEvent>("dictation-event");
 const terminalOutputHub = createEventHub<TerminalOutputEvent>("terminal-output");
 const terminalExitHub = createEventHub<TerminalExitEvent>("terminal-exit");
-const sidebarBrowserDownloadHub = createEventHub<SidebarBrowserDownload>(
-  "sidebar-browser-download",
-);
+const webChatFileImportedHub = createEventHub<WebChatImportedFileEvent>("web-chat-file-imported");
+const webChatDownloadHub = createEventHub<WebChatDownloadEvent>("web-chat-download-finished");
 const updaterCheckHub = createEventHub<void>("updater-check");
 const trayOpenThreadHub = createEventHub<TrayOpenThreadPayload>("tray-open-thread");
 const menuNewAgentHub = createEventHub<void>("menu-new-agent");
@@ -166,11 +170,18 @@ export function subscribeTerminalExit(
   return terminalExitHub.subscribe(onEvent, options);
 }
 
-export function subscribeSidebarBrowserDownload(
-  onEvent: (event: SidebarBrowserDownload) => void,
+export function subscribeWebChatFileImported(
+  onEvent: (event: WebChatImportedFileEvent) => void,
   options?: SubscriptionOptions,
 ): Unsubscribe {
-  return sidebarBrowserDownloadHub.subscribe(onEvent, options);
+  return webChatFileImportedHub.subscribe(onEvent, options);
+}
+
+export function subscribeWebChatDownloadFinished(
+  onEvent: (event: WebChatDownloadEvent) => void,
+  options?: SubscriptionOptions,
+): Unsubscribe {
+  return webChatDownloadHub.subscribe(onEvent, options);
 }
 
 export function subscribeUpdaterCheck(

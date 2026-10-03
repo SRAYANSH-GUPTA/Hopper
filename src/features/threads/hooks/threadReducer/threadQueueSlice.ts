@@ -45,6 +45,19 @@ export function reduceThreadQueue(state: ThreadState, action: ThreadAction): Thr
             item.workspace_id !== action.workspaceId,
         ),
       };
+    case "clearTurnUserInputRequests": {
+      // A finished turn can no longer take answers; follow-up questions are
+      // answered after the turn, so they stay.
+      const remaining = state.userInputRequests.filter(
+        (item) =>
+          item.workspace_id !== action.workspaceId ||
+          item.params.thread_id !== action.threadId ||
+          item.params.answer_mode === "followUp",
+      );
+      return remaining.length === state.userInputRequests.length
+        ? state
+        : { ...state, userInputRequests: remaining };
+    }
     default:
       return state;
   }

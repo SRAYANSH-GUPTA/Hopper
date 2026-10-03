@@ -12,6 +12,7 @@ import { PROVIDER_MAP } from "@/features/app/providers";
 import { useCollaborationModes } from "@/features/collaboration/hooks/useCollaborationModes";
 import { useCollaborationModeSelection } from "@/features/collaboration/hooks/useCollaborationModeSelection";
 import { useSkills } from "@/features/skills/hooks/useSkills";
+import { useSlashCommands } from "@/features/skills/hooks/useSlashCommands";
 import { useApps } from "@/features/apps/hooks/useApps";
 import { useCustomPrompts } from "@/features/prompts/hooks/useCustomPrompts";
 import { useBranchSwitcherShortcut } from "@/features/git/hooks/useBranchSwitcherShortcut";
@@ -36,6 +37,7 @@ import { useThreadRows } from "@app/hooks/useThreadRows";
 import { useInterruptShortcut } from "@app/hooks/useInterruptShortcut";
 import { useArchiveShortcut } from "@app/hooks/useArchiveShortcut";
 import { useCopyThread } from "@threads/hooks/useCopyThread";
+import { useWebChatTransfer } from "@app/hooks/useWebChatTransfer";
 import { useTerminalController } from "@/features/terminal/hooks/useTerminalController";
 import { useWorkspaceLaunchScript } from "@app/hooks/useWorkspaceLaunchScript";
 import { useWorkspaceLaunchScripts } from "@app/hooks/useWorkspaceLaunchScripts";
@@ -437,6 +439,10 @@ export default function MainApp() {
     onFocusComposer: () => composerInputRef.current?.focus(),
   });
   const { skills } = useSkills({ activeWorkspace, onDebug: addDebugEntry });
+  const slashCommands = useSlashCommands({
+    workspaceId: activeWorkspace?.id ?? null,
+    provider: activeProvider,
+  });
   const {
     prompts,
     createPrompt,
@@ -904,6 +910,13 @@ export default function MainApp() {
     onDebug: addDebugEntry,
   });
 
+  const { transfer: webChatTransfer, contextChip: webChatContextChip } = useWebChatTransfer({
+    activeWorkspace,
+    activeThreadId,
+    activeItems,
+    startThreadForWorkspace,
+  });
+
   const {
     renamePrompt: renameWorktreePrompt,
     notice: renameWorktreeNotice,
@@ -1261,6 +1274,7 @@ export default function MainApp() {
       threadStatusById,
       activeTurnIdByThread,
       userInputRequests,
+      provider: activeProvider,
     },
     settings: {
       steerEnabled: appSettings.steerEnabled,
@@ -1686,6 +1700,7 @@ export default function MainApp() {
           threadStatusById,
           onSelectInstance: handleSelectWorkspaceInstance,
           skills,
+          slashCommands,
           appsEnabled: appSettings.experimentalAppsEnabled,
           apps,
           prompts,
@@ -1841,6 +1856,8 @@ export default function MainApp() {
     handleOpenThreadLink,
     handleSelectOpenAppId,
     handleCopyThread,
+    webChatTransfer,
+    webChatContextChip,
     handleToggleTerminalWithFocus,
     launchScriptState,
     launchScriptsState,
@@ -1860,6 +1877,8 @@ export default function MainApp() {
     accessMode,
     onSelectAccessMode: handleSelectAccessMode,
     skills,
+    slashCommands,
+    activeProvider,
     apps,
     prompts,
     composerInputRef,

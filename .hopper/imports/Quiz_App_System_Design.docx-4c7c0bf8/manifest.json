@@ -1,0 +1,15 @@
+{
+  "id": "4c7c0bf8-d9a5-4475-8202-f0229c0e512b",
+  "source": "file-import",
+  "title": "Quiz_App_System_Design.docx",
+  "createdAt": "2026-10-01T10:39:32.647301516+00:00",
+  "messageCount": 1,
+  "artifacts": [
+    {
+      "path": "Quiz_App_System_Design.docx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "sizeBytes": 11050,
+      "sha256": "dd6fe49f26e985149c92fa58ac70b5a1926643bf6f7f0efcbd999d41c0ed950d"
+    }
+  ]
+}

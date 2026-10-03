@@ -1,14 +1,17 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AppMention,
   ComposerSendIntent,
   FollowUpMessageBehavior,
+  LocalAgentProvider,
   QueuedMessage,
   SendMessageResult,
   WorkspaceInfo,
 } from "../../../types";
 import { useComposerImages } from "../../composer/hooks/useComposerImages";
 import { useQueuedSend } from "../../threads/hooks/useQueuedSend";
+import { subscribeWebChatFileImported } from "@services/events";
+import { subscribeComposerFileOffers } from "@/features/web-chat/webChatFiles";
 
 export function useComposerController({
   activeThreadId,
@@ -21,6 +24,7 @@ export function useComposerController({
   steerEnabled,
   followUpMessageBehavior,
   appsEnabled,
+  provider,
   connectWorkspace,
   startThreadForWorkspace,
   sendUserMessage,
@@ -46,6 +50,7 @@ export function useComposerController({
   steerEnabled: boolean;
   followUpMessageBehavior: FollowUpMessageBehavior;
   appsEnabled: boolean;
+  provider: LocalAgentProvider;
   connectWorkspace: (workspace: WorkspaceInfo) => Promise<void>;
   startThreadForWorkspace: (
     workspaceId: string,
@@ -92,6 +97,16 @@ export function useComposerController({
     removeImagesForThread,
   } = useComposerImages({ activeThreadId, activeWorkspaceId });
 
+  useEffect(() => subscribeWebChatFileImported(
+    ({ path }) => attachImages([path]),
+    { onError: (error) => console.error("Failed to receive web-chat file:", error) },
+  ), [attachImages]);
+
+  useEffect(
+    () => subscribeComposerFileOffers((path) => attachImages([path])),
+    [attachImages],
+  );
+
   const {
     activeQueue,
     handleSend,
@@ -106,6 +121,7 @@ export function useComposerController({
     steerEnabled,
     followUpMessageBehavior,
     appsEnabled,
+    provider,
     activeWorkspace,
     connectWorkspace,
     startThreadForWorkspace,

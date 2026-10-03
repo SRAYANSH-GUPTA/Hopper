@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import type { AutocompleteItem } from "./useComposerAutocomplete";
 import { useComposerAutocomplete } from "./useComposerAutocomplete";
 import type { AppOption, CustomPromptOption } from "../../../types";
+import type { SlashCommandOption } from "../../../services/tauri";
 import { connectorMentionSlug } from "../../apps/utils/appMentions";
 import {
   buildPromptInsertText,
@@ -20,6 +21,8 @@ type UseComposerAutocompleteStateArgs = {
   skills: Skill[];
   apps: AppOption[];
   prompts: CustomPromptOption[];
+  /** Skills and custom commands installed for the active provider. */
+  slashCommands?: SlashCommandOption[];
   files: string[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   setText: (next: string) => void;
@@ -32,6 +35,7 @@ type UseComposerAutocompleteStateArgs = {
 };
 
 const MAX_FILE_SUGGESTIONS = 500;
+const EMPTY_SLASH_COMMANDS: SlashCommandOption[] = [];
 const FILE_TRIGGER_PREFIX = new RegExp("^(?:\\s|[\"'`]|\\(|\\[|\\{)$");
 
 function isFileTriggerActive(text: string, cursor: number | null) {
@@ -85,6 +89,7 @@ export function useComposerAutocompleteState({
   setSelectionStart,
   onItemApplied,
   activeProviderId,
+  slashCommands = EMPTY_SLASH_COMMANDS,
 }: UseComposerAutocompleteStateArgs) {
   const skillItems = useMemo<AutocompleteItem[]>(
     () => [
@@ -394,9 +399,27 @@ export function useComposerAutocompleteState({
     return commands.sort((a, b) => a.label.localeCompare(b.label));
   }, [activeProviderId, appsEnabled]);
 
+  const installedCommandItems = useMemo<AutocompleteItem[]>(() => {
+    const builtIns = new Set(slashCommandItems.map((item) => item.label.toLowerCase()));
+    return slashCommands
+      .filter((command) => command.name && !builtIns.has(command.name.toLowerCase()))
+      .map((command) => {
+        const mention = command.invocation === "mention";
+        return {
+          id: `cmd:${command.name}`,
+          label: command.name,
+          description: command.description ?? undefined,
+          hint: command.argumentHint ?? undefined,
+          insertText: mention ? `$${command.name}` : command.name,
+          replaceTrigger: mention || undefined,
+          group: command.kind === "skill" ? ("Skills" as const) : ("Commands" as const),
+        };
+      });
+  }, [slashCommandItems, slashCommands]);
+
   const slashItems = useMemo<AutocompleteItem[]>(
-    () => [...slashCommandItems, ...promptItems],
-    [promptItems, slashCommandItems],
+    () => [...slashCommandItems, ...installedCommandItems, ...promptItems],
+    [installedCommandItems, promptItems, slashCommandItems],
   );
 
   const triggers = useMemo(
@@ -436,7 +459,7 @@ export function useComposerAutocompleteState({
       const promptRange =
         triggerChar === "@" ? findPromptArgRangeAtCursor(text, cursor) : null;
       const before =
-        triggerChar === "@"
+        triggerChar === "@" || item.replaceTrigger
           ? text.slice(0, triggerIndex)
           : text.slice(0, autocompleteRange.start);
       const after = text.slice(autocompleteRange.end);

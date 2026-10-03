@@ -385,6 +385,31 @@ export function buildToolSummary(
     };
   }
 
+  if (item.toolType === "toolCall") {
+    const title = item.title.trim();
+    const processing = statusToneFromText(item.status) === "processing";
+    if (title === "Read") {
+      return {
+        label: processing ? "reading" : "read",
+        value: basename(item.detail) || item.detail,
+        detail: item.detail !== basename(item.detail) ? item.detail : "",
+        output: item.output || "",
+      };
+    }
+    if (title === "Search" || title === "Find files") {
+      return {
+        label: processing ? "searching" : "searched",
+        value: item.detail,
+        output: item.output || "",
+      };
+    }
+    return {
+      label: title.toLowerCase() || "tool",
+      value: item.detail,
+      output: item.output || "",
+    };
+  }
+
   if (item.toolType === "mcpToolCall") {
     const toolName = toolNameFromTitle(item.title);
     const args = parseToolArgs(item.detail);
@@ -419,6 +444,18 @@ export function buildToolSummary(
     detail: item.detail || "",
     output: item.output || "",
   };
+}
+
+/** 950 → "950", 1234 → "1.2k", 2_500_000 → "2.5M". */
+export function formatTokenCount(tokens: number) {
+  if (tokens < 1000) {
+    return String(Math.max(0, Math.round(tokens)));
+  }
+  if (tokens < 1_000_000) {
+    const thousands = tokens / 1000;
+    return `${thousands >= 100 ? Math.round(thousands) : thousands.toFixed(1).replace(/\.0$/, "")}k`;
+  }
+  return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 
 export function formatDurationMs(durationMs: number) {

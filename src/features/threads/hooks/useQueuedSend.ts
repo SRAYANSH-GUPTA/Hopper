@@ -3,6 +3,7 @@ import type {
   AppMention,
   ComposerSendIntent,
   FollowUpMessageBehavior,
+  LocalAgentProvider,
   QueuedMessage,
   SendMessageResult,
   WorkspaceInfo,
@@ -17,6 +18,8 @@ type UseQueuedSendOptions = {
   steerEnabled: boolean;
   followUpMessageBehavior: FollowUpMessageBehavior;
   appsEnabled: boolean;
+  /** Provider of the active thread; other providers run their own slash commands. */
+  provider?: LocalAgentProvider;
   activeWorkspace: WorkspaceInfo | null;
   connectWorkspace: (workspace: WorkspaceInfo) => Promise<void>;
   startThreadForWorkspace: (
@@ -78,39 +81,44 @@ type SlashCommandKind =
   | "status"
   | "usage";
 
-function parseSlashCommand(text: string, appsEnabled: boolean): SlashCommandKind | null {
+type SlashCommandContext = {
+  appsEnabled: boolean;
+  provider: LocalAgentProvider;
+};
+
+// Commands Hopper runs itself for every provider.
+const SHARED_COMMANDS: Array<[RegExp, SlashCommandKind]> = [
+  [/^\/new\b/i, "new"],
+  [/^\/?(?:usage|quota)\b/i, "usage"],
+];
+
+// Commands backed by the Codex app-server. Other providers' CLIs receive these as typed.
+const CODEX_COMMANDS: Array<[RegExp, SlashCommandKind]> = [
+  [/^\/fork\b/i, "fork"],
+  [/^\/fast\b/i, "fast"],
+  [/^\/mcp\b/i, "mcp"],
+  [/^\/models\b/i, "models"],
+  [/^\/review\b/i, "review"],
+  [/^\/compact\b/i, "compact"],
+  [/^\/resume\b/i, "resume"],
+  [/^\/status\b/i, "status"],
+];
+
+export function parseSlashCommand(
+  text: string,
+  { appsEnabled, provider }: SlashCommandContext,
+): SlashCommandKind | null {
+  for (const [pattern, kind] of SHARED_COMMANDS) {
+    if (pattern.test(text)) return kind;
+  }
+  if (provider !== "codex") {
+    return null;
+  }
   if (appsEnabled && /^\/apps\b/i.test(text)) {
     return "apps";
   }
-  if (/^\/fork\b/i.test(text)) {
-    return "fork";
-  }
-  if (/^\/fast\b/i.test(text)) {
-    return "fast";
-  }
-  if (/^\/mcp\b/i.test(text)) {
-    return "mcp";
-  }
-  if (/^\/models\b/i.test(text)) {
-    return "models";
-  }
-  if (/^\/review\b/i.test(text)) {
-    return "review";
-  }
-  if (/^\/compact\b/i.test(text)) {
-    return "compact";
-  }
-  if (/^\/new\b/i.test(text)) {
-    return "new";
-  }
-  if (/^\/resume\b/i.test(text)) {
-    return "resume";
-  }
-  if (/^\/status\b/i.test(text)) {
-    return "status";
-  }
-  if (/^\/?(?:usage|quota)\b/i.test(text)) {
-    return "usage";
+  for (const [pattern, kind] of CODEX_COMMANDS) {
+    if (pattern.test(text)) return kind;
   }
   return null;
 }
@@ -124,6 +132,7 @@ export function useQueuedSend({
   steerEnabled,
   followUpMessageBehavior,
   appsEnabled,
+  provider = "codex",
   activeWorkspace,
   connectWorkspace,
   startThreadForWorkspace,
@@ -268,7 +277,7 @@ export function useQueuedSend({
       submitIntent: ComposerSendIntent = "default",
     ) => {
       const trimmed = text.trim();
-      const command = parseSlashCommand(trimmed, appsEnabled);
+      const command = parseSlashCommand(trimmed, { appsEnabled, provider });
       const nextImages = command ? [] : images;
       const nextMentions = command ? [] : appMentions;
       const canSteerCurrentTurn =
@@ -324,6 +333,7 @@ export function useQueuedSend({
     [
       activeThreadId,
       appsEnabled,
+      provider,
       activeWorkspace,
       clearActiveImages,
       connectWorkspace,
@@ -346,7 +356,7 @@ export function useQueuedSend({
       appMentions: AppMention[] = [],
     ) => {
       const trimmed = text.trim();
-      const command = parseSlashCommand(trimmed, appsEnabled);
+      const command = parseSlashCommand(trimmed, { appsEnabled, provider });
       const nextImages = command ? [] : images;
       const nextMentions = command ? [] : appMentions;
       if (!trimmed && nextImages.length === 0) {
@@ -365,6 +375,7 @@ export function useQueuedSend({
     [
       activeThreadId,
       appsEnabled,
+      provider,
       clearActiveImages,
       createQueuedItem,
       enqueueMessage,
@@ -423,7 +434,7 @@ export function useQueuedSend({
     (async () => {
       try {
         const trimmed = nextItem.text.trim();
-        const command = parseSlashCommand(trimmed, appsEnabled);
+        const command = parseSlashCommand(trimmed, { appsEnabled, provider });
         if (command) {
           await runSlashCommand(command, trimmed);
         } else {
@@ -443,6 +454,7 @@ export function useQueuedSend({
   }, [
     activeThreadId,
     appsEnabled,
+    provider,
     inFlightByThread,
     isProcessing,
     isReviewing,
