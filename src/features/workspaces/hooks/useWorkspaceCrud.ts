@@ -319,7 +319,7 @@ export function useWorkspaceCrud({
         failures,
       };
     },
-    [addWorkspaceFromPath, workspaces],
+    [addWorkspaceFromPath, setActiveWorkspaceId, workspaces],
   );
 
   const filterWorkspacePaths = useCallback(async (paths: string[]) => {
