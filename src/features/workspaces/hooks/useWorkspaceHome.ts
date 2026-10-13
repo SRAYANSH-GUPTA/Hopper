@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ModelOption,
   SendMessageResult,
@@ -198,6 +198,7 @@ export function useWorkspaceHome({
   sendUserMessageToThread,
   onWorktreeCreated,
 }: UseWorkspaceHomeOptions) {
+  const submittingWorkspacesRef = useRef(new Set<string>());
   const [state, setState] = useState<WorkspaceHomeState>({
     runsByWorkspace: {},
     draftsByWorkspace: {},
@@ -397,7 +398,7 @@ export function useWorkspaceHome({
     }
     const prompt = (promptOverride ?? draft).trim();
     const hasImages = images.length > 0;
-    if ((!prompt && !hasImages) || isSubmitting) {
+    if ((!prompt && !hasImages) || submittingWorkspacesRef.current.has(activeWorkspaceId)) {
       return false;
     }
 
@@ -414,6 +415,7 @@ export function useWorkspaceHome({
       return false;
     }
 
+    submittingWorkspacesRef.current.add(activeWorkspaceId);
     setSubmitting(true);
     setWorkspaceError(null);
 
@@ -442,7 +444,6 @@ export function useWorkspaceHome({
         ...prev.runsByWorkspace,
         [activeWorkspaceId]: [run, ...(prev.runsByWorkspace[activeWorkspaceId] ?? [])],
       },
-      draftsByWorkspace: { ...prev.draftsByWorkspace, [activeWorkspaceId]: "" },
     }));
 
     let worktreeBaseName: string | null = null;
@@ -501,18 +502,21 @@ export function useWorkspaceHome({
           const localModel = selectedModelId
             ? modelLookup.get(selectedModelId)?.model ?? null
             : null;
-          await sendUserMessageToThread(activeWorkspace, threadId, prompt, images, {
+          const sendResult = await sendUserMessageToThread(activeWorkspace, threadId, prompt, images, {
             model: localModel,
             effort,
             serviceTier,
             collaborationMode,
           });
+          if (sendResult && sendResult.status !== "sent") {
+            throw new Error("The provider did not accept the message. Check the thread for details and try again.");
+          }
           const model =
             selectedModelId ? modelLookup.get(selectedModelId) ?? null : null;
           instances.push({
             id: `${runId}-local-1`,
             workspaceId: activeWorkspace.id,
-            threadId,
+            threadId: sendResult?.threadId ?? threadId,
             modelId: selectedModelId ?? null,
             modelLabel: resolveModelLabel(model, "Default model"),
             sequence: 1,
@@ -565,7 +569,7 @@ export function useWorkspaceHome({
                 effort,
                 serviceTier,
               });
-              await sendUserMessageToThread(
+              const sendResult = await sendUserMessageToThread(
                 worktreeWorkspace,
                 threadId,
                 prompt,
@@ -577,10 +581,13 @@ export function useWorkspaceHome({
                   collaborationMode,
                 },
               );
+              if (sendResult && sendResult.status !== "sent") {
+                throw new Error("The provider did not accept the message. Check the thread for details and try again.");
+              }
               instances.push({
                 id: `${runId}-${selection.modelId}-${index + 1}`,
                 workspaceId: worktreeWorkspace.id,
-                threadId,
+                threadId: sendResult?.threadId ?? threadId,
                 modelId: selection.modelId,
                 modelLabel: label,
                 sequence: index + 1,
@@ -617,9 +624,18 @@ export function useWorkspaceHome({
       if (runError && status === "failed") {
         setWorkspaceError(runError);
       }
+      if (instances.length > 0) {
+        setState((prev) => prev.draftsByWorkspace[activeWorkspaceId] === draft
+          ? {
+            ...prev,
+            draftsByWorkspace: { ...prev.draftsByWorkspace, [activeWorkspaceId]: "" },
+          }
+          : prev);
+      }
+      submittingWorkspacesRef.current.delete(activeWorkspaceId);
       setSubmitting(false);
     }
-    return true;
+    return instances.length > 0;
   }, [
     activeWorkspace,
     activeWorkspaceId,
@@ -629,7 +645,6 @@ export function useWorkspaceHome({
     onWorktreeCreated,
     draft,
     effort,
-    isSubmitting,
     modelLookup,
     modelSelections,
     updateRunState,
