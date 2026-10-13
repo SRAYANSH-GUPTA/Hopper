@@ -122,6 +122,7 @@ export function useSettingsDefaultModels(projects: WorkspaceInfo[]) {
 
       const modelsFromList = parseModelListResponse(
         modelListResult.status === "fulfilled" ? modelListResult.value : null,
+        { includeFallback: false },
       );
       const configModel =
         configModelResult.status === "fulfilled" ? configModelResult.value : null;

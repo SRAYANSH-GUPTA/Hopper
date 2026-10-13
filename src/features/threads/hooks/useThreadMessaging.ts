@@ -27,9 +27,10 @@ import {
 } from "@services/tauri";
 import { parseModelListResponse } from "@/features/models/utils/modelListResponse";
 import { expandCustomPromptText } from "@utils/customPrompts";
-import { consumePendingHandoff } from "@/features/context/contextStore";
+import { preparePendingHandoff } from "@/features/context/contextStore";
 import {
-  consumeWebChatContext,
+  peekWebChatContext,
+  clearWebChatContext,
   WEB_CHAT_USER_MARKER,
 } from "@/features/web-chat/webChatContext";
 import {
@@ -152,15 +153,16 @@ export function useThreadMessaging({
       text: string,
       images: string[] = [],
       options?: SendMessageOptions,
+      allowThreadRecovery = true,
     ): Promise<SendMessageResult> => {
       const messageText = text.trim();
       if (!messageText && images.length === 0) {
         return { status: "blocked" };
       }
       // Prepend handoff context if provider was just switched.
-      const handoff = consumePendingHandoff(workspace.id, threadId);
+      const handoff = allowThreadRecovery ? preparePendingHandoff(workspace.id, threadId) : null;
       let finalText = handoff
-        ? `${handoff}\n\n---\n\n**User:** ${messageText}`
+        ? `${handoff.prompt}\n\n---\n\n**User:** ${messageText}`
         : messageText;
       if (!options?.skipPromptExpansion) {
         const promptExpansion = expandCustomPromptText(finalText, customPrompts);
@@ -172,10 +174,14 @@ export function useThreadMessaging({
         finalText = promptExpansion?.expanded ?? finalText;
       }
       // Prepend a conversation transferred from a web assistant tab.
-      const webChatContext = consumeWebChatContext(workspace.id, threadId);
+      const webChatContext = allowThreadRecovery ? peekWebChatContext(workspace.id, threadId) : null;
       if (webChatContext) {
-        finalText = `${webChatContext}${WEB_CHAT_USER_MARKER}${finalText}`;
+        finalText = `${webChatContext.prompt}${WEB_CHAT_USER_MARKER}${finalText}`;
       }
+      const acknowledgeContext = () => {
+        handoff?.acknowledge();
+        if (webChatContext) clearWebChatContext(workspace.id, threadId, webChatContext);
+      };
       const isProcessing = threadStatusById[threadId]?.isProcessing ?? false;
       const activeTurnId = activeTurnIdByThread[threadId] ?? null;
       const {
@@ -302,8 +308,11 @@ export function useThreadMessaging({
             // Create a fresh Codex thread and retry once with the processed text.
             if (
               rpcError.toLowerCase().includes("thread not found") &&
-              startThreadForWorkspace
+              startThreadForWorkspace &&
+              allowThreadRecovery
             ) {
+              markProcessing(threadId, false);
+              setActiveTurnId(threadId, null);
               const newThreadId = await startThreadForWorkspace(workspace.id);
               if (newThreadId && newThreadId !== threadId) {
                 dispatch({
@@ -311,10 +320,16 @@ export function useThreadMessaging({
                   workspaceId: workspace.id,
                   threadId: newThreadId,
                 });
-                return sendMessageToThread(workspace, newThreadId, finalText, images, {
-                  ...options,
-                  skipPromptExpansion: true,
-                });
+                const recovered = await sendMessageToThread(
+                  workspace,
+                  newThreadId,
+                  finalText,
+                  images,
+                  { ...options, skipPromptExpansion: true },
+                  false,
+                );
+                if (recovered.status === "sent") acknowledgeContext();
+                return recovered;
               }
             }
             markProcessing(threadId, false);
@@ -340,6 +355,7 @@ export function useThreadMessaging({
           if (steeredTurnId) {
             setActiveTurnId(threadId, steeredTurnId);
           }
+          acknowledgeContext();
           return { status: "sent" };
         }
         const result = (response?.result ?? response) as Record<string, unknown>;
@@ -355,6 +371,7 @@ export function useThreadMessaging({
           return { status: "blocked" };
         }
         setActiveTurnId(threadId, turnId);
+        acknowledgeContext();
         return { status: "sent" };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

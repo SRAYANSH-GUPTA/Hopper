@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { pushErrorToast } from "@services/toasts";
 import type {
   AppMention,
   ComposerSendIntent,
@@ -159,6 +160,7 @@ export function useQueuedSend({
   const [hasStartedByThread, setHasStartedByThread] = useState<
     Record<string, boolean>
   >({});
+  const failedMessageIdsRef = useRef(new Set<string>());
 
   const activeQueue = useMemo(
     () => (activeThreadId ? queuedByThread[activeThreadId] ?? [] : []),
@@ -174,6 +176,7 @@ export function useQueuedSend({
 
   const removeQueuedMessage = useCallback(
     (threadId: string, messageId: string) => {
+      failedMessageIdsRef.current.delete(messageId);
       setQueuedByThread((prev) => ({
         ...prev,
         [threadId]: (prev[threadId] ?? []).filter(
@@ -425,30 +428,52 @@ export function useQueuedSend({
     }
     const threadId = activeThreadId;
     const nextItem = queue[0];
+    if (failedMessageIdsRef.current.has(nextItem.id)) {
+      return;
+    }
     setInFlightByThread((prev) => ({ ...prev, [threadId]: nextItem }));
     setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
     setQueuedByThread((prev) => ({
       ...prev,
       [threadId]: (prev[threadId] ?? []).slice(1),
     }));
+    const preserveFailedMessage = () => {
+      // Leave failed submissions visible for editing or deletion, and stop
+      // automatic retries until the user has addressed the failure.
+      failedMessageIdsRef.current.add(nextItem.id);
+      setInFlightByThread((prev) => ({ ...prev, [threadId]: null }));
+      setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
+      prependQueuedMessage(threadId, nextItem);
+      pushErrorToast({
+        title: "Queued message could not be sent",
+        message: "Your message is still in the queue. Edit it to retry, or delete it to continue with the next message.",
+      });
+    };
     (async () => {
       try {
         const trimmed = nextItem.text.trim();
         const command = parseSlashCommand(trimmed, { appsEnabled, provider });
         if (command) {
           await runSlashCommand(command, trimmed);
+          // Informational and navigation commands complete without starting
+          // a turn in this thread.
+          // Release the queue after the command completes instead of waiting
+          // forever for a processing state that will never arrive.
+          if (command !== "review" && command !== "compact") {
+            setInFlightByThread((prev) => ({ ...prev, [threadId]: null }));
+            setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
+          }
         } else {
           const queuedMentions = nextItem.appMentions ?? [];
-          if (queuedMentions.length > 0) {
-            await sendUserMessage(nextItem.text, nextItem.images ?? [], queuedMentions);
-          } else {
-            await sendUserMessage(nextItem.text, nextItem.images ?? []);
+          const result = queuedMentions.length > 0
+            ? await sendUserMessage(nextItem.text, nextItem.images ?? [], queuedMentions)
+            : await sendUserMessage(nextItem.text, nextItem.images ?? []);
+          if (result.status !== "sent") {
+            preserveFailedMessage();
           }
         }
       } catch {
-        setInFlightByThread((prev) => ({ ...prev, [threadId]: null }));
-        setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
-        prependQueuedMessage(threadId, nextItem);
+        preserveFailedMessage();
       }
     })();
   }, [

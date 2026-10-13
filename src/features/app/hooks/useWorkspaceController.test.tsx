@@ -73,7 +73,7 @@ describe("useWorkspaceController dialogs", () => {
     window.localStorage.clear();
   });
 
-  it("shows add-workspaces summary in controller layer", async () => {
+  it("adds new workspaces without warning about already-added selections", async () => {
     vi.mocked(listWorkspaces).mockResolvedValue([workspaceOne]);
     vi.mocked(pickWorkspacePaths).mockResolvedValue([workspaceOne.path, workspaceTwo.path]);
     vi.mocked(isWorkspacePathDir).mockResolvedValue(true);
@@ -97,9 +97,8 @@ describe("useWorkspaceController dialogs", () => {
     });
 
     expect(added).toMatchObject({ id: workspaceTwo.id });
-    expect(message).toHaveBeenCalledTimes(1);
-    const [summary] = vi.mocked(message).mock.calls[0];
-    expect(String(summary)).toContain("Skipped 1 already added workspace");
+    expect(message).not.toHaveBeenCalled();
+    expect(addWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("confirms workspace deletion and reports service errors", async () => {

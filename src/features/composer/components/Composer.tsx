@@ -188,6 +188,7 @@ export const Composer = memo(function Composer({
   isProcessing,
   steerAvailable,
   followUpMessageBehavior,
+  composerFollowUpHintEnabled,
   collaborationModes,
   selectedCollaborationModeId,
   onSelectCollaborationMode,
@@ -279,6 +280,7 @@ export const Composer = memo(function Composer({
   const isDictationBusy = dictationState !== "idle";
   const canSend = text.trim().length > 0 || attachedImages.length > 0;
   const isMac = isMacPlatform();
+  const followUpShortcutLabel = isMac ? "Shift+Cmd+Enter" : "Shift+Ctrl+Enter";
   const effectiveFollowUpBehavior: FollowUpMessageBehavior =
     followUpMessageBehavior === "steer" && steerAvailable ? "steer" : "queue";
   const oppositeFollowUpIntent: ComposerSendIntent =
@@ -651,6 +653,17 @@ export const Composer = memo(function Composer({
         </div>
       ) : null}
       <div className="composer-box">
+        {isProcessing && composerFollowUpHintEnabled && (
+          <div className="composer-followup-hint" role="status">
+            <div className="composer-followup-copy">
+              {!steerAvailable ? (
+                <>Default: Queue (Steer unavailable). Both Enter and {followUpShortcutLabel} will queue this message.</>
+              ) : (
+                <>Default: {effectiveFollowUpBehavior === "steer" ? "Steer" : "Queue"}. Press {followUpShortcutLabel} to {oppositeFollowUpIntent} this message.</>
+              )}
+            </div>
+          </div>
+        )}
         <ComposerInput
           text={text}
           disabled={disabled}

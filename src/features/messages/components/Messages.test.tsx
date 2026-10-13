@@ -875,7 +875,7 @@ describe("Messages", () => {
     );
 
     const workingText = container.querySelector(".working-text");
-    expect(workingText?.textContent ?? "").toContain("Working");
+    expect(workingText?.textContent ?? "").toContain("Thinking");
     expect(workingText?.textContent ?? "").not.toContain("Old reasoning title");
   });
 

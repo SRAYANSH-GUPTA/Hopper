@@ -220,10 +220,14 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     settings.openAppTargets && settings.openAppTargets.length
       ? normalizeOpenAppTargets(settings.openAppTargets)
       : DEFAULT_OPEN_APP_TARGETS;
-  const storedOpenAppId =
-    typeof window === "undefined"
+  let storedOpenAppId: string | null = null;
+  try {
+    storedOpenAppId = typeof window === "undefined"
       ? null
       : window.localStorage.getItem(OPEN_APP_STORAGE_KEY);
+  } catch {
+    // A blocked or unavailable webview store must not discard backend settings.
+  }
   const hasPersistedSelection = normalizedTargets.some(
     (target) => target.id === settings.selectedOpenAppId,
   );
@@ -234,7 +238,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
   const selectedOpenAppId = hasPersistedSelection
     ? settings.selectedOpenAppId
     : hasStoredSelection
-      ? storedOpenAppId
+      ? storedOpenAppId ?? DEFAULT_OPEN_APP_ID
       : normalizedTargets[0]?.id ?? DEFAULT_OPEN_APP_ID;
   const commitMessagePrompt =
     settings.commitMessagePrompt && settings.commitMessagePrompt.trim().length > 0

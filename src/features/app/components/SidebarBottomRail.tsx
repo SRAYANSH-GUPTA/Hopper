@@ -6,6 +6,7 @@ type SidebarBottomRailProps = {
   sessionResetLabel: string | null;
   weeklyResetLabel: string | null;
   showWeekly: boolean;
+  creditsLabel?: string | null;
   activeProviderLabel: string;
   localUsageSnapshot?: LocalUsageSnapshot | null;
   isLoadingLocalUsage?: boolean;
@@ -41,6 +42,7 @@ export function SidebarBottomRail({
   sessionResetLabel,
   weeklyResetLabel,
   showWeekly,
+  creditsLabel,
   activeProviderLabel,
   localUsageSnapshot,
   isLoadingLocalUsage,
@@ -79,6 +81,7 @@ export function SidebarBottomRail({
               )}
             </div>
           )}
+          {creditsLabel && <div className="sidebar-usage-credits">{creditsLabel}</div>}
         </div>
       </div>
 

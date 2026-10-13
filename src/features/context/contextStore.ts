@@ -108,18 +108,40 @@ export function savePendingHandoff(workspaceId: string, prompt: string, threadId
   }
 }
 
-export function consumePendingHandoff(workspaceId: string, threadId?: string | null): string | null {
+export function preparePendingHandoff(workspaceId: string, threadId?: string | null): {
+  prompt: string;
+  acknowledge: () => void;
+} | null {
   try {
-    const threadKey = threadId ? `${pendingKey(workspaceId)}.thread.${threadId}` : null;
-    const threadContext = threadKey ? window.localStorage.getItem(threadKey) : null;
-    if (threadKey) window.localStorage.removeItem(threadKey);
-    const key = pendingKey(workspaceId);
-    const val = window.localStorage.getItem(key);
-    if (val) window.localStorage.removeItem(key);
-    return [val, threadContext].filter(Boolean).join("\n\n") || null;
+    const keys = [pendingKey(workspaceId)];
+    if (threadId) keys.push(`${pendingKey(workspaceId)}.thread.${threadId}`);
+    const entries = keys.map((key) => ({ key, value: window.localStorage.getItem(key) }));
+    const prompt = entries.map((entry) => entry.value).filter(Boolean).join("\n\n");
+    if (!prompt) return null;
+    return {
+      prompt,
+      acknowledge: () => {
+        try {
+          for (const { key, value } of entries) {
+            // A new transfer may have been staged while the send was pending.
+            if (value && window.localStorage.getItem(key) === value) {
+              window.localStorage.removeItem(key);
+            }
+          }
+        } catch {
+          // Storage failures must not turn a successful send into an error.
+        }
+      },
+    };
   } catch {
     return null;
   }
+}
+
+export function consumePendingHandoff(workspaceId: string, threadId?: string | null): string | null {
+  const pending = preparePendingHandoff(workspaceId, threadId);
+  pending?.acknowledge();
+  return pending?.prompt ?? null;
 }
 
 // ── Prompt builder ─────────────────────────────────────────────────────────

@@ -20,7 +20,7 @@ describe("parseModelListResponse", () => {
     });
   });
 
-  it("normalizes an app-server Astra entry without duplicating it", () => {
+  it("preserves the server's reasoning capabilities without duplicating its model", () => {
     const models = parseModelListResponse({
       result: {
         data: [
@@ -37,11 +37,27 @@ describe("parseModelListResponse", () => {
 
     expect(models).toHaveLength(1);
     expect(models[0]?.supportedReasoningEfforts.map((effort) => effort.reasoningEffort)).toEqual([
-      "low",
-      "medium",
-      "high",
+      "max",
     ]);
-    expect(models[0]?.defaultReasoningEffort).toBe("medium");
+    expect(models[0]?.defaultReasoningEffort).toBe("max");
+  });
+
+  it("does not inject unavailable models into a live catalog", () => {
+    const models = parseModelListResponse({ data: [{ id: "available-model" }] });
+
+    expect(models.map((model) => model.id)).toEqual(["available-model"]);
+  });
+
+  it("allows configuration screens to opt out of an offline fallback", () => {
+    expect(parseModelListResponse(null, { includeFallback: false })).toEqual([]);
+  });
+
+  it("ignores invalid model entries and uses adapter slugs as ids", () => {
+    const models = parseModelListResponse({ models: [null, {}, { slug: "adapter-model" }] });
+
+    expect(models.map((model) => [model.id, model.model])).toEqual([
+      ["adapter-model", "adapter-model"],
+    ]);
   });
 
   it("uses displayName when present", () => {

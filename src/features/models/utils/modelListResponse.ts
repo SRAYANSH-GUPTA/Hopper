@@ -99,7 +99,10 @@ function parseReasoningEfforts(item: Record<string, unknown>): ModelOption["supp
   return [];
 }
 
-export function parseModelListResponse(response: unknown): ModelOption[] {
+export function parseModelListResponse(
+  response: unknown,
+  { includeFallback = true }: { includeFallback?: boolean } = {},
+): ModelOption[] {
   const items = extractModelItems(response);
 
   const models = items
@@ -112,7 +115,7 @@ export function parseModelListResponse(response: unknown): ModelOption[] {
       const rawDisplayName = String(record.displayName || record.display_name || "");
       const displayName = rawDisplayName.trim().length > 0 ? rawDisplayName : modelSlug;
       return {
-        id: String(record.id ?? record.model ?? ""),
+        id: String(record.id ?? modelSlug),
         model: modelSlug,
         displayName,
         description: String(record.description ?? ""),
@@ -123,19 +126,12 @@ export function parseModelListResponse(response: unknown): ModelOption[] {
         isDefault: Boolean(record.isDefault ?? record.is_default ?? false),
       } satisfies ModelOption;
     })
-    .filter((model): model is ModelOption => model !== null);
+    .filter((model): model is ModelOption =>
+      model !== null && model.id.trim().length > 0 && model.model.trim().length > 0,
+    );
 
-  const astraIndex = models.findIndex(
-    (model) => model.id === CODEX_ASTRA_MODEL.id || model.model === CODEX_ASTRA_MODEL.model,
-  );
-  if (astraIndex === -1) {
-    return [...models, CODEX_ASTRA_MODEL];
-  }
-
-  models[astraIndex] = {
-    ...models[astraIndex],
-    supportedReasoningEfforts: CODEX_ASTRA_MODEL.supportedReasoningEfforts,
-    defaultReasoningEffort: CODEX_ASTRA_MODEL.defaultReasoningEffort,
-  };
-  return models;
+  // A live catalog is authoritative for model availability and effort support.
+  // Keep the offline fallback for pickers, but never inject it into a valid
+  // catalog or let it override a model's advertised capabilities.
+  return models.length === 0 && includeFallback ? [CODEX_ASTRA_MODEL] : models;
 }

@@ -27,6 +27,7 @@ describe("useAppSettings", () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
   });
 
   it("loads settings and normalizes theme + uiScale", async () => {
@@ -84,6 +85,24 @@ describe("useAppSettings", () => {
     expect(result.current.settings.backendMode).toBe("local");
     expect(result.current.settings.dictationModelId).toBe("base");
     expect(result.current.settings.interruptShortcut).toBeTruthy();
+  });
+
+  it("loads and saves backend settings when webview storage is unavailable", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("Storage unavailable", "SecurityError");
+    });
+    getAppSettingsMock.mockResolvedValue({ codexBin: "/custom/codex" } as AppSettings);
+    updateAppSettingsMock.mockImplementation(async (next) => next);
+    const { result } = renderHook(() => useAppSettings());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.settings.codexBin).toBe("/custom/codex");
+
+    await act(async () => {
+      await result.current.saveSettings({ ...result.current.settings, codeFontSize: 15 });
+    });
+    expect(result.current.settings.codeFontSize).toBe(15);
+    expect(updateAppSettingsMock).toHaveBeenCalledOnce();
   });
 
   it("persists settings via updateAppSettings and updates local state", async () => {

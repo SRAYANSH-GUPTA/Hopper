@@ -12,7 +12,12 @@ import {
   compactThread as compactThreadService,
 } from "@services/tauri";
 import type { WorkspaceInfo } from "@/types";
-import { stageWebChatContext } from "@/features/web-chat/webChatContext";
+import {
+  stageWebChatContext,
+  peekWebChatContext,
+  clearWebChatContext,
+} from "@/features/web-chat/webChatContext";
+import { savePendingHandoff, preparePendingHandoff } from "@/features/context/contextStore";
 import { useThreadMessaging } from "./useThreadMessaging";
 
 vi.mock("@sentry/react", () => ({
@@ -69,6 +74,8 @@ describe("useThreadMessaging telemetry", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
+    clearWebChatContext("ws-1", "thread-1");
     vi.mocked(sendUserMessageService).mockResolvedValue({
       result: {
         turn: { id: "turn-1" },
@@ -96,6 +103,94 @@ describe("useThreadMessaging telemetry", () => {
     vi.mocked(compactThreadService).mockResolvedValue(
       {} as Awaited<ReturnType<typeof compactThreadService>>,
     );
+  });
+
+  const messagingOptions = () => ({
+    activeWorkspace: workspace,
+    activeThreadId: "thread-1",
+    steerEnabled: false,
+    customPrompts: [],
+    threadStatusById: {},
+    activeTurnIdByThread: {},
+    rateLimitsByWorkspace: {},
+    pendingInterruptsRef: { current: new Set<string>() },
+    dispatch: vi.fn(),
+    getCustomName: vi.fn(),
+    markProcessing: vi.fn(),
+    markReviewing: vi.fn(),
+    setActiveTurnId: vi.fn(),
+    recordThreadActivity: vi.fn(),
+    safeMessageActivity: vi.fn(),
+    pushThreadErrorMessage: vi.fn(),
+    ensureThreadForActiveWorkspace: vi.fn(async () => "thread-1"),
+    ensureThreadForWorkspace: vi.fn(async () => "thread-1"),
+    refreshThread: vi.fn(async () => null),
+    forkThreadForWorkspace: vi.fn(async () => null),
+    updateThreadParent: vi.fn(),
+  });
+
+  it.each(["rpc-error", "transport-error", "missing-turn"])(
+    "retains transferred context after %s and consumes it only after a successful send",
+    async (failure) => {
+      if (failure === "transport-error") {
+        vi.mocked(sendUserMessageService).mockRejectedValueOnce(new Error("offline"));
+      } else {
+        vi.mocked(sendUserMessageService).mockResolvedValueOnce(
+          failure === "rpc-error" ? { error: { message: "Unavailable" } } : {},
+        );
+      }
+      savePendingHandoff(workspace.id, "Earlier provider context");
+      const staged = stageWebChatContext(workspace.id, "thread-1", {
+        provider: "ChatGPT",
+        title: null,
+        url: "https://chatgpt.com/c/1",
+        messages: [{ role: "user", content: "Earlier web conversation" }],
+      });
+      const { result } = renderHook(() => useThreadMessaging(messagingOptions()));
+
+      await act(async () => {
+        expect(await result.current.sendUserMessage("Continue")).toEqual({ status: "blocked" });
+      });
+      expect(peekWebChatContext(workspace.id, "thread-1")).toBe(staged);
+      expect(preparePendingHandoff(workspace.id, "thread-1")?.prompt).toBe("Earlier provider context");
+
+      await act(async () => {
+        expect(await result.current.sendUserMessage("Continue")).toEqual({ status: "sent" });
+      });
+      expect(peekWebChatContext(workspace.id, "thread-1")).toBeNull();
+      expect(preparePendingHandoff(workspace.id, "thread-1")).toBeNull();
+      const calls = vi.mocked(sendUserMessageService).mock.calls;
+      expect(calls[0][2]).toBe(calls[1][2]);
+      expect(calls[1][2]).toContain(staged.prompt);
+      expect(calls[1][2]).toContain("Earlier provider context");
+    },
+  );
+
+  it("preserves a new web transfer staged while a send is in flight", async () => {
+    let finishSend!: (value: Record<string, unknown>) => void;
+    vi.mocked(sendUserMessageService).mockReturnValueOnce(
+      new Promise((resolve) => { finishSend = resolve; }),
+    );
+    const conversation = {
+      provider: "ChatGPT",
+      title: null,
+      url: "https://chatgpt.com/c/1",
+      messages: [{ role: "user" as const, content: "Earlier conversation" }],
+    };
+    stageWebChatContext(workspace.id, "thread-1", conversation);
+    const { result } = renderHook(() => useThreadMessaging(messagingOptions()));
+    let sending!: Promise<unknown>;
+    await act(async () => { sending = result.current.sendUserMessage("Continue"); });
+    const next = stageWebChatContext(workspace.id, "thread-1", {
+      ...conversation, title: "Another transfer",
+    });
+
+    await act(async () => {
+      finishSend({ result: { turn: { id: "turn-1" } } });
+      await sending;
+    });
+
+    expect(peekWebChatContext(workspace.id, "thread-1")).toBe(next);
   });
 
   it("records prompt_sent once for one message send", async () => {
@@ -158,6 +253,70 @@ describe("useThreadMessaging telemetry", () => {
     expect(ensureWorkspaceRuntimeCodexArgs).toHaveBeenCalledTimes(1);
     expect(ensureWorkspaceRuntimeCodexArgs).toHaveBeenCalledWith("ws-1", "thread-1");
   });
+
+  it.each([true, false])(
+    "recovers a missing thread only once and releases the old processing state (retry succeeds: %s)",
+    async (retrySucceeds) => {
+      const missingThread = { error: { message: "thread not found" } };
+      vi.mocked(sendUserMessageService)
+        .mockResolvedValueOnce(missingThread)
+        .mockResolvedValueOnce(retrySucceeds
+          ? { result: { turn: { id: "recovered-turn" } } }
+          : missingThread);
+      const startThreadForWorkspace = vi.fn()
+        .mockResolvedValueOnce("recovered-thread")
+        .mockResolvedValue("unexpected-extra-thread");
+      const markProcessing = vi.fn();
+      const setActiveTurnId = vi.fn();
+      const pushThreadErrorMessage = vi.fn();
+      const { result } = renderHook(() => useThreadMessaging({
+        activeWorkspace: workspace,
+        activeThreadId: "missing-thread",
+        steerEnabled: false,
+        customPrompts: [],
+        threadStatusById: {},
+        activeTurnIdByThread: {},
+        rateLimitsByWorkspace: {},
+        pendingInterruptsRef: { current: new Set<string>() },
+        dispatch: vi.fn(),
+        getCustomName: vi.fn(),
+        markProcessing,
+        markReviewing: vi.fn(),
+        setActiveTurnId,
+        recordThreadActivity: vi.fn(),
+        safeMessageActivity: vi.fn(),
+        pushThreadErrorMessage,
+        startThreadForWorkspace,
+        ensureThreadForActiveWorkspace: vi.fn(async () => "missing-thread"),
+        ensureThreadForWorkspace: vi.fn(async () => "missing-thread"),
+        refreshThread: vi.fn(async () => null),
+        forkThreadForWorkspace: vi.fn(async () => null),
+        updateThreadParent: vi.fn(),
+      }));
+
+      await act(async () => {
+        expect(await result.current.sendUserMessage("Continue", ["img-1"]))
+          .toEqual({ status: retrySucceeds ? "sent" : "blocked" });
+      });
+
+      expect(startThreadForWorkspace).toHaveBeenCalledOnce();
+      expect(sendUserMessageService).toHaveBeenCalledTimes(2);
+      expect(markProcessing).toHaveBeenCalledWith("missing-thread", false);
+      expect(setActiveTurnId).toHaveBeenCalledWith("missing-thread", null);
+      expect(sendUserMessageService).toHaveBeenLastCalledWith(
+        workspace.id,
+        "recovered-thread",
+        "Continue",
+        expect.objectContaining({ images: ["img-1"] }),
+      );
+      if (!retrySucceeds) {
+        expect(markProcessing).toHaveBeenCalledWith("recovered-thread", false);
+        expect(pushThreadErrorMessage).toHaveBeenCalledWith(
+          "recovered-thread", "Turn failed to start: thread not found",
+        );
+      }
+    },
+  );
 
   it("prepends a staged web chat once, then sends plain messages", async () => {
     const { result } = renderHook(() =>

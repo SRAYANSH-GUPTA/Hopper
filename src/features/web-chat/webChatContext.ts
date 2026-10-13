@@ -119,7 +119,12 @@ export function consumeWebChatContext(workspaceId: string, threadId: string): st
   return context.prompt;
 }
 
-export function clearWebChatContext(workspaceId: string, threadId: string): void {
+export function clearWebChatContext(
+  workspaceId: string,
+  threadId: string,
+  expected?: StagedWebChatContext,
+): void {
+  if (expected && peekWebChatContext(workspaceId, threadId) !== expected) return;
   if (staged.delete(stagingKey(workspaceId, threadId))) notify();
 }
 

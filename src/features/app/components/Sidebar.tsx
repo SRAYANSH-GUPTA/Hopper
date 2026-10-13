@@ -297,6 +297,7 @@ export const Sidebar = memo(function Sidebar({
     sessionResetLabel,
     weeklyResetLabel,
     showWeekly,
+    creditsLabel,
   } = getUsageLabels(accountRateLimits, usageShowRemaining);
   const debouncedQuery = useDebouncedValue(searchQuery, 150);
   const normalizedQuery = debouncedQuery.trim().toLowerCase();
@@ -1176,6 +1177,7 @@ export const Sidebar = memo(function Sidebar({
         sessionResetLabel={sessionResetLabel}
         weeklyResetLabel={weeklyResetLabel}
         showWeekly={showWeekly}
+        creditsLabel={creditsLabel}
         activeProviderLabel={activeProviderLabel}
         localUsageSnapshot={localUsageSnapshot}
         isLoadingLocalUsage={isLoadingLocalUsage}

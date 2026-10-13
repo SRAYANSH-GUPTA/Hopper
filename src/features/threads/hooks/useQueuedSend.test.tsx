@@ -203,7 +203,7 @@ describe("useQueuedSend", () => {
     );
   });
 
-  it("retries queued send after failure", async () => {
+  it("preserves a failed queued send until it is edited and resubmitted", async () => {
     const options = makeOptions({
       sendUserMessage: vi
         .fn()
@@ -225,9 +225,63 @@ describe("useQueuedSend", () => {
       await Promise.resolve();
     });
 
+    expect(options.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(result.current.activeQueue.map((item) => item.text)).toEqual(["Retry"]);
+
+    await act(async () => {
+      result.current.removeQueuedMessage("thread-1", result.current.activeQueue[0].id);
+      await result.current.queueMessage("Retry");
+    });
+
     expect(options.sendUserMessage).toHaveBeenCalledTimes(2);
     expect(options.sendUserMessage).toHaveBeenLastCalledWith("Retry", []);
   });
+
+  it("preserves a blocked message and its attachments without retrying or skipping it", async () => {
+    const options = makeOptions({
+      sendUserMessage: vi.fn().mockResolvedValue({ status: "blocked" }),
+    });
+    const { result, rerender } = renderHook((props) => useQueuedSend(props), {
+      initialProps: options,
+    });
+
+    await act(async () => {
+      await result.current.queueMessage("Needs fixing", ["img-1"]);
+      await result.current.queueMessage("Next");
+    });
+    rerender({ ...options });
+
+    expect(options.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(result.current.activeQueue.map((item) => item.text)).toEqual([
+      "Needs fixing",
+      "Next",
+    ]);
+    expect(result.current.activeQueue[0].images).toEqual(["img-1"]);
+
+    vi.mocked(options.sendUserMessage).mockResolvedValue({ status: "sent" });
+    await act(async () => {
+      result.current.removeQueuedMessage("thread-1", result.current.activeQueue[0].id);
+    });
+
+    expect(options.sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(options.sendUserMessage).toHaveBeenLastCalledWith("Next", []);
+  });
+
+  it.each(["/status", "/usage", "/apps", "/mcp", "/models", "/fast", "/resume", "/new", "/fork"])(
+    "continues the queue after command %s completes without a turn in this thread",
+    async (command) => {
+      const options = makeOptions();
+      const { result } = renderHook(() => useQueuedSend(options));
+
+      await act(async () => {
+        await result.current.queueMessage(command);
+        await result.current.queueMessage("Continue");
+      });
+
+      expect(options.sendUserMessage).toHaveBeenCalledOnce();
+      expect(options.sendUserMessage).toHaveBeenCalledWith("Continue", []);
+    },
+  );
 
   it("queues messages per thread and only flushes the active thread", async () => {
     const options = makeOptions({ isProcessing: true });
