@@ -348,7 +348,9 @@
 }
 
 .app.layout-desktop .home {
-  height: 100%;
+  grid-row: 2 / -1;
+  height: auto;
+  min-height: 0;
 }
 
 .app.layout-desktop .home > * {
