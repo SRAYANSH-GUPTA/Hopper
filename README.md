@@ -302,6 +302,9 @@ Note: `npm run build` also runs `tsc` before bundling the frontend.
 
 ## Validation
 
+See [Security and local data](docs/security.md) for browser isolation, persistence,
+telemetry, and remote daemon requirements.
+
 Recommended validation commands:
 
 ```bash
