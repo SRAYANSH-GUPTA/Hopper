@@ -26,6 +26,13 @@ function textParagraph(value: string): TestNode {
 }
 
 describe("remarkFileLinks", () => {
+  it("leaves slash commands as text while linking their file arguments", () => {
+    const tree = runRemarkFileLinks(textParagraph("Use /context, /help or /reviewer:check src/App.tsx."));
+    const links = tree.children?.[0]?.children?.filter((child) => child.type === "link");
+    expect(links).toHaveLength(1);
+    expect(links?.[0].children?.[0].value).toBe("src/App.tsx");
+  });
+
   it("does not turn natural-language slash phrases into file links", () => {
     const tree = runRemarkFileLinks(
       textParagraph("Keep the current app/daemon behavior and the existing Git/Plan experience."),

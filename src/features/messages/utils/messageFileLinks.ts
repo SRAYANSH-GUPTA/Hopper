@@ -402,7 +402,10 @@ function linkifyText(value: string) {
     const leadingText = getLeadingPathCandidateContext(value, matchIndex);
     const previousChar = matchIndex > 0 ? value[matchIndex - 1] : "";
     const { path, trailing } = splitTrailingPunctuation(raw);
-    if (path && isPathCandidate(path, leadingText, previousChar)) {
+    // Bare slash commands have neither a directory component nor a filename.
+    // Keep them readable in chat; explicit Markdown links still support root paths.
+    const isCommandToken = /^\/[A-Za-z0-9_-]+(?::[A-Za-z0-9_-]+)*$/.test(path);
+    if (path && !isCommandToken && isPathCandidate(path, leadingText, previousChar)) {
       const parsedTarget = parseInlineFileTarget(path);
       if (parsedTarget) {
         nodes.push({
