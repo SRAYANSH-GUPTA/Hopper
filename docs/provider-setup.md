@@ -39,6 +39,29 @@ Claude image attachments use stream-json input. Attach up to eight PNG, JPEG, GI
 
 Claude's `AskUserQuestion` calls are shown as an inline question card instead of a permission toast; the answers return to the running turn as the tool's `updatedInput`. agy cannot pause for answers in headless mode, so its questions appear in the same card and the answer is sent as the next message in that conversation.
 
+## Claude slash commands
+
+With Claude Code selected, type `/` in the composer to open the command menu. Use the arrow keys to choose an entry, then Tab or Enter to insert it. Send the completed command to run it. Installed skills and plugin commands appear alongside Hopper's built-in controls.
+
+| Command | Behavior |
+| --- | --- |
+| `/help` | Browse the commands available in Hopper. |
+| `/usage` | Show this conversation's reported token counts and request a separate Claude CLI usage report. Account plan limits depend on what the installed CLI exposes; Hopper does not infer costs or remaining quota. |
+| `/plugins` | List installed plugins and install, enable, disable, or uninstall a plugin by its `name@marketplace` identifier. |
+| `/skills` | Search installed skills and custom commands, then insert one into the composer. |
+| `/model [model]` | Choose a model for upcoming messages. An exact model name selects it directly. |
+| `/permissions` | Choose read-only, approval-based, or full-access tool permissions for upcoming messages. |
+| `/plan [on\|off\|prompt]` | Toggle plan mode, set it explicitly, or enable it and leave a planning prompt ready to send. Plan mode takes precedence over the selected tool permissions. |
+| `/status` | Show the selected model, permissions, plan mode, and installed command count. |
+| `/new`, `/clear` | Start a fresh conversation and preserve the previous conversation in history. |
+| `/compact [instructions]`, `/context`, `/mcp`, `/agents` | Run the installed Claude CLI's supported headless command in the current conversation. Compacting uses Claude and may consume account usage. |
+
+Aliases: `/plugin` opens `/plugins`; `/models` opens `/model`; `/quota` and `/cost` open `/usage`. Plain messages such as “usage of this function” remain normal conversation text. Namespaced commands such as `/reviewer:check` keep their full command name.
+
+The plugin manager uses Claude's dedicated plugin CLI. Plugin management requires a CLI version with JSON plugin output (2.1.268 or newer). Scope can be user, project, or local; a workspace is required for project and local changes. Entries belonging to another project are read-only. Uninstalling requires confirmation and preserves plugin data. Plugin changes refresh Hopper's command menu and apply to subsequent Claude processes; they do not modify a running turn. Install plugins from marketplaces you trust; installations needing an interactive confirmation must be completed in Claude Code's terminal.
+
+Terminal-only Claude menus are represented by Hopper controls where supported. Before forwarding a provider slash command, Hopper checks the installed CLI's headless command registry. Unsupported commands return an error instead of becoming an ordinary model prompt. Custom skills can still run tools and consume account usage. See [Claude's headless command behavior](https://code.claude.com/docs/en/agent-sdk/slash-commands) and [plugin CLI reference](https://code.claude.com/docs/en/plugins/cli-reference).
+
 ## Conversation recovery
 
 Local Claude and Antigravity conversations are saved separately as `claude-conversations.json` and `antigravity-conversations.json` in Hopper's app data directory. Each file preserves workspace and thread identity, provider session IDs, names, and completed conversation items. An interrupted turn is shown as interrupted after restart. A streaming item that had not completed before a crash may be missing. Local image attachments still need their source files; pasted image data is stored with the conversation.

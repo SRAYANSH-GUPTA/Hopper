@@ -35,6 +35,8 @@ import {
   isCursorInsideFence,
   normalizePastedText,
 } from "../../../utils/composerText";
+import { useClaudeComposerCommands } from "../hooks/useClaudeComposerCommands";
+import { parseClaudeCommand } from "@/features/claude/utils/commands";
 import { useComposerAutocompleteState } from "../hooks/useComposerAutocompleteState";
 import { useComposerDraftEffects } from "../hooks/useComposerDraftEffects";
 import { useComposerKeyDown } from "../hooks/useComposerKeyDown";
@@ -167,6 +169,8 @@ type ComposerProps = {
   } | null;
   onProviderSwitch?: (providerId: string) => void;
   activeProviderId?: string;
+  workspaceId?: string | null;
+  workspacePath?: string | null;
   isPlanMode?: boolean;
   onPlanModeToggle?: (enabled: boolean) => void;
   planCommandPrefix?: boolean;
@@ -273,6 +277,8 @@ export const Composer = memo(function Composer({
   stagedContext = null,
   onProviderSwitch,
   activeProviderId,
+  workspaceId = null,
+  workspacePath = null,
   isPlanMode = false,
   onPlanModeToggle,
   planCommandPrefix = false,
@@ -434,6 +440,16 @@ export const Composer = memo(function Composer({
     [handleHistoryTextChange, handleTextChange],
   );
 
+  const focusComposer = useCallback(() => {
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [textareaRef]);
+  const claudeCommands = useClaudeComposerCommands({
+    provider: activeProviderId ?? "codex", workspaceId, workspacePath, draftKey,
+    contextUsage, models, selectedModelId, accessMode, isPlanMode,
+    commands: slashCommands ?? [], onSelectModel, onSelectAccessMode,
+    onPlanModeToggle, setDraft: setComposerText, focusComposer,
+  });
+
   const handleSend = useCallback((submitIntent: ComposerSendIntent = "default") => {
     if (disabled || submittingDraftsRef.current.has(submissionKey)) {
       return;
@@ -445,10 +461,23 @@ export const Composer = memo(function Composer({
     if (trimmed) {
       recordHistory(trimmed);
     }
+    const localCommand = claudeCommands.run(trimmed);
+    if (localCommand) {
+      setComposerText(localCommand.nextDraft);
+      setAppMentionBindings([]);
+      resetHistoryNavigation();
+      return;
+    }
     const { images, files: attachedFiles } =
       splitComposerAttachments(attachedImages);
     const textWithFiles = appendAttachedFileContext(trimmed, attachedFiles);
-    const textToSend = planCommandPrefix
+    // Claude's plan wrapper is removed by useThreadMessaging before IPC and
+    // becomes permission metadata, including for installed skill commands.
+    // Conversation controls still need their leading token for queue routing.
+    const canWrapInPlan = activeProviderId === "claude"
+      ? parseClaudeCommand(trimmed)?.action !== "new"
+      : !trimmed.startsWith("/");
+    const textToSend = planCommandPrefix && canWrapInPlan
       ? `/plan\n\n${textWithFiles}`
       : textWithFiles;
     const resolvedMentions = resolveBoundAppMentions(trimmed, appMentionBindings);
@@ -518,7 +547,10 @@ export const Composer = memo(function Composer({
     }
   }, [
     appMentionBindings,
+    activeProviderId,
     attachedImages,
+    claudeCommands.run,
+    setComposerText,
     disabled,
     onSend,
     planCommandPrefix,
@@ -683,6 +715,7 @@ export const Composer = memo(function Composer({
 
 
   return (
+    <>
     <footer className={`composer${disabled ? " is-disabled" : ""}`}>
       <ComposerQueue
         queuedMessages={queuedMessages}
@@ -826,6 +859,8 @@ export const Composer = memo(function Composer({
         />
       </div>
     </footer>
+    {claudeCommands.node}
+    </>
   );
 });
 

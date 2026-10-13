@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getSlashCommandsList, type SlashCommandOption } from "@services/tauri";
+import { notifySlashCommandsChanged } from "@services/events";
 import { useSlashCommands } from "./useSlashCommands";
 
 vi.mock("@services/tauri", () => ({
@@ -51,6 +52,24 @@ describe("useSlashCommands", () => {
       window.dispatchEvent(new Event("focus"));
     });
     await waitFor(() => expect(result.current.map((item) => item.name)).toEqual(["new-skill"]));
+  });
+
+  it("refreshes immediately after a Claude plugin changes", async () => {
+    vi.mocked(getSlashCommandsList).mockResolvedValueOnce([]).mockResolvedValueOnce([command("plugin:review")]);
+    const { result } = renderHook(() => useSlashCommands({ workspaceId: "ws-1", provider: "claude" }));
+    await waitFor(() => expect(getSlashCommandsList).toHaveBeenCalledTimes(1));
+    act(() => notifySlashCommandsChanged("codex"));
+    expect(getSlashCommandsList).toHaveBeenCalledTimes(1);
+    act(() => notifySlashCommandsChanged("claude"));
+    await waitFor(() => expect(result.current[0]?.name).toBe("plugin:review"));
+  });
+
+  it("hides the previous provider commands while the new provider is loading", async () => {
+    vi.mocked(getSlashCommandsList).mockResolvedValueOnce([command("claude-only")]).mockReturnValueOnce(new Promise(() => {}));
+    const { result, rerender } = renderHook((props) => useSlashCommands(props), { initialProps: { workspaceId: "ws-1", provider: "claude" } });
+    await waitFor(() => expect(result.current).toHaveLength(1));
+    rerender({ workspaceId: "ws-1", provider: "codex" });
+    expect(result.current).toEqual([]);
   });
 
   it("ignores stale responses", async () => {

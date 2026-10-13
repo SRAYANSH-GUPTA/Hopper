@@ -8,6 +8,16 @@ import type {
 
 export type Unsubscribe = () => void;
 
+// Local UI invalidation stays alongside the event subscription fanout.
+const slashCommandListeners = new Set<(provider: string) => void>();
+export function notifySlashCommandsChanged(provider: string) {
+  for (const listener of slashCommandListeners) listener(provider);
+}
+export function subscribeSlashCommandsChanged(listener: (provider: string) => void): Unsubscribe {
+  slashCommandListeners.add(listener);
+  return () => { slashCommandListeners.delete(listener); };
+}
+
 export type TerminalOutputEvent = {
   workspaceId: string;
   terminalId: string;

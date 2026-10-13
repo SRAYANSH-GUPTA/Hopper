@@ -11,6 +11,7 @@ Hopper is a new coding AI terminal built on top of CODEXmonitor by Dimillian. Ev
 ### AI Terminal & Agent Integrations
 
 - **Claude Code & Antigravity**: Native integration with both Claude Code and Antigravity agents.
+- **Claude slash commands**: Type `/` for usage, plugin management, installed skills, model and permission controls. See [supported commands](docs/provider-setup.md#claude-slash-commands).
 - **Common Skills Marketplace**: Discover, install, and share common skills across different agent engines.
 - **MCP Support**: Full integration with Model Context Protocol (MCP) servers to extend agent capabilities with external tools and resources.
 - Spawn and manage agents per workspace, resume threads, and track unread/running state.

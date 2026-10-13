@@ -4,6 +4,11 @@ import { useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isMobilePlatform } from "../../../utils/platformPaths";
 import { Composer } from "./Composer";
+import { providerUsageOutput } from "@services/tauri";
+vi.mock("@services/tauri", () => ({ providerUsageOutput: vi.fn() }));
+vi.mock("@/features/claude/components/ClaudePluginsDialog", () => ({
+  ClaudePluginsDialog: ({ onClose }: { onClose: () => void }) => <div role="dialog" aria-label="Claude plugins"><button onClick={onClose}>Close plugins</button></div>,
+}));
 import type {
   AppOption,
   AppMention,
@@ -47,6 +52,9 @@ type HarnessProps = {
   historyKey?: string;
   externalDraft?: string;
   onAttachImages?: (images: string[]) => void;
+  activeProviderId?: string;
+  planCommandPrefix?: boolean;
+  onPlanModeToggle?: (value: boolean) => void;
 };
 
 function ComposerHarness({
@@ -61,6 +69,9 @@ function ComposerHarness({
   historyKey = "workspace-1",
   externalDraft,
   onAttachImages,
+  activeProviderId = "codex",
+  planCommandPrefix = false,
+  onPlanModeToggle,
 }: HarnessProps) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const storageKey = JSON.stringify([historyKey, draftKey]);
@@ -69,6 +80,12 @@ function ComposerHarness({
 
   return (
     <Composer
+      activeProviderId={activeProviderId}
+      workspaceId="workspace-1"
+      workspacePath="/project"
+      planCommandPrefix={planCommandPrefix}
+      isPlanMode={planCommandPrefix}
+      onPlanModeToggle={onPlanModeToggle}
       onSend={onSend}
       onStop={() => {}}
       canStop={false}
@@ -472,5 +489,60 @@ describe("Composer send triggers", () => {
     fireEvent.keyDown(textarea, { key: "Tab" });
 
     expect(onSend).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Claude composer commands", () => {
+  afterEach(() => { cleanup(); vi.clearAllMocks(); });
+  it("opens usage locally without sending a prompt or discarding attachments", async () => {
+    vi.mocked(providerUsageOutput).mockResolvedValue("CLI usage report");
+    const onSend = vi.fn();
+    render(<ComposerHarness onSend={onSend} activeProviderId="claude" externalDraft="/usage" attachments={["/tmp/image.png"]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("dialog", { name: "Claude usage" })).toBeTruthy();
+    expect(await screen.findByText("CLI usage report")).toBeTruthy();
+    expect(onSend).not.toHaveBeenCalled();
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("opens the plugin manager through the singular alias", async () => {
+    const onSend = vi.fn();
+    render(<ComposerHarness onSend={onSend} activeProviderId="claude" externalDraft="/plugin" />);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("dialog", { name: "Claude plugins" })).toBeTruthy();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("carries plan intent with provider commands for the messaging layer", () => {
+    const onSend = vi.fn();
+    render(<ComposerHarness onSend={onSend} activeProviderId="claude" planCommandPrefix externalDraft="/compact keep decisions" />);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenCalledWith("/plan\n\n/compact keep decisions", [], undefined, "default");
+  });
+
+  it("keeps conversation controls available while plan mode is enabled", () => {
+    const onSend = vi.fn();
+    render(<ComposerHarness onSend={onSend} activeProviderId="claude" planCommandPrefix externalDraft="/clear" />);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenCalledWith("/clear", [], undefined, "default");
+  });
+
+  it("sets plan mode and leaves an optional planning prompt ready to send", () => {
+    const onSend = vi.fn();
+    const onPlanModeToggle = vi.fn();
+    render(<ComposerHarness onSend={onSend} activeProviderId="claude" onPlanModeToggle={onPlanModeToggle} externalDraft="/plan inspect the architecture" />);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onPlanModeToggle).toHaveBeenCalledWith(true);
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("inspect the architecture");
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("keeps other provider command routing unchanged", () => {
+    const onSend = vi.fn();
+    render(<ComposerHarness onSend={onSend} activeProviderId="codex" externalDraft="/usage" />);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenCalledWith("/usage", [], undefined, "default");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

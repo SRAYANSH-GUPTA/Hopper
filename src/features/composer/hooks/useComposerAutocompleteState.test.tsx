@@ -239,6 +239,13 @@ describe("useComposerAutocompleteState slash commands", () => {
     expect(matches.slice(firstInstalled).every((item) => item.group !== "Slash")).toBe(true);
   });
 
+  it("offers implemented Claude controls and does not invent file-tool commands", () => {
+    const { result } = renderSlash("/", { activeProviderId: "claude", slashCommands: [] });
+    const labels = result.current.autocompleteMatches.map((item) => item.label);
+    expect(labels).toEqual(expect.arrayContaining(["usage", "plugins", "skills", "help", "model", "permissions", "plan", "clear", "compact", "context", "mcp", "agents"]));
+    expect(labels).not.toEqual(expect.arrayContaining(["search", "find", "view", "write"]));
+  });
+
   it("filters installed commands by the typed query", () => {
     const { result } = renderSlash("/graph", { activeProviderId: "claude", slashCommands: installed });
     expect(result.current.autocompleteMatches[0]?.label).toBe("graphify");

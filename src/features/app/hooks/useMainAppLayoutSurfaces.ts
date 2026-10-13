@@ -547,6 +547,8 @@ function buildPrimarySurface({
           onSelectAccessMode,
           skills,
           slashCommands,
+          workspaceId: activeWorkspace?.id ?? null,
+          workspacePath: activeWorkspace?.path ?? null,
           appsEnabled: appSettings.experimentalAppsEnabled,
           apps,
           prompts,

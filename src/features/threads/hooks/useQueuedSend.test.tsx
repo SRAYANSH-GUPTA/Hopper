@@ -42,6 +42,21 @@ const makeOptions = (
 });
 
 describe("useQueuedSend", () => {
+  it.each(["usage of this function", "quota for the project", "/usage:plugin", "/new:skill", "/status-report"])("does not intercept %s", (text) => {
+    for (const provider of ["codex", "claude", "antigravity"] as const) {
+      expect(parseSlashCommand(text, { provider, appsEnabled: true })).toBeNull();
+    }
+  });
+
+  it("starts a fresh Claude conversation for /clear without deleting the previous one", async () => {
+    const options = makeOptions({ provider: "claude" });
+    const { result } = renderHook(() => useQueuedSend(options));
+    await act(async () => { await result.current.handleSend("/clear"); });
+    expect(options.startThreadForWorkspace).toHaveBeenCalledWith(workspace.id);
+    expect(options.sendUserMessage).not.toHaveBeenCalled();
+    expect(options.sendUserMessageToThread).not.toHaveBeenCalled();
+  });
+
   it("returns blocked sends to the composer without discarding attachments", async () => {
     const options = makeOptions({ sendUserMessage: vi.fn().mockResolvedValue({ status: "blocked" }) });
     const { result } = renderHook(() => useQueuedSend(options));

@@ -1,3 +1,4 @@
+import { parseSlashInput } from "@utils/slashCommand";
 import { useCallback } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 import * as Sentry from "@sentry/react";
@@ -155,12 +156,18 @@ export function useThreadMessaging({
       options?: SendMessageOptions,
       allowThreadRecovery = true,
     ): Promise<SendMessageResult> => {
-      const messageText = text.trim();
+      const requestedCommand = localProvider === "claude" ? parseSlashInput(text) : null;
+      const claudePlanRequest = requestedCommand?.name === "plan" && Boolean(requestedCommand.args);
+      const messageText = claudePlanRequest ? requestedCommand!.args : text.trim();
+      // Native Claude commands and installed skills must remain the first token.
+      // Keep pending transferred context for the next normal conversation turn.
+      const parsedCommand = localProvider === "claude" ? parseSlashInput(messageText) : null;
+      const isClaudeCommand = Boolean(parsedCommand && !parsedCommand.name.startsWith("prompts:"));
       if (!messageText && images.length === 0) {
         return { status: "blocked" };
       }
       // Prepend handoff context if provider was just switched.
-      const handoff = allowThreadRecovery ? preparePendingHandoff(workspace.id, threadId) : null;
+      const handoff = allowThreadRecovery && !isClaudeCommand ? preparePendingHandoff(workspace.id, threadId) : null;
       let finalText = handoff
         ? `${handoff.prompt}\n\n---\n\n**User:** ${messageText}`
         : messageText;
@@ -174,7 +181,7 @@ export function useThreadMessaging({
         finalText = promptExpansion?.expanded ?? finalText;
       }
       // Prepend a conversation transferred from a web assistant tab.
-      const webChatContext = allowThreadRecovery ? peekWebChatContext(workspace.id, threadId) : null;
+      const webChatContext = allowThreadRecovery && !isClaudeCommand ? peekWebChatContext(workspace.id, threadId) : null;
       if (webChatContext) {
         finalText = `${webChatContext.prompt}${WEB_CHAT_USER_MARKER}${finalText}`;
       }
@@ -207,6 +214,9 @@ export function useThreadMessaging({
           activeTurnId,
         },
       });
+      const effectiveCollaborationMode = claudePlanRequest
+        ? { mode: "plan", settings: { model: resolvedModel ?? model } }
+        : sanitizedCollaborationMode;
       Sentry.metrics.count("prompt_sent", 1, {
         attributes: {
           workspace_id: workspace.id,
@@ -216,7 +226,7 @@ export function useThreadMessaging({
           model: resolvedModel ?? "unknown",
           effort: resolvedEffort ?? "unknown",
           service_tier: resolvedServiceTier ?? "default",
-          collaboration_mode: sanitizedCollaborationMode ?? "unknown",
+          collaboration_mode: effectiveCollaborationMode ?? "unknown",
           send_intent: sendIntent,
         },
       });
@@ -245,7 +255,7 @@ export function useThreadMessaging({
           model: resolvedModel,
           effort: resolvedEffort,
           serviceTier: resolvedServiceTier,
-          collaborationMode: sanitizedCollaborationMode,
+          collaborationMode: effectiveCollaborationMode,
           sendIntent,
           threadCustomName: customThreadName,
         },
@@ -285,7 +295,7 @@ export function useThreadMessaging({
               model: resolvedModel,
               effort: resolvedEffort,
               serviceTier: resolvedServiceTier,
-              collaborationMode: sanitizedCollaborationMode,
+              collaborationMode: effectiveCollaborationMode,
               accessMode: resolvedAccessMode,
               images,
               appMentions,

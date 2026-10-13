@@ -11,6 +11,7 @@ import {
   getPromptArgumentHint,
 } from "../../../utils/customPrompts";
 import { isComposingEvent } from "../../../utils/keys";
+import { CLAUDE_COMMANDS } from "@/features/claude/utils/commands";
 
 type Skill = { name: string; description?: string };
 type UseComposerAutocompleteStateArgs = {
@@ -159,78 +160,14 @@ export function useComposerAutocompleteState({
     let commands: AutocompleteItem[] = [];
 
     if (provider === "claude") {
-      commands = [
-        {
-          id: "compact",
-          label: "compact",
-          description: "compact the active thread context",
-          insertText: "compact",
-          group: "Slash",
-        },
-        {
-          id: "clear",
-          label: "clear",
-          description: "clear the chat history",
-          insertText: "clear",
-          group: "Slash",
-        },
-        {
-          id: "plan",
-          label: "plan",
-          description: "enter plan mode",
-          insertText: "plan",
-          group: "Slash",
-        },
-        {
-          id: "help",
-          label: "help",
-          description: "show help information",
-          insertText: "help",
-          group: "Slash",
-        },
-        {
-          id: "search",
-          label: "search",
-          description: "search files in workspace",
-          insertText: "search",
-          group: "Slash",
-        },
-        {
-          id: "find",
-          label: "find",
-          description: "find files by name pattern",
-          insertText: "find",
-          group: "Slash",
-        },
-        {
-          id: "view",
-          label: "view",
-          description: "view file contents",
-          insertText: "view",
-          group: "Slash",
-        },
-        {
-          id: "write",
-          label: "write",
-          description: "write or edit a file",
-          insertText: "write",
-          group: "Slash",
-        },
-        {
-          id: "mcp",
-          label: "mcp",
-          description: "list MCP servers/tools",
-          insertText: "mcp",
-          group: "Slash",
-        },
-        {
-          id: "review",
-          label: "review",
-          description: "start a code review",
-          insertText: "review",
-          group: "Slash",
-        },
-      ];
+      commands = CLAUDE_COMMANDS.map((command) => ({
+        id: command.name,
+        label: command.name,
+        description: command.description,
+        hint: "hint" in command ? command.hint : undefined,
+        insertText: command.name,
+        group: "Slash",
+      }));
     } else if (provider === "antigravity") {
       commands = [
         {

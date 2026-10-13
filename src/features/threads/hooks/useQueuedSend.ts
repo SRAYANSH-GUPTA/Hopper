@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pushErrorToast } from "@services/toasts";
+import { parseSlashInput } from "@utils/slashCommand";
 import type {
   AppMention,
   ComposerSendIntent,
@@ -87,41 +88,26 @@ type SlashCommandContext = {
   provider: LocalAgentProvider;
 };
 
-// Commands Hopper runs itself for every provider.
-const SHARED_COMMANDS: Array<[RegExp, SlashCommandKind]> = [
-  [/^\/new\b/i, "new"],
-  [/^\/?(?:usage|quota)\b/i, "usage"],
-];
-
-// Commands backed by the Codex app-server. Other providers' CLIs receive these as typed.
-const CODEX_COMMANDS: Array<[RegExp, SlashCommandKind]> = [
-  [/^\/fork\b/i, "fork"],
-  [/^\/fast\b/i, "fast"],
-  [/^\/mcp\b/i, "mcp"],
-  [/^\/models\b/i, "models"],
-  [/^\/review\b/i, "review"],
-  [/^\/compact\b/i, "compact"],
-  [/^\/resume\b/i, "resume"],
-  [/^\/status\b/i, "status"],
-];
+// UI actions use exact command tokens so namespaced skills keep their names.
+const CODEX_COMMANDS: Record<string, SlashCommandKind> = {
+  fork: "fork", fast: "fast", mcp: "mcp", models: "models", review: "review",
+  compact: "compact", resume: "resume", status: "status",
+};
 
 export function parseSlashCommand(
   text: string,
   { appsEnabled, provider }: SlashCommandContext,
 ): SlashCommandKind | null {
-  for (const [pattern, kind] of SHARED_COMMANDS) {
-    if (pattern.test(text)) return kind;
-  }
-  if (provider !== "codex") {
-    return null;
-  }
-  if (appsEnabled && /^\/apps\b/i.test(text)) {
-    return "apps";
-  }
-  for (const [pattern, kind] of CODEX_COMMANDS) {
-    if (pattern.test(text)) return kind;
-  }
-  return null;
+  const command = parseSlashInput(text);
+  if (!command) return null;
+  if (command.name === "new") return "new";
+  if (command.name === "clear" && provider === "claude") return "new";
+  if (command.name === "usage" || command.name === "quota") return "usage";
+  if (provider !== "codex") return null;
+  if (appsEnabled && command.name === "apps") return "apps";
+  return Object.prototype.hasOwnProperty.call(CODEX_COMMANDS, command.name)
+    ? CODEX_COMMANDS[command.name]
+    : null;
 }
 
 export function useQueuedSend({
@@ -249,7 +235,7 @@ export function useQueuedSend({
       }
       if (command === "new" && activeWorkspace) {
         const threadId = await startThreadForWorkspace(activeWorkspace.id);
-        const rest = trimmed.replace(/^\/new\b/i, "").trim();
+        const rest = parseSlashInput(trimmed)?.args ?? "";
         if (threadId && rest) {
           await sendUserMessageToThread(activeWorkspace, threadId, rest, []);
         }

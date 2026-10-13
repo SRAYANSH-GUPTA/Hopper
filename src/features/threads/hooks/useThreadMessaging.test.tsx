@@ -129,6 +129,30 @@ describe("useThreadMessaging telemetry", () => {
     updateThreadParent: vi.fn(),
   });
 
+  it.each(["/compact keep the decisions", "/reviewer:check src", "/context"])("preserves Claude command dispatch and pending transfers for %s", async (command) => {
+    savePendingHandoff(workspace.id, "Earlier provider context");
+    const staged = stageWebChatContext(workspace.id, "thread-1", {
+      provider: "ChatGPT", title: null, url: "https://chatgpt.com/c/1",
+      messages: [{ role: "user", content: "Earlier web conversation" }],
+    });
+    const { result } = renderHook(() => useThreadMessaging({ ...messagingOptions(), localProvider: "claude" }));
+    await act(async () => { await result.current.sendUserMessage(command); });
+    expect(vi.mocked(sendUserMessageService).mock.calls[0][2]).toBe(command);
+    expect(peekWebChatContext(workspace.id, "thread-1")).toBe(staged);
+    expect(preparePendingHandoff(workspace.id, "thread-1")?.prompt).toBe("Earlier provider context");
+    await act(async () => { await result.current.sendUserMessage("Continue normally"); });
+    expect(vi.mocked(sendUserMessageService).mock.calls[1][2]).toContain(staged.prompt);
+    expect(peekWebChatContext(workspace.id, "thread-1")).toBeNull();
+  });
+
+  it.each(["Inspect the architecture", "/reviewer:check src"])("sends Claude plan mode as a permission setting for %s", async (prompt) => {
+    const { result } = renderHook(() => useThreadMessaging({ ...messagingOptions(), localProvider: "claude", model: "claude-sonnet" }));
+    await act(async () => { await result.current.sendUserMessage(`/plan\n\n${prompt}`); });
+    const call = vi.mocked(sendUserMessageService).mock.calls[0];
+    expect(call[2]).toBe(prompt);
+    expect(call[3]).toMatchObject({ provider: "claude", collaborationMode: { mode: "plan" } });
+  });
+
   it.each(["rpc-error", "transport-error", "missing-turn"])(
     "retains transferred context after %s and consumes it only after a successful send",
     async (failure) => {
