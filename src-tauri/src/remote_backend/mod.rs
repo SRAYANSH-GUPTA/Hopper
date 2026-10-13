@@ -118,6 +118,11 @@ pub(crate) async fn call_remote(
     method: &str,
     params: Value,
 ) -> Result<Value, String> {
+    crate::shared::provider_runtime_core::guard_remote_provider_method(
+        &state.app_settings.lock().await.local_provider,
+        method,
+        &params,
+    )?;
     let client = ensure_remote_backend(state, app.clone()).await?;
     match client.call(method, params.clone()).await {
         Ok(value) => Ok(value),

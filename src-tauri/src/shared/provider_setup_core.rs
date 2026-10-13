@@ -42,12 +42,8 @@ pub(crate) struct SetupPreferences {
     pub codex_enabled: bool,
     pub claude_enabled: bool,
     pub antigravity_enabled: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub antigravity_auto_approve: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 impl Default for SetupPreferences {
@@ -57,7 +53,7 @@ impl Default for SetupPreferences {
             codex_enabled: false,
             claude_enabled: false,
             antigravity_enabled: false,
-            antigravity_auto_approve: true,
+            antigravity_auto_approve: false,
         }
     }
 }
@@ -555,12 +551,27 @@ mod tests {
             std::fs::read_to_string(path.with_extension("json.bak")).unwrap(),
             original
         );
-        assert!(read_preferences_at(&path).unwrap().antigravity_auto_approve);
+        assert!(!read_preferences_at(&path).unwrap().antigravity_auto_approve);
         std::fs::write(&path, "invalid").unwrap();
         assert!(save_preferences_at(&path, &SetupPreferences::default()).is_err());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "invalid");
         std::fs::remove_dir_all(dir).unwrap();
     }
+    #[test]
+    fn antigravity_permission_bypass_requires_an_explicit_preference() {
+        assert!(!SetupPreferences::default().antigravity_auto_approve);
+        assert!(
+            !serde_json::from_str::<SetupPreferences>("{}")
+                .unwrap()
+                .antigravity_auto_approve
+        );
+        assert!(
+            serde_json::from_str::<SetupPreferences>(r#"{"antigravityAutoApprove":true}"#)
+                .unwrap()
+                .antigravity_auto_approve
+        );
+    }
+
     #[test]
     fn hook_is_session_scoped_and_encodes_workspace_identity() {
         let value = claude_hook_settings(1234, "token", "work space&other", "thread 1", "turn-2");
@@ -577,16 +588,23 @@ mod tests {
 
     #[test]
     fn hook_responses_carry_decisions_and_updated_input() {
-        let deny = claude_permission_response(&ClaudeHookOutcome::Deny { reason: "no".into() });
+        let deny = claude_permission_response(&ClaudeHookOutcome::Deny {
+            reason: "no".into(),
+        });
         assert_eq!(deny["hookSpecificOutput"]["permissionDecision"], "deny");
         assert_eq!(deny["hookSpecificOutput"]["permissionDecisionReason"], "no");
-        let allow = claude_permission_response(&ClaudeHookOutcome::Allow { updated_input: None });
+        let allow = claude_permission_response(&ClaudeHookOutcome::Allow {
+            updated_input: None,
+        });
         assert_eq!(allow["hookSpecificOutput"]["permissionDecision"], "allow");
         assert!(allow["hookSpecificOutput"].get("updatedInput").is_none());
         let answered = claude_permission_response(&ClaudeHookOutcome::Allow {
             updated_input: Some(json!({"answers": {"Q?": "A"}})),
         });
-        assert_eq!(answered["hookSpecificOutput"]["updatedInput"]["answers"]["Q?"], "A");
+        assert_eq!(
+            answered["hookSpecificOutput"]["updatedInput"]["answers"]["Q?"],
+            "A"
+        );
     }
     #[test]
     fn only_known_provider_installers_are_selected() {
@@ -610,8 +628,12 @@ pub(crate) const CLAUDE_HOOK_TIMEOUT_SECS: u64 = 1800;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ClaudeHookOutcome {
     /// Run the tool, optionally with replaced input (e.g. AskUserQuestion answers).
-    Allow { updated_input: Option<Value> },
-    Deny { reason: String },
+    Allow {
+        updated_input: Option<Value>,
+    },
+    Deny {
+        reason: String,
+    },
 }
 
 pub(crate) fn claude_hook_settings(
@@ -638,7 +660,10 @@ pub(crate) fn claude_permission_response(outcome: &ClaudeHookOutcome) -> Value {
     match outcome {
         ClaudeHookOutcome::Allow { updated_input } => {
             output.insert("permissionDecision".into(), json!("allow"));
-            output.insert("permissionDecisionReason".into(), json!("Approved in Hopper"));
+            output.insert(
+                "permissionDecisionReason".into(),
+                json!("Approved in Hopper"),
+            );
             if let Some(updated_input) = updated_input {
                 output.insert("updatedInput".into(), updated_input.clone());
             }

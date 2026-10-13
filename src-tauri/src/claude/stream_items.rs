@@ -3,6 +3,81 @@
 //! and token usage in the shape of `thread/tokenUsage/updated`.
 use serde_json::{json, Value};
 
+pub(super) fn result_error(event: &Value) -> Option<String> {
+    if event.get("is_error").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    let errors = event
+        .get("errors")
+        .and_then(Value::as_array)
+        .map(|errors| {
+            errors
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .filter(|message| !message.trim().is_empty());
+    Some(
+        errors
+            .or_else(|| {
+                event
+                    .get("result")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| {
+                "Claude could not complete the turn. Check your provider sign-in and try again."
+                    .into()
+            }),
+    )
+}
+
+#[cfg(test)]
+#[test]
+fn failed_result_surfaces_authentication_errors() {
+    assert_eq!(
+        result_error(&json!({"is_error": true, "errors": ["Not signed in"]})).as_deref(),
+        Some("Not signed in")
+    );
+    assert!(result_error(&json!({"is_error": false, "result": "OK"})).is_none());
+}
+
+pub(super) fn update_text_snapshot(
+    snapshots: &mut std::collections::HashMap<String, String>,
+    message_id: &str,
+    next: String,
+) -> Option<String> {
+    let previous = snapshots.get(message_id).map(String::as_str).unwrap_or("");
+    let delta = next
+        .strip_prefix(previous)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string);
+    // A rewritten snapshot may not share a byte/character boundary with the old
+    // one. Keep its full text for item/completed instead of slicing by old length.
+    snapshots.insert(message_id.to_string(), next);
+    delta
+}
+
+#[cfg(test)]
+#[test]
+fn rewritten_unicode_snapshots_do_not_panic_or_keep_stale_text() {
+    let mut snapshots = std::collections::HashMap::new();
+    assert_eq!(
+        update_text_snapshot(&mut snapshots, "m", "é".into()).as_deref(),
+        Some("é")
+    );
+    assert_eq!(
+        update_text_snapshot(&mut snapshots, "m", "漢字".into()),
+        None
+    );
+    assert_eq!(snapshots["m"], "漢字");
+    assert_eq!(
+        update_text_snapshot(&mut snapshots, "m", "漢字!".into()).as_deref(),
+        Some("!")
+    );
+}
+
 const DETAIL_MAX_CHARS: usize = 400;
 /// Context window assumed until Claude reports the real one in `result.modelUsage`.
 pub(crate) const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
@@ -55,7 +130,13 @@ fn edit_diff(path: &str, edits: &[(&str, &str)]) -> String {
         diff.push_str("\n@@\n");
         let removed = prefixed_lines(old, '-');
         let added = prefixed_lines(new, '+');
-        diff.push_str(&[removed, added].into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join("\n"));
+        diff.push_str(
+            &[removed, added]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
     }
     diff
 }
@@ -105,7 +186,12 @@ fn todo_lines(input: &Value) -> String {
 }
 
 /// The Hopper item for a Claude tool call that has started.
-pub(crate) fn tool_started_item(tool_use_id: &str, name: &str, input: &Value, turn_id: &str) -> Value {
+pub(crate) fn tool_started_item(
+    tool_use_id: &str,
+    name: &str,
+    input: &Value,
+    turn_id: &str,
+) -> Value {
     let id = format!("tool-{tool_use_id}");
     let file_path = text_field(input, "file_path").or_else(|| text_field(input, "notebook_path"));
     match name {
@@ -119,8 +205,14 @@ pub(crate) fn tool_started_item(tool_use_id: &str, name: &str, input: &Value, tu
         }),
         "Edit" => {
             let path = file_path.unwrap_or("file");
-            let old = input.get("old_string").and_then(Value::as_str).unwrap_or("");
-            let new = input.get("new_string").and_then(Value::as_str).unwrap_or("");
+            let old = input
+                .get("old_string")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let new = input
+                .get("new_string")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             file_change(&id, turn_id, path, "update", edit_diff(path, &[(old, new)]))
         }
         "MultiEdit" => {
@@ -154,8 +246,17 @@ pub(crate) fn tool_started_item(tool_use_id: &str, name: &str, input: &Value, tu
         }
         "NotebookEdit" => {
             let path = file_path.unwrap_or("notebook");
-            let source = input.get("new_source").and_then(Value::as_str).unwrap_or("");
-            file_change(&id, turn_id, path, "update", edit_diff(path, &[("", source)]))
+            let source = input
+                .get("new_source")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            file_change(
+                &id,
+                turn_id,
+                path,
+                "update",
+                edit_diff(path, &[("", source)]),
+            )
         }
         "WebSearch" => json!({
             "type": "webSearch",
@@ -180,7 +281,10 @@ pub(crate) fn tool_started_item(tool_use_id: &str, name: &str, input: &Value, tu
         }
         "Read" => {
             let path = file_path.unwrap_or("file");
-            let range = match (input.get("offset").and_then(Value::as_u64), input.get("limit").and_then(Value::as_u64)) {
+            let range = match (
+                input.get("offset").and_then(Value::as_u64),
+                input.get("limit").and_then(Value::as_u64),
+            ) {
                 (Some(offset), Some(limit)) => format!(" · lines {offset}–{}", offset + limit),
                 (Some(offset), None) => format!(" · from line {offset}"),
                 _ => String::new(),
@@ -189,14 +293,38 @@ pub(crate) fn tool_started_item(tool_use_id: &str, name: &str, input: &Value, tu
         }
         "Grep" => {
             let pattern = text_field(input, "pattern").unwrap_or("");
-            tool_call(&id, turn_id, name, "Search", with_scope(pattern, text_field(input, "path")))
+            tool_call(
+                &id,
+                turn_id,
+                name,
+                "Search",
+                with_scope(pattern, text_field(input, "path")),
+            )
         }
         "Glob" => {
             let pattern = text_field(input, "pattern").unwrap_or("");
-            tool_call(&id, turn_id, name, "Find files", with_scope(pattern, text_field(input, "path")))
+            tool_call(
+                &id,
+                turn_id,
+                name,
+                "Find files",
+                with_scope(pattern, text_field(input, "path")),
+            )
         }
-        "LS" => tool_call(&id, turn_id, name, "List", text_field(input, "path").unwrap_or(".").to_string()),
-        "WebFetch" => tool_call(&id, turn_id, name, "Fetch", text_field(input, "url").unwrap_or("").to_string()),
+        "LS" => tool_call(
+            &id,
+            turn_id,
+            name,
+            "List",
+            text_field(input, "path").unwrap_or(".").to_string(),
+        ),
+        "WebFetch" => tool_call(
+            &id,
+            turn_id,
+            name,
+            "Fetch",
+            text_field(input, "url").unwrap_or("").to_string(),
+        ),
         "Task" | "Agent" => {
             let detail = text_field(input, "description")
                 .or_else(|| text_field(input, "prompt"))
@@ -233,7 +361,10 @@ pub(crate) fn tool_completed_item(started: &Value, output: &str, is_error: bool)
     let Some(object) = item.as_object_mut() else {
         return item;
     };
-    object.insert("status".into(), json!(if is_error { "failed" } else { "completed" }));
+    object.insert(
+        "status".into(),
+        json!(if is_error { "failed" } else { "completed" }),
+    );
     match object.get("type").and_then(Value::as_str).unwrap_or("") {
         "commandExecution" => {
             object.insert("aggregatedOutput".into(), json!(output));
@@ -303,7 +434,11 @@ impl TokenCounts {
 }
 
 /// `thread/tokenUsage/updated` params' `tokenUsage` value.
-pub(crate) fn token_usage_payload(total: TokenCounts, last: TokenCounts, context_window: u64) -> Value {
+pub(crate) fn token_usage_payload(
+    total: TokenCounts,
+    last: TokenCounts,
+    context_window: u64,
+) -> Value {
     json!({
         "total": total.to_json(),
         "last": last.to_json(),
@@ -313,16 +448,13 @@ pub(crate) fn token_usage_payload(total: TokenCounts, last: TokenCounts, context
 
 /// Context window for `model`, as reported by `result.modelUsage` when present.
 pub(crate) fn context_window(model: &str, model_usage: Option<&Value>) -> u64 {
-    if let Some(window) = model_usage
-        .and_then(Value::as_object)
-        .and_then(|models| {
-            models
-                .get(model)
-                .or_else(|| models.values().next())
-                .and_then(|usage| usage.get("contextWindow"))
-                .and_then(Value::as_u64)
-        })
-    {
+    if let Some(window) = model_usage.and_then(Value::as_object).and_then(|models| {
+        models
+            .get(model)
+            .or_else(|| models.values().next())
+            .and_then(|usage| usage.get("contextWindow"))
+            .and_then(Value::as_u64)
+    }) {
         return window;
     }
     if model.contains("[1m]") {
@@ -357,10 +489,21 @@ mod tests {
         );
         assert_eq!(edit["type"], "fileChange");
         assert_eq!(edit["changes"][0]["path"], "src/a.ts");
-        assert_eq!(edit["changes"][0]["diff"], "--- a/src/a.ts\n+++ b/src/a.ts\n@@\n-a\n-b\n+c");
-        let write = tool_started_item("t3", "Write", &json!({"file_path": "n.md", "content": "hi"}), "turn");
+        assert_eq!(
+            edit["changes"][0]["diff"],
+            "--- a/src/a.ts\n+++ b/src/a.ts\n@@\n-a\n-b\n+c"
+        );
+        let write = tool_started_item(
+            "t3",
+            "Write",
+            &json!({"file_path": "n.md", "content": "hi"}),
+            "turn",
+        );
         assert_eq!(write["changes"][0]["kind"], "add");
-        assert_eq!(write["changes"][0]["diff"], "--- /dev/null\n+++ b/n.md\n@@\n+hi");
+        assert_eq!(
+            write["changes"][0]["diff"],
+            "--- /dev/null\n+++ b/n.md\n@@\n+hi"
+        );
         let failed = tool_completed_item(&write, "permission denied", true);
         assert_eq!(failed["status"], "failed");
         assert_eq!(failed["output"], "permission denied");
@@ -368,11 +511,21 @@ mod tests {
 
     #[test]
     fn other_tools_get_readable_titles() {
-        let read = tool_started_item("t4", "Read", &json!({"file_path": "/x/y.rs", "offset": 10, "limit": 20}), "turn");
+        let read = tool_started_item(
+            "t4",
+            "Read",
+            &json!({"file_path": "/x/y.rs", "offset": 10, "limit": 20}),
+            "turn",
+        );
         assert_eq!(read["type"], "toolCall");
         assert_eq!(read["title"], "Read");
         assert_eq!(read["detail"], "/x/y.rs · lines 10–30");
-        let grep = tool_started_item("t5", "Grep", &json!({"pattern": "TODO", "path": "src"}), "turn");
+        let grep = tool_started_item(
+            "t5",
+            "Grep",
+            &json!({"pattern": "TODO", "path": "src"}),
+            "turn",
+        );
         assert_eq!(grep["title"], "Search");
         assert_eq!(grep["detail"], "TODO in src");
         let todos = tool_started_item(
@@ -382,20 +535,34 @@ mod tests {
             "turn",
         );
         assert_eq!(todos["detail"], "☑ A\n☐ B");
-        let mcp = tool_started_item("t7", "mcp__github__create_issue", &json!({"title": "x"}), "turn");
+        let mcp = tool_started_item(
+            "t7",
+            "mcp__github__create_issue",
+            &json!({"title": "x"}),
+            "turn",
+        );
         assert_eq!(mcp["type"], "mcpToolCall");
         assert_eq!(mcp["server"], "github");
         assert_eq!(mcp["tool"], "create_issue");
         let unknown = tool_started_item("t8", "Skill", &json!({"skill": "graphify"}), "turn");
         assert_eq!(unknown["title"], "Skill");
         assert_eq!(unknown["detail"], "graphify");
-        assert_eq!(tool_completed_item(&unknown, "done", false)["output"], "done");
+        assert_eq!(
+            tool_completed_item(&unknown, "done", false)["output"],
+            "done"
+        );
     }
 
     #[test]
     fn reads_thinking_blocks() {
-        assert_eq!(thinking_text(&json!({"type": "thinking", "thinking": "hmm"})), Some("hmm"));
-        assert_eq!(thinking_text(&json!({"type": "thinking", "thinking": "  "})), None);
+        assert_eq!(
+            thinking_text(&json!({"type": "thinking", "thinking": "hmm"})),
+            Some("hmm")
+        );
+        assert_eq!(
+            thinking_text(&json!({"type": "thinking", "thinking": "  "})),
+            None
+        );
         assert_eq!(thinking_text(&json!({"type": "text", "text": "hi"})), None);
     }
 
@@ -406,7 +573,14 @@ mod tests {
             "cache_creation_input_tokens": 200, "output_tokens": 50
         }))
         .unwrap();
-        assert_eq!(counts, TokenCounts { input: 1210, cached_input: 1000, output: 50 });
+        assert_eq!(
+            counts,
+            TokenCounts {
+                input: 1210,
+                cached_input: 1000,
+                output: 50
+            }
+        );
         let payload = token_usage_payload(counts.add(counts), counts, 200_000);
         assert_eq!(payload["total"]["totalTokens"], 2520);
         assert_eq!(payload["last"]["cachedInputTokens"], 1000);
@@ -418,7 +592,13 @@ mod tests {
     fn prefers_reported_context_window() {
         let usage = json!({"claude-opus-4-1": {"contextWindow": 500000}});
         assert_eq!(context_window("claude-opus-4-1", Some(&usage)), 500_000);
-        assert_eq!(context_window("claude-sonnet-4-6[1m]", None), EXTENDED_CONTEXT_WINDOW);
-        assert_eq!(context_window("claude-sonnet-4-6", None), DEFAULT_CONTEXT_WINDOW);
+        assert_eq!(
+            context_window("claude-sonnet-4-6[1m]", None),
+            EXTENDED_CONTEXT_WINDOW
+        );
+        assert_eq!(
+            context_window("claude-sonnet-4-6", None),
+            DEFAULT_CONTEXT_WINDOW
+        );
     }
 }

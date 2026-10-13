@@ -2,13 +2,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::shared::process_core::tokio_command;
 use base64::Engine as _;
 use serde_json::{json, Value};
-use crate::shared::process_core::{terminate_process, tokio_command};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::backend::events::{AppServerEvent, EventSink};
+use crate::shared::provider_session_core::{
+    ProviderEventSink, ProviderSessionStore, ProviderThread,
+};
 use crate::types::LocalAgentProvider;
 
 mod steps;
@@ -98,12 +101,7 @@ fn denied_permission(line: &str) -> Option<String> {
         .map(|captures| captures[1].to_string())
 }
 
-#[derive(Clone)]
-struct AntigravityThread {
-    thread_id: String,
-    session_id: Option<String>,
-    created_at: i64,
-}
+type AntigravityThread = ProviderThread;
 
 /// What a turn was started with, kept so a permission-blocked turn can be rerun.
 #[derive(Clone, Debug, PartialEq)]
@@ -124,139 +122,134 @@ struct TurnOptions {
 }
 
 pub(crate) struct AntigravityState {
-    threads: Mutex<HashMap<String, HashMap<String, AntigravityThread>>>,
+    threads: Arc<ProviderSessionStore>,
     /// "workspace_id:thread_id" -> child PID for interrupt support
-    running_pids: Mutex<HashMap<String, u32>>,
-    /// "workspace_id:thread_id" -> input of the thread's latest turn
-    last_turns: Mutex<HashMap<String, TurnInput>>,
-    /// Permission retry request id -> (workspace_id, thread_id)
-    pending_retries: Mutex<HashMap<String, (String, String)>>,
+    running_pids: crate::shared::provider_runtime_core::ProviderProcesses,
+    /// Permission retry request id -> exact (workspace_id, thread_id, input)
+    pending_retries: Mutex<HashMap<String, (String, String, TurnInput)>>,
 }
 
 impl AntigravityState {
+    #[cfg(test)]
     pub(crate) fn new() -> Arc<Self> {
+        Self::with_store(ProviderSessionStore::memory())
+    }
+
+    pub(crate) fn load(path: std::path::PathBuf) -> Result<Arc<Self>, String> {
+        Ok(Self::with_store(ProviderSessionStore::load(path)?))
+    }
+
+    fn with_store(threads: Arc<ProviderSessionStore>) -> Arc<Self> {
         Arc::new(Self {
-            threads: Mutex::new(HashMap::new()),
-            running_pids: Mutex::new(HashMap::new()),
-            last_turns: Mutex::new(HashMap::new()),
+            threads,
+            running_pids: crate::shared::provider_runtime_core::ProviderProcesses::default(),
             pending_retries: Mutex::new(HashMap::new()),
         })
     }
 
-    async fn remember_turn(&self, workspace_id: &str, thread_id: &str, input: TurnInput) {
-        self.last_turns
-            .lock()
-            .await
-            .insert(format!("{workspace_id}:{thread_id}"), input);
-    }
-
-    async fn register_retry(&self, workspace_id: &str, thread_id: &str) -> String {
+    async fn register_retry(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+        input: TurnInput,
+    ) -> String {
         let request_id = format!("{ANTIGRAVITY_REQUEST_PREFIX}perm-{}", Uuid::new_v4());
-        self.pending_retries.lock().await.insert(
+        let mut pending = self.pending_retries.lock().await;
+        // Only the latest approval for a thread remains actionable; each entry
+        // owns the exact input denied by that process, never a later turn.
+        pending
+            .retain(|_, (workspace, thread, _)| workspace != workspace_id || thread != thread_id);
+        pending.insert(
             request_id.clone(),
-            (workspace_id.to_string(), thread_id.to_string()),
+            (workspace_id.to_string(), thread_id.to_string(), input),
         );
         request_id
     }
 
     async fn take_retry(&self, request_id: &str) -> Option<(String, String, TurnInput)> {
-        let (workspace_id, thread_id) = self.pending_retries.lock().await.remove(request_id)?;
-        let input = self
-            .last_turns
-            .lock()
+        self.pending_retries.lock().await.remove(request_id)
+    }
+
+    async fn register_pid(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+        pid: u32,
+    ) -> Result<(), String> {
+        self.running_pids
+            .register(format!("{workspace_id}:{thread_id}"), pid)
             .await
-            .get(&format!("{workspace_id}:{thread_id}"))
-            .cloned()?;
-        Some((workspace_id, thread_id, input))
     }
 
-    async fn register_pid(&self, workspace_id: &str, thread_id: &str, pid: u32) {
-        let key = format!("{workspace_id}:{thread_id}");
-        self.running_pids.lock().await.insert(key, pid);
-    }
-
-    async fn deregister_pid(&self, workspace_id: &str, thread_id: &str) {
-        let key = format!("{workspace_id}:{thread_id}");
-        self.running_pids.lock().await.remove(&key);
+    async fn deregister_pid(&self, workspace_id: &str, thread_id: &str, expected_pid: Option<u32>) {
+        self.running_pids
+            .unregister(&format!("{workspace_id}:{thread_id}"), expected_pid)
+            .await;
     }
 
     pub(crate) async fn kill_running_turn(&self, workspace_id: &str, thread_id: &str) {
-        let key = format!("{workspace_id}:{thread_id}");
-        let pid = self.running_pids.lock().await.remove(&key);
-        if let Some(pid) = pid {
-            terminate_process(pid).await;
-        }
+        self.running_pids
+            .interrupt(&format!("{workspace_id}:{thread_id}"))
+            .await;
     }
 
-    pub(crate) async fn new_thread(&self, workspace_id: &str) -> String {
+    pub(crate) async fn shutdown(&self) {
+        self.running_pids.shutdown().await;
+    }
+
+    pub(crate) async fn new_thread(&self, workspace_id: &str) -> Result<String, String> {
         let thread_id = Uuid::new_v4().to_string();
-        let thread = AntigravityThread {
-            thread_id: thread_id.clone(),
-            session_id: None,
-            created_at: now_ms(),
-        };
         self.threads
-            .lock()
-            .await
-            .entry(workspace_id.to_string())
-            .or_default()
-            .insert(thread_id.clone(), thread);
-        thread_id
+            .create_thread(workspace_id, &thread_id, now_ms())?;
+        Ok(thread_id)
     }
 
-    pub(crate) async fn get_session_id(&self, workspace_id: &str, thread_id: &str) -> Option<String> {
-        self.threads
-            .lock()
-            .await
-            .get(workspace_id)?
-            .get(thread_id)?
-            .session_id
-            .clone()
+    pub(crate) async fn get_session_id(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+    ) -> Option<String> {
+        self.threads.thread(workspace_id, thread_id)?.session_id
     }
 
-    pub(crate) async fn set_session_id(&self, workspace_id: &str, thread_id: &str, session_id: String) {
-        let mut threads = self.threads.lock().await;
-        if let Some(workspace_threads) = threads.get_mut(workspace_id) {
-            if let Some(thread) = workspace_threads.get_mut(thread_id) {
-                thread.session_id = Some(session_id);
-            }
-        }
+    pub(crate) async fn set_session_id(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+        session_id: String,
+    ) -> Result<(), String> {
+        self.threads
+            .set_session_id(workspace_id, thread_id, session_id)
     }
 
     pub(crate) async fn list_threads(&self, workspace_id: &str) -> Vec<AntigravityThread> {
-        self.threads
-            .lock()
-            .await
-            .get(workspace_id)
-            .map(|map| map.values().cloned().collect())
-            .unwrap_or_default()
+        self.threads.threads(workspace_id)
     }
 
-    pub(crate) async fn get_thread(&self, workspace_id: &str, thread_id: &str) -> Option<AntigravityThread> {
-        self.threads
-            .lock()
-            .await
-            .get(workspace_id)?
-            .get(thread_id)
-            .cloned()
+    pub(crate) fn set_thread_name(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+        name: String,
+    ) -> Result<Value, String> {
+        self.threads.set_name(workspace_id, thread_id, name)?;
+        Ok(json!({"result": {}}))
     }
 
-    pub(crate) async fn ensure_thread(&self, workspace_id: &str, thread_id: &str) {
-        let mut threads = self.threads.lock().await;
-        threads
-            .entry(workspace_id.to_string())
-            .or_default()
-            .entry(thread_id.to_string())
-            .or_insert_with(|| AntigravityThread {
-                thread_id: thread_id.to_string(),
-                session_id: None,
-                created_at: now_ms(),
-            });
+    pub(crate) async fn ensure_thread(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+    ) -> Result<(), String> {
+        self.threads.require_thread(workspace_id, thread_id)
     }
 }
 
 pub(crate) async fn is_antigravity_mode(app_settings: &Mutex<crate::types::AppSettings>) -> bool {
-    matches!(app_settings.lock().await.local_provider, LocalAgentProvider::Antigravity)
+    matches!(
+        app_settings.lock().await.local_provider,
+        LocalAgentProvider::Antigravity
+    )
 }
 
 pub(crate) fn connect_workspace_antigravity<E: EventSink>(workspace_id: &str, event_sink: E) {
@@ -274,7 +267,7 @@ pub(crate) async fn start_thread_antigravity<E: EventSink>(
     workspace_id: &str,
     event_sink: E,
 ) -> Result<Value, String> {
-    let thread_id = state.new_thread(workspace_id).await;
+    let thread_id = state.new_thread(workspace_id).await?;
     let created_at = now_ms();
 
     event_sink.emit_app_server_event(AppServerEvent {
@@ -313,7 +306,8 @@ pub(crate) async fn list_threads_antigravity(
                 "id": t.thread_id,
                 "status": { "type": "idle" },
                 "createdAt": t.created_at,
-                "preview": null,
+                "preview": t.preview,
+                "name": t.name,
             })
         })
         .collect();
@@ -336,28 +330,13 @@ pub(crate) async fn read_thread_antigravity(
     workspace_id: &str,
     thread_id: &str,
 ) -> Result<Value, String> {
-    let thread = state.get_thread(workspace_id, thread_id).await;
-    let (created_at, session_id) = thread
-        .map(|t| (t.created_at, t.session_id))
-        .unwrap_or_else(|| (now_ms(), None));
-
-    Ok(json!({
-        "result": {
-            "thread": {
-                "id": thread_id,
-                "status": { "type": "idle" },
-                "createdAt": created_at,
-                "preview": null,
-                "sessionId": session_id,
-            },
-            "items": []
-        }
-    }))
+    state.threads.read_response(workspace_id, thread_id)
 }
 
 async fn resolve_antigravity_bin() -> String {
     use crate::shared::provider_setup_core::{resolve_provider_bin, SetupProvider};
-    resolve_provider_bin(SetupProvider::Antigravity).await
+    resolve_provider_bin(SetupProvider::Antigravity)
+        .await
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| SetupProvider::Antigravity.bin().to_string())
 }
@@ -377,9 +356,11 @@ fn data_url_to_temp_file(data_url: &str) -> Option<String> {
     } else {
         "png"
     };
-    let bytes = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .ok()?;
     let path = std::env::temp_dir().join(format!("hopper-img-{}.{}", Uuid::new_v4(), ext));
-    std::fs::write(&path, bytes).ok()?;
+    crate::shared::provider_runtime_core::write_private_temp_file(&path, &bytes).ok()?;
     Some(path.to_string_lossy().into_owned())
 }
 
@@ -399,7 +380,15 @@ pub(crate) async fn send_message_antigravity<E: EventSink + 'static>(
         model_id,
         images,
     };
-    run_turn(state, workspace_id, thread_id, input, TurnOptions::default(), event_sink).await
+    run_turn(
+        state,
+        workspace_id,
+        thread_id,
+        input,
+        TurnOptions::default(),
+        event_sink,
+    )
+    .await
 }
 
 /// Answers a permission-retry prompt: on accept, reruns the blocked turn with
@@ -435,8 +424,11 @@ async fn run_turn<E: EventSink + 'static>(
 ) -> Result<Value, String> {
     let auto_approve = options.allow_all_permissions
         || crate::shared::provider_setup_core::read_preferences()?.antigravity_auto_approve;
-    state.ensure_thread(&workspace_id, &thread_id).await;
-    state.remember_turn(&workspace_id, &thread_id, input.clone()).await;
+    state
+        .threads
+        .require_resumable_for_send(&workspace_id, &thread_id)?;
+    let event_sink = ProviderEventSink::new(event_sink, Arc::clone(&state.threads));
+    let retry_input = input.clone();
     let TurnInput {
         workspace_cwd,
         text,
@@ -446,6 +438,78 @@ async fn run_turn<E: EventSink + 'static>(
 
     let session_id = state.get_session_id(&workspace_id, &thread_id).await;
     let turn_id = Uuid::new_v4().to_string();
+
+    let mut final_text = text.clone();
+    let mut content_blocks = vec![json!({ "type": "text", "text": text })];
+    let mut temp_files = crate::shared::provider_runtime_core::TemporaryFiles::default();
+
+    if let Some(ref image_list) = images {
+        for image in image_list {
+            let file_path = if image.starts_with("data:") {
+                match data_url_to_temp_file(image) {
+                    Some(p) => {
+                        temp_files.track(p.clone());
+                        p
+                    }
+                    None => continue,
+                }
+            } else {
+                image.clone()
+            };
+            final_text.push_str(&format!(" @{}", file_path));
+            content_blocks.push(if image.starts_with("data:") {
+                json!({ "type": "image", "url": image })
+            } else {
+                json!({ "type": "localImage", "path": image })
+            });
+        }
+    }
+
+    let agy_bin = resolve_antigravity_bin().await;
+
+    let mut cmd = tokio_command(&agy_bin);
+    crate::shared::process_core::configure_owned_process(&mut cmd);
+    if let Some(ref sid) = session_id {
+        cmd.arg("--conversation").arg(sid);
+    }
+    let resolved_model = model_id
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("Gemini 3.8 Flash (Medium)");
+    cmd.arg("--model").arg(resolved_model);
+    if auto_approve {
+        cmd.arg("--dangerously-skip-permissions");
+    }
+    cmd.arg("-p").arg(&final_text);
+    if !workspace_cwd.is_empty() {
+        cmd.arg("--add-dir").arg(&workspace_cwd);
+        cmd.current_dir(&workspace_cwd);
+    }
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    // Snapshot before spawning: resumed transcripts already contain earlier
+    // tools/questions, which must not be replayed as this turn's new actions.
+    let transcript_start = session_id.as_deref().and_then(|session| {
+        dirs::home_dir().map(|home| home.join(format!(".gemini/antigravity-cli/brain/{session}/.system_generated/logs/transcript.jsonl")))
+    }).and_then(|path| std::fs::metadata(path).ok()).map(|metadata| metadata.len()).unwrap_or(0);
+
+    let mut child = cmd.spawn().map_err(|e| {
+        format!(
+            "Failed to spawn antigravity (tried '{agy_bin}'). \
+             Make sure the Antigravity CLI is installed: https://antigravity.google/docs/cli-using\n{e}"
+        )
+    })?;
+
+    // Register child PID so kill_running_turn can interrupt it.
+    let child_pid = child.id();
+    if let Some(pid) = child_pid {
+        state.register_pid(&workspace_id, &thread_id, pid).await?;
+    }
+
+    let stdout = child.stdout.take().ok_or("missing stdout")?;
+    let stderr = child.stderr.take().ok_or("missing stderr")?;
 
     event_sink.emit_app_server_event(AppServerEvent {
         workspace_id: workspace_id.clone(),
@@ -468,28 +532,6 @@ async fn run_turn<E: EventSink + 'static>(
             }
         }),
     });
-
-    let mut final_text = text.clone();
-    let mut content_blocks = vec![json!({ "type": "text", "text": text })];
-    let mut temp_files: Vec<String> = Vec::new();
-
-    if let Some(ref image_list) = images {
-        for image in image_list {
-            let file_path = if image.starts_with("data:") {
-                match data_url_to_temp_file(image) {
-                    Some(p) => {
-                        temp_files.push(p.clone());
-                        p
-                    }
-                    None => continue,
-                }
-            } else {
-                image.clone()
-            };
-            final_text.push_str(&format!(" @{}", file_path));
-            content_blocks.push(json!({ "type": "localImage", "path": file_path }));
-        }
-    }
 
     if !options.replay {
         let user_item_id = Uuid::new_v4().to_string();
@@ -515,44 +557,6 @@ async fn run_turn<E: EventSink + 'static>(
         });
     }
 
-    let agy_bin = resolve_antigravity_bin().await;
-
-    let mut cmd = tokio_command(&agy_bin);
-    if let Some(ref sid) = session_id {
-        cmd.arg("--conversation").arg(sid);
-    }
-    let resolved_model = model_id
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or("Gemini 3.8 Flash (Medium)");
-    cmd.arg("--model").arg(resolved_model);
-    if auto_approve {
-        cmd.arg("--dangerously-skip-permissions");
-    }
-    cmd.arg("-p").arg(&final_text);
-    if !workspace_cwd.is_empty() {
-        cmd.arg("--add-dir").arg(&workspace_cwd);
-        cmd.current_dir(&workspace_cwd);
-    }
-    cmd.stdin(std::process::Stdio::null());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-
-    let mut child = cmd.spawn().map_err(|e| {
-        format!(
-            "Failed to spawn antigravity (tried '{agy_bin}'). \
-             Make sure the Antigravity CLI is installed: https://antigravity.google/docs/cli-using\n{e}"
-        )
-    })?;
-
-    // Register child PID so kill_running_turn can interrupt it.
-    if let Some(pid) = child.id() {
-        state.register_pid(&workspace_id, &thread_id, pid).await;
-    }
-
-    let stdout = child.stdout.take().ok_or("missing stdout")?;
-    let stderr = child.stderr.take().ok_or("missing stderr")?;
-    
     let thread_id_clone = thread_id.clone();
     let workspace_id_clone = workspace_id.clone();
     let state_clone = state.clone();
@@ -564,13 +568,12 @@ async fn run_turn<E: EventSink + 'static>(
     let workspace_id_for_deregister = workspace_id.clone();
     let thread_id_for_deregister = thread_id.clone();
 
-    tokio::spawn(async move {
+    let stderr_task = tokio::spawn(async move {
         use tokio::io::AsyncBufReadExt;
         let mut lines = tokio::io::BufReader::new(stderr).lines();
         let mut emitted_error = false;
         let mut prompted_permission = false;
         while let Ok(Some(line)) = lines.next_line().await {
-            eprintln!("[antigravity stderr] {line}");
             if let Some(permission) = denied_permission(&line).filter(|_| !prompted_permission) {
                 prompted_permission = true;
                 let message = format!(
@@ -589,7 +592,7 @@ async fn run_turn<E: EventSink + 'static>(
                     }),
                 });
                 let request_id = state_clone
-                    .register_retry(&workspace_id_clone, &thread_id_clone)
+                    .register_retry(&workspace_id_clone, &thread_id_clone, retry_input.clone())
                     .await;
                 event_sink_clone.emit_app_server_event(AppServerEvent {
                     workspace_id: workspace_id_clone.clone(),
@@ -623,10 +626,21 @@ async fn run_turn<E: EventSink + 'static>(
                 });
             }
             if current_session_clone_for_stderr.is_none() {
-                if let Some(captures) = regex::Regex::new(r"Created conversation ([a-f0-9\-]{36})").unwrap().captures(&line) {
+                if let Some(captures) = regex::Regex::new(r"Created conversation ([a-f0-9\-]{36})")
+                    .unwrap()
+                    .captures(&line)
+                {
                     let sid = captures.get(1).unwrap().as_str().to_string();
                     current_session_clone_for_stderr = Some(sid.clone());
-                    state_clone.set_session_id(&workspace_id_clone, &thread_id_clone, sid.clone()).await;
+                    if let Err(message) = state_clone
+                        .set_session_id(&workspace_id_clone, &thread_id_clone, sid.clone())
+                        .await
+                    {
+                        event_sink_clone.emit_app_server_event(AppServerEvent {
+                            workspace_id: workspace_id_clone.clone(),
+                            message: json!({"method": "error", "params": {"threadId": thread_id_clone, "error": {"message": message}, "willRetry": false}}),
+                        });
+                    }
                 }
             }
         }
@@ -654,11 +668,15 @@ async fn run_turn<E: EventSink + 'static>(
         }
 
         if let Some(session) = sid {
-            let path = dirs::home_dir()
-                .unwrap()
-                .join(format!(".gemini/antigravity-cli/brain/{}/.system_generated/logs/transcript.jsonl", session));
-            
-            let mut pos = 0;
+            let Some(home) = dirs::home_dir() else {
+                return;
+            };
+            let path = home.join(format!(
+                ".gemini/antigravity-cli/brain/{}/.system_generated/logs/transcript.jsonl",
+                session
+            ));
+
+            let mut pos = transcript_start;
             let mut seen_steps = std::collections::HashSet::new();
             let mut pending_questions: Option<Vec<Value>> = None;
             let mut pending_calls = steps::PendingToolCalls::default();
@@ -678,9 +696,12 @@ async fn run_turn<E: EventSink + 'static>(
                             pos += complete as u64;
                             for line in buf[..complete].lines() {
                                 if let Ok(val) = serde_json::from_str::<Value>(line) {
-                                    let step_index = val.get("step_index").and_then(|v| v.as_i64()).unwrap_or(0);
-                                    if !seen_steps.insert(step_index) { continue; }
-                                    
+                                    let step_index =
+                                        val.get("step_index").and_then(|v| v.as_i64()).unwrap_or(0);
+                                    if !seen_steps.insert(step_index) {
+                                        continue;
+                                    }
+
                                     if let Some(t) = val.get("type").and_then(|v| v.as_str()) {
                                         if t == "PLANNER_RESPONSE" {
                                             if let Some(questions) = ask_question_calls(&val) {
@@ -693,54 +714,74 @@ async fn run_turn<E: EventSink + 'static>(
                                                 .filter(|thinking| !thinking.trim().is_empty())
                                             {
                                                 let item_id = format!("reasoning-{}", step_index);
-                                                event_sink_t.emit_app_server_event(AppServerEvent {
-                                                    workspace_id: workspace_id_t.clone(),
-                                                    message: json!({
-                                                        "method": "item/started",
-                                                        "params": {
-                                                            "threadId": thread_id_t,
-                                                            "item": {
-                                                                "type": "reasoning",
-                                                                "id": item_id,
-                                                                "turnId": turn_id_t,
-                                                                "summary": "Thinking...",
-                                                                "content": ""
+                                                event_sink_t.emit_app_server_event(
+                                                    AppServerEvent {
+                                                        workspace_id: workspace_id_t.clone(),
+                                                        message: json!({
+                                                            "method": "item/started",
+                                                            "params": {
+                                                                "threadId": thread_id_t,
+                                                                "item": {
+                                                                    "type": "reasoning",
+                                                                    "id": item_id,
+                                                                    "turnId": turn_id_t,
+                                                                    "summary": "Thinking...",
+                                                                    "content": ""
+                                                                }
                                                             }
-                                                        }
-                                                    }),
-                                                });
-                                                event_sink_t.emit_app_server_event(AppServerEvent {
-                                                    workspace_id: workspace_id_t.clone(),
-                                                    message: json!({
-                                                        "method": "item/reasoning/textDelta",
-                                                        "params": {
-                                                            "threadId": thread_id_t,
-                                                            "itemId": item_id,
-                                                            "delta": thinking
-                                                        }
-                                                    }),
-                                                });
-                                                event_sink_t.emit_app_server_event(AppServerEvent {
-                                                    workspace_id: workspace_id_t.clone(),
-                                                    message: json!({
-                                                        "method": "item/completed",
-                                                        "params": {
-                                                            "threadId": thread_id_t,
-                                                            "item": {
-                                                                "type": "reasoning",
-                                                                "id": item_id,
-                                                                "turnId": turn_id_t,
-                                                                "summary": "Thinking...",
-                                                                "content": thinking
+                                                        }),
+                                                    },
+                                                );
+                                                event_sink_t.emit_app_server_event(
+                                                    AppServerEvent {
+                                                        workspace_id: workspace_id_t.clone(),
+                                                        message: json!({
+                                                            "method": "item/reasoning/textDelta",
+                                                            "params": {
+                                                                "threadId": thread_id_t,
+                                                                "itemId": item_id,
+                                                                "delta": thinking
                                                             }
-                                                        }
-                                                    }),
-                                                });
+                                                        }),
+                                                    },
+                                                );
+                                                event_sink_t.emit_app_server_event(
+                                                    AppServerEvent {
+                                                        workspace_id: workspace_id_t.clone(),
+                                                        message: json!({
+                                                            "method": "item/completed",
+                                                            "params": {
+                                                                "threadId": thread_id_t,
+                                                                "item": {
+                                                                    "type": "reasoning",
+                                                                    "id": item_id,
+                                                                    "turnId": turn_id_t,
+                                                                    "summary": "Thinking...",
+                                                                    "content": thinking
+                                                                }
+                                                            }
+                                                        }),
+                                                    },
+                                                );
                                             }
-                                        } else if !matches!(t, "USER_INPUT" | "CONVERSATION_HISTORY" | "EPHEMERAL_MESSAGE" | "CHECKPOINT" | "SYSTEM_MESSAGE") {
+                                        } else if !matches!(
+                                            t,
+                                            "USER_INPUT"
+                                                | "CONVERSATION_HISTORY"
+                                                | "EPHEMERAL_MESSAGE"
+                                                | "CHECKPOINT"
+                                                | "SYSTEM_MESSAGE"
+                                        ) {
                                             let item_id = format!("tool-{}", step_index);
-                                            let content = val.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                                            let asked = if t == "ASK_QUESTION" { pending_questions.take() } else { None };
+                                            let content = val
+                                                .get("content")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("");
+                                            let asked = if t == "ASK_QUESTION" {
+                                                pending_questions.take()
+                                            } else {
+                                                None
+                                            };
                                             let (started, completed) = match asked.as_ref() {
                                                 Some(questions) => {
                                                     let item = json!({
@@ -761,11 +802,23 @@ async fn run_turn<E: EventSink + 'static>(
                                                 None => {
                                                     let call = pending_calls.take_for_step(t);
                                                     let failed = t == "ERROR_MESSAGE"
-                                                        || val.get("error").is_some_and(|error| !error.is_null());
-                                                    steps::step_items(&item_id, &turn_id_t, t, call.as_ref(), content, failed)
+                                                        || val
+                                                            .get("error")
+                                                            .is_some_and(|error| !error.is_null());
+                                                    steps::step_items(
+                                                        &item_id,
+                                                        &turn_id_t,
+                                                        t,
+                                                        call.as_ref(),
+                                                        content,
+                                                        failed,
+                                                    )
                                                 }
                                             };
-                                            for (method, item) in [("item/started", started), ("item/completed", completed)] {
+                                            for (method, item) in [
+                                                ("item/started", started),
+                                                ("item/completed", completed),
+                                            ] {
                                                 event_sink_t.emit_app_server_event(AppServerEvent {
                                                     workspace_id: workspace_id_t.clone(),
                                                     message: json!({
@@ -830,12 +883,13 @@ async fn run_turn<E: EventSink + 'static>(
         let mut reader = tokio::io::BufReader::new(stdout);
         let mut buffer = [0u8; 128];
         let mut full_text_buf = String::new();
+        let mut decoder = crate::shared::provider_runtime_core::Utf8StreamDecoder::default();
 
         loop {
             match reader.read(&mut buffer).await {
                 Ok(0) => break, // EOF
                 Ok(n) => {
-                    let chunk = String::from_utf8_lossy(&buffer[..n]).to_string();
+                    let chunk = decoder.push(&buffer[..n]);
                     full_text_buf.push_str(&chunk);
 
                     event_sink.emit_app_server_event(AppServerEvent {
@@ -857,9 +911,21 @@ async fn run_turn<E: EventSink + 'static>(
             }
         }
 
+        full_text_buf.push_str(&decoder.finish());
+        let exit_status = child.wait().await;
+        let _ = stderr_task.await;
+        if !matches!(exit_status, Ok(status) if status.success()) {
+            event_sink.emit_app_server_event(AppServerEvent {
+                workspace_id: workspace_id.clone(),
+                message: json!({ "method": "error", "params": {
+                    "threadId": thread_id, "turnId": turn_id,
+                    "error": { "message": "Antigravity exited before successfully completing the turn. Check your provider sign-in and try again." },
+                    "willRetry": false,
+                }}),
+            });
+        }
         turn_finished.store(true, std::sync::atomic::Ordering::SeqCst);
         let full_text = full_text_buf.trim().to_string();
-        eprintln!("[antigravity stdout complete] length: {}", full_text.len());
 
         event_sink.emit_app_server_event(AppServerEvent {
             workspace_id: workspace_id.clone(),
@@ -899,11 +965,14 @@ async fn run_turn<E: EventSink + 'static>(
             }),
         });
 
-        let _ = child.wait().await;
-        state_for_deregister.deregister_pid(&workspace_id_for_deregister, &thread_id_for_deregister).await;
-        for tmp in &temp_files {
-            let _ = std::fs::remove_file(tmp);
-        }
+        state_for_deregister
+            .deregister_pid(
+                &workspace_id_for_deregister,
+                &thread_id_for_deregister,
+                child_pid,
+            )
+            .await;
+        drop(temp_files);
     });
 
     Ok(json!({
@@ -967,8 +1036,18 @@ mod tests {
                     model_id: None,
                     images: None,
                 };
-                state.remember_turn("ws", "thread", input.clone()).await;
-                let request_id = state.register_retry("ws", "thread").await;
+                let old_request = state
+                    .register_retry(
+                        "ws",
+                        "thread",
+                        TurnInput {
+                            text: "earlier turn".into(),
+                            ..input.clone()
+                        },
+                    )
+                    .await;
+                let request_id = state.register_retry("ws", "thread", input.clone()).await;
+                assert!(state.take_retry(&old_request).await.is_none());
                 assert!(request_id.starts_with(ANTIGRAVITY_REQUEST_PREFIX));
                 assert_eq!(
                     state.take_retry(&request_id).await,
@@ -976,6 +1055,66 @@ mod tests {
                 );
                 assert!(state.take_retry(&request_id).await.is_none());
                 assert!(state.take_retry("agy-perm-unknown").await.is_none());
+            });
+    }
+
+    #[test]
+    fn finishing_an_older_turn_keeps_the_new_turn_interruptible() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let state = AntigravityState::new();
+                state.register_pid("ws", "t", 111).await.unwrap();
+                state.register_pid("ws", "t", 222).await.unwrap();
+                state.deregister_pid("ws", "t", Some(111)).await;
+                assert!(state.running_pids.has_pid("ws:t", 222).await);
+            });
+    }
+    #[test]
+    fn saved_threads_resume_with_the_same_provider_session_and_name() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let dir =
+                    std::env::temp_dir().join(format!("hopper-antigravity-{}", Uuid::new_v4()));
+                let path = dir.join("conversations.json");
+                let state = AntigravityState::load(path.clone()).unwrap();
+                let thread = state.new_thread("workspace").await.unwrap();
+                state
+                    .set_session_id("workspace", &thread, "provider-session".into())
+                    .await
+                    .unwrap();
+                state
+                    .set_thread_name("workspace", &thread, "Saved conversation".into())
+                    .unwrap();
+                drop(state);
+                let state = AntigravityState::load(path).unwrap();
+                assert_eq!(
+                    state.get_session_id("workspace", &thread).await.as_deref(),
+                    Some("provider-session")
+                );
+                assert!(state.ensure_thread("workspace", "missing").await.is_err());
+                assert!(state
+                    .ensure_thread("other-workspace", &thread)
+                    .await
+                    .is_err());
+                assert_eq!(
+                    read_thread_antigravity(&state, "workspace", &thread)
+                        .await
+                        .unwrap()["result"]["thread"]["name"],
+                    "Saved conversation"
+                );
+                assert_eq!(
+                    list_threads_antigravity(&state, "workspace").await.unwrap()["result"]["data"]
+                        [0]["id"],
+                    thread
+                );
+                drop(state);
+                std::fs::remove_dir_all(dir).unwrap();
             });
     }
 }

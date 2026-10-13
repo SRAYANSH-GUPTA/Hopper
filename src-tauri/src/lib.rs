@@ -10,8 +10,6 @@ mod antigravity;
 mod asset_protocol;
 mod backend;
 mod claude;
-mod marketplace;
-mod mcp;
 mod codex;
 mod daemon_binary;
 mod dictation;
@@ -20,8 +18,8 @@ mod files;
 mod git;
 mod git_utils;
 mod local_usage;
-mod provider_usage;
-mod provider_setup;
+mod marketplace;
+mod mcp;
 #[cfg(desktop)]
 mod menu;
 #[cfg(not(desktop))]
@@ -29,15 +27,16 @@ mod menu;
 mod menu;
 mod notifications;
 mod prompts;
+mod provider_setup;
+mod provider_usage;
 mod remote_backend;
 mod rules;
 mod settings;
 mod shared;
-mod state;
 mod sidebar_browser;
+mod state;
 mod storage;
 mod tailscale;
-mod web_chat;
 #[cfg(desktop)]
 mod terminal;
 #[cfg(not(desktop))]
@@ -46,6 +45,7 @@ mod terminal;
 mod tray;
 mod types;
 mod utils;
+mod web_chat;
 mod window;
 mod workspaces;
 
@@ -53,21 +53,31 @@ mod workspaces;
 static EXIT_CLEANUP_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 #[cfg(desktop)]
-fn keep_daemon_running_after_close(app_handle: &tauri::AppHandle) -> bool {
+async fn stop_processes_for_exit(app_handle: tauri::AppHandle) {
     let state = app_handle.state::<state::AppState>();
-    tauri::async_runtime::block_on(async {
-        state
-            .app_settings
-            .lock()
-            .await
-            .keep_daemon_running_after_app_close
-    })
-}
-
-#[cfg(desktop)]
-async fn stop_managed_daemons_for_exit(app_handle: tauri::AppHandle) {
-    let state = app_handle.state::<state::AppState>();
-    let _ = tailscale::tailscale_daemon_stop(state).await;
+    // Local sessions are owned by this UI process, independently of whether
+    // the user elected to keep the separately managed daemon available.
+    state.claude_state.shutdown().await;
+    state.antigravity_state.shutdown().await;
+    let sessions: Vec<_> = state
+        .sessions
+        .lock()
+        .await
+        .drain()
+        .map(|(_, session)| session)
+        .collect();
+    for session in sessions {
+        let mut child = session.child.lock().await;
+        shared::process_core::kill_child_process_tree(&mut child).await;
+    }
+    let keep_daemon = state
+        .app_settings
+        .lock()
+        .await
+        .keep_daemon_running_after_app_close;
+    if !keep_daemon {
+        let _ = tailscale::tailscale_daemon_stop(state).await;
+    }
 }
 
 #[tauri::command]
@@ -368,14 +378,12 @@ pub fn run() {
     app.run(|app_handle, event| {
         #[cfg(desktop)]
         if let RunEvent::ExitRequested { api, .. } = event {
-            if !EXIT_CLEANUP_IN_PROGRESS.load(Ordering::SeqCst)
-                && !keep_daemon_running_after_close(app_handle)
-            {
+            if !EXIT_CLEANUP_IN_PROGRESS.load(Ordering::SeqCst) {
                 api.prevent_exit();
                 EXIT_CLEANUP_IN_PROGRESS.store(true, Ordering::SeqCst);
                 let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
-                    stop_managed_daemons_for_exit(app_handle.clone()).await;
+                    stop_processes_for_exit(app_handle.clone()).await;
                     app_handle.exit(0);
                 });
             }

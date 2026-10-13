@@ -4,7 +4,7 @@ use std::sync::Arc;
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{oneshot, Mutex, Semaphore};
 use uuid::Uuid;
 
 use crate::backend::events::{AppServerEvent, EventSink};
@@ -42,51 +42,67 @@ pub(crate) struct ClaudePermissionServer {
     pub(crate) port: u16,
     pub(crate) token: String,
     pending: PendingMap,
+    accept_task: tokio::task::JoinHandle<()>,
 }
 
 impl ClaudePermissionServer {
-    pub(crate) async fn start<E: EventSink>(event_sink: E) -> Arc<Self> {
-        let listener = TcpListener::bind("127.0.0.1:0")
+    pub(crate) async fn start<E: EventSink>(event_sink: E) -> Result<Arc<Self>, String> {
+        Self::start_at("127.0.0.1:0", event_sink).await
+    }
+
+    async fn start_at<E: EventSink>(address: &str, event_sink: E) -> Result<Arc<Self>, String> {
+        let listener = TcpListener::bind(address)
             .await
-            .expect("Failed to bind Claude permission server");
-        let port = listener.local_addr().unwrap().port();
+            .map_err(|error| format!("Cannot start Claude permission server: {error}. Check local network permissions and try again."))?;
+        let port = listener
+            .local_addr()
+            .map_err(|error| error.to_string())?
+            .port();
         let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
         let pending_clone = pending.clone();
         let token = Uuid::new_v4().to_string();
         let server_token = token.clone();
 
-        tokio::spawn(async move {
+        let accept_task = tokio::spawn(async move {
+            let connections = Arc::new(Semaphore::new(64));
             loop {
                 match listener.accept().await {
                     Ok((stream, _)) => {
+                        let Ok(permit) = Arc::clone(&connections).try_acquire_owned() else {
+                            drop(stream);
+                            continue;
+                        };
                         let pending = pending_clone.clone();
                         let sink = event_sink.clone();
-                        tokio::spawn(handle_connection(
-                            stream,
-                            pending,
-                            sink,
-                            server_token.clone(),
-                        ));
+                        let token = server_token.clone();
+                        tokio::spawn(async move {
+                            let _permit = permit;
+                            handle_connection(stream, pending, sink, token).await;
+                        });
                     }
                     Err(e) => {
                         eprintln!("[claude permission server] accept error: {e}");
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                     }
                 }
             }
         });
 
         eprintln!("[claude permission server] started on port {port}");
-        Arc::new(Self {
+        Ok(Arc::new(Self {
             port,
             token,
             pending,
-        })
+            accept_task,
+        }))
     }
 
     /// Called by the Tauri command when the user approves or declines.
     pub(crate) async fn resolve(&self, request_id: &str, approved: bool) {
         let outcome = if approved {
-            ClaudeHookOutcome::Allow { updated_input: None }
+            ClaudeHookOutcome::Allow {
+                updated_input: None,
+            }
         } else {
             ClaudeHookOutcome::Deny {
                 reason: "Declined in Hopper".into(),
@@ -112,6 +128,12 @@ impl ClaudePermissionServer {
             },
         };
         let _ = request.sender.send(outcome);
+    }
+}
+
+impl Drop for ClaudePermissionServer {
+    fn drop(&mut self) {
+        self.accept_task.abort();
     }
 }
 
@@ -186,7 +208,13 @@ pub(crate) fn answered_question_input(tool_input: &Value, answers: &Value) -> Va
                 values
                     .iter()
                     .filter_map(Value::as_str)
-                    .map(|value| value.strip_prefix("user_note:").unwrap_or(value).trim().to_string())
+                    .map(|value| {
+                        value
+                            .strip_prefix("user_note:")
+                            .unwrap_or(value)
+                            .trim()
+                            .to_string()
+                    })
                     .filter(|value| !value.is_empty())
                     .collect()
             })
@@ -261,10 +289,20 @@ async fn handle_connection<E: EventSink>(
     let tool_input = data.get("tool_input").cloned().unwrap_or(json!({}));
 
     if tool_name == ASK_USER_QUESTION_TOOL {
-        let tool_use_id = data.get("tool_use_id").and_then(Value::as_str).unwrap_or("");
-        let outcome =
-            ask_question(&pending, &event_sink, &workspace_id, &thread_id, &turn_id, tool_use_id, tool_input)
-                .await;
+        let tool_use_id = data
+            .get("tool_use_id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let outcome = ask_question(
+            &pending,
+            &event_sink,
+            &workspace_id,
+            &thread_id,
+            &turn_id,
+            tool_use_id,
+            tool_input,
+        )
+        .await;
         let response_body = claude_permission_response(&outcome).to_string();
         let _ = write_http_response(&mut stream, 200, &response_body).await;
         return;
@@ -305,7 +343,14 @@ async fn handle_connection<E: EventSink>(
 
     // Hold the HTTP connection open while waiting for the user's decision.
     // Default to block on timeout for safety.
-    let outcome = wait_for_outcome(&pending, &request_id, rx, APPROVAL_TIMEOUT, "Declined or timed out in Hopper").await;
+    let outcome = wait_for_outcome(
+        &pending,
+        &request_id,
+        rx,
+        APPROVAL_TIMEOUT,
+        "Declined or timed out in Hopper",
+    )
+    .await;
     let response_body = claude_permission_response(&outcome).to_string();
     let _ = write_http_response(&mut stream, 200, &response_body).await;
 }
@@ -330,7 +375,8 @@ async fn ask_question<E: EventSink>(
         .flatten();
     let Some(params) = params else {
         return ClaudeHookOutcome::Deny {
-            reason: "Hopper could not show this question. Ask it in your reply text instead.".into(),
+            reason: "Hopper could not show this question. Ask it in your reply text instead."
+                .into(),
         };
     };
     let request_id = format!("claude-q-{}", Uuid::new_v4());
@@ -350,7 +396,14 @@ async fn ask_question<E: EventSink>(
             "params": params,
         }),
     });
-    wait_for_outcome(pending, &request_id, rx, QUESTION_TIMEOUT, "The user did not answer in Hopper.").await
+    wait_for_outcome(
+        pending,
+        &request_id,
+        rx,
+        QUESTION_TIMEOUT,
+        "The user did not answer in Hopper.",
+    )
+    .await
 }
 
 async fn wait_for_outcome(
@@ -381,7 +434,12 @@ async fn write_http_response(
         body.len(),
         body
     );
-    stream.write_all(response.as_bytes()).await
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        stream.write_all(response.as_bytes()),
+    )
+    .await
+    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "Hook response timed out"))?
 }
 
 async fn read_request(stream: &mut TcpStream) -> Result<(String, String), String> {
@@ -440,6 +498,26 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_listener_returns_an_error_without_panicking() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let (tx, _) = tokio::sync::mpsc::unbounded_channel();
+                let error = ClaudePermissionServer::start_at(
+                    &listener.local_addr().unwrap().to_string(),
+                    TestSink(tx),
+                )
+                .await
+                .err()
+                .expect("port is already occupied");
+                assert!(error.contains("Cannot start Claude permission server"));
+            });
+    }
+
+    #[test]
     fn authenticates_and_routes_claude_approval_requests() {
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -447,7 +525,7 @@ mod tests {
             .unwrap()
             .block_on(async {
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-                let server = ClaudePermissionServer::start(TestSink(tx)).await;
+                let server = ClaudePermissionServer::start(TestSink(tx)).await.unwrap();
                 let settings = crate::shared::provider_setup_core::claude_hook_settings(
                     server.port,
                     &server.token,
@@ -508,7 +586,8 @@ mod tests {
 
     #[test]
     fn maps_ask_user_question_to_question_card_params() {
-        let params = question_request_params(&ask_input(), "thread-1", "turn-1", "tool-abc").unwrap();
+        let params =
+            question_request_params(&ask_input(), "thread-1", "turn-1", "tool-abc").unwrap();
         assert_eq!(params["threadId"], "thread-1");
         assert_eq!(params["itemId"], "tool-abc");
         let questions = params["questions"].as_array().unwrap();
@@ -542,7 +621,7 @@ mod tests {
             .unwrap()
             .block_on(async {
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-                let server = ClaudePermissionServer::start(TestSink(tx)).await;
+                let server = ClaudePermissionServer::start(TestSink(tx)).await.unwrap();
                 let settings = crate::shared::provider_setup_core::claude_hook_settings(
                     server.port, &server.token, "ws", "thread-9", "turn-3",
                 );

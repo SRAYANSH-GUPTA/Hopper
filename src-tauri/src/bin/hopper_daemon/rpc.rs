@@ -151,6 +151,11 @@ pub(super) async fn handle_rpc_request(
     params: Value,
     client_version: String,
 ) -> Result<Value, String> {
+    shared::provider_runtime_core::guard_remote_provider_method(
+        &state.app_settings.lock().await.local_provider,
+        method,
+        &params,
+    )?;
     dispatcher::dispatch_rpc_request(state, method, &params, &client_version).await
 }
 

@@ -61,8 +61,10 @@ impl AppState {
             sessions: Mutex::new(HashMap::new()),
             terminal_sessions: Mutex::new(HashMap::new()),
             remote_backend: Mutex::new(None),
-            claude_state: ClaudeState::new(),
-            antigravity_state: AntigravityState::new(),
+            claude_state: ClaudeState::load(data_dir.join("claude-conversations.json"))?,
+            antigravity_state: AntigravityState::load(
+                data_dir.join("antigravity-conversations.json"),
+            )?,
             storage_path,
             settings_path,
             app_settings: Mutex::new(app_settings),

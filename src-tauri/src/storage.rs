@@ -203,7 +203,7 @@ fn storage_read_error(path: &Path, error: impl std::fmt::Display) -> String {
 // Both the desktop app and daemon use this persistence path. Write and sync a
 // private sibling first so a failed write or interrupted process cannot truncate
 // the last complete settings/workspace snapshot.
-fn write_storage_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_storage_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())

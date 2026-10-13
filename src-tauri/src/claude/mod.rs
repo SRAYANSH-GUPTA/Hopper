@@ -7,13 +7,16 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 
+use crate::shared::process_core::tokio_command;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use crate::shared::process_core::{terminate_process, tokio_command};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::backend::events::{AppServerEvent, EventSink};
+use crate::shared::provider_session_core::{
+    ProviderEventSink, ProviderSessionStore, ProviderThread,
+};
 use crate::types::LocalAgentProvider;
 use permission_server::ClaudePermissionServer;
 use stream_items::{
@@ -28,30 +31,34 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-#[derive(Clone)]
-struct ClaudeThread {
-    thread_id: String,
-    session_id: Option<String>,
-    created_at: i64,
-}
+type ClaudeThread = ProviderThread;
 
 pub(crate) struct ClaudeState {
     /// workspace_id -> (thread_id -> ClaudeThread)
-    threads: Mutex<HashMap<String, HashMap<String, ClaudeThread>>>,
+    threads: Arc<ProviderSessionStore>,
     /// Shared permission server — started lazily on first Claude invocation.
     permission_server: Mutex<Option<Arc<ClaudePermissionServer>>>,
     /// "workspace_id:thread_id" -> child PID for interrupt support
-    running_pids: Mutex<HashMap<String, u32>>,
+    running_pids: crate::shared::provider_runtime_core::ProviderProcesses,
     /// "workspace_id:thread_id" -> tokens used by the thread's finished turns
     token_totals: Mutex<HashMap<String, TokenCounts>>,
 }
 
 impl ClaudeState {
+    #[cfg(test)]
     pub(crate) fn new() -> Arc<Self> {
+        Self::with_store(ProviderSessionStore::memory())
+    }
+
+    pub(crate) fn load(path: std::path::PathBuf) -> Result<Arc<Self>, String> {
+        Ok(Self::with_store(ProviderSessionStore::load(path)?))
+    }
+
+    fn with_store(threads: Arc<ProviderSessionStore>) -> Arc<Self> {
         Arc::new(Self {
-            threads: Mutex::new(HashMap::new()),
+            threads,
             permission_server: Mutex::new(None),
-            running_pids: Mutex::new(HashMap::new()),
+            running_pids: crate::shared::provider_runtime_core::ProviderProcesses::default(),
             token_totals: Mutex::new(HashMap::new()),
         })
     }
@@ -72,88 +79,78 @@ impl ClaudeState {
             .insert(format!("{workspace_id}:{thread_id}"), total);
     }
 
-    async fn register_pid(&self, workspace_id: &str, thread_id: &str, pid: u32) {
-        let key = format!("{workspace_id}:{thread_id}");
-        self.running_pids.lock().await.insert(key, pid);
+    async fn register_pid(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+        pid: u32,
+    ) -> Result<(), String> {
+        self.running_pids
+            .register(format!("{workspace_id}:{thread_id}"), pid)
+            .await
     }
 
-    async fn deregister_pid(&self, workspace_id: &str, thread_id: &str) {
-        let key = format!("{workspace_id}:{thread_id}");
-        self.running_pids.lock().await.remove(&key);
+    async fn deregister_pid(&self, workspace_id: &str, thread_id: &str, expected_pid: Option<u32>) {
+        self.running_pids
+            .unregister(&format!("{workspace_id}:{thread_id}"), expected_pid)
+            .await;
     }
 
     pub(crate) async fn kill_running_turn(&self, workspace_id: &str, thread_id: &str) {
-        let key = format!("{workspace_id}:{thread_id}");
-        let pid = self.running_pids.lock().await.remove(&key);
-        if let Some(pid) = pid {
-            terminate_process(pid).await;
-        }
+        self.running_pids
+            .interrupt(&format!("{workspace_id}:{thread_id}"))
+            .await;
     }
 
-    pub(crate) async fn new_thread(&self, workspace_id: &str) -> String {
+    pub(crate) async fn shutdown(&self) {
+        self.running_pids.shutdown().await;
+    }
+
+    pub(crate) async fn new_thread(&self, workspace_id: &str) -> Result<String, String> {
         let thread_id = Uuid::new_v4().to_string();
-        let thread = ClaudeThread {
-            thread_id: thread_id.clone(),
-            session_id: None,
-            created_at: now_ms(),
-        };
         self.threads
-            .lock()
-            .await
-            .entry(workspace_id.to_string())
-            .or_default()
-            .insert(thread_id.clone(), thread);
-        thread_id
+            .create_thread(workspace_id, &thread_id, now_ms())?;
+        Ok(thread_id)
     }
 
-    pub(crate) async fn get_session_id(&self, workspace_id: &str, thread_id: &str) -> Option<String> {
-        self.threads
-            .lock()
-            .await
-            .get(workspace_id)?
-            .get(thread_id)?
-            .session_id
-            .clone()
+    pub(crate) async fn get_session_id(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+    ) -> Option<String> {
+        self.threads.thread(workspace_id, thread_id)?.session_id
     }
 
-    pub(crate) async fn set_session_id(&self, workspace_id: &str, thread_id: &str, session_id: String) {
-        let mut threads = self.threads.lock().await;
-        if let Some(workspace_threads) = threads.get_mut(workspace_id) {
-            if let Some(thread) = workspace_threads.get_mut(thread_id) {
-                thread.session_id = Some(session_id);
-            }
-        }
+    pub(crate) async fn set_session_id(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+        session_id: String,
+    ) -> Result<(), String> {
+        self.threads
+            .set_session_id(workspace_id, thread_id, session_id)
     }
 
     pub(crate) async fn list_threads(&self, workspace_id: &str) -> Vec<ClaudeThread> {
-        self.threads
-            .lock()
-            .await
-            .get(workspace_id)
-            .map(|map| map.values().cloned().collect())
-            .unwrap_or_default()
+        self.threads.threads(workspace_id)
     }
 
-    pub(crate) async fn get_thread(&self, workspace_id: &str, thread_id: &str) -> Option<ClaudeThread> {
-        self.threads
-            .lock()
-            .await
-            .get(workspace_id)?
-            .get(thread_id)
-            .cloned()
+    pub(crate) fn set_thread_name(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+        name: String,
+    ) -> Result<Value, String> {
+        self.threads.set_name(workspace_id, thread_id, name)?;
+        Ok(json!({"result": {}}))
     }
 
-    pub(crate) async fn ensure_thread(&self, workspace_id: &str, thread_id: &str) {
-        let mut threads = self.threads.lock().await;
-        threads
-            .entry(workspace_id.to_string())
-            .or_default()
-            .entry(thread_id.to_string())
-            .or_insert_with(|| ClaudeThread {
-                thread_id: thread_id.to_string(),
-                session_id: None,
-                created_at: now_ms(),
-            });
+    pub(crate) async fn ensure_thread(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+    ) -> Result<(), String> {
+        self.threads.require_thread(workspace_id, thread_id)
     }
 
     /// Start the permission server if it isn't running yet and return its port.
@@ -161,14 +158,14 @@ impl ClaudeState {
     pub(crate) async fn get_or_start_permission_server<E: EventSink>(
         &self,
         event_sink: E,
-    ) -> Arc<ClaudePermissionServer> {
+    ) -> Result<Arc<ClaudePermissionServer>, String> {
         let mut guard = self.permission_server.lock().await;
         if let Some(srv) = guard.as_ref() {
-            return Arc::clone(srv);
+            return Ok(Arc::clone(srv));
         }
-        let srv = ClaudePermissionServer::start(event_sink).await;
+        let srv = ClaudePermissionServer::start(event_sink).await?;
         *guard = Some(Arc::clone(&srv));
-        srv
+        Ok(srv)
     }
 
     /// Resolve a pending permission request by request_id.
@@ -233,7 +230,10 @@ fn read_catalog_from_cache() -> Result<Value, String> {
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if !name.starts_with("published-") || !name.ends_with(".json") || name == "published-floor.json" {
+        if !name.starts_with("published-")
+            || !name.ends_with(".json")
+            || name == "published-floor.json"
+        {
             continue;
         }
         let bytes = match std::fs::read(entry.path()) {
@@ -245,7 +245,10 @@ fn read_catalog_from_cache() -> Result<Value, String> {
             Err(_) => continue,
         };
         let stale_at = wrapper.get("staleAt").and_then(Value::as_i64).unwrap_or(0);
-        let fetched_at = wrapper.get("fetchedAt").and_then(Value::as_i64).unwrap_or(0);
+        let fetched_at = wrapper
+            .get("fetchedAt")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
 
         // Prefer most recently fetched; accept expired catalogs as last resort.
         let doc_bytes = match wrapper.get("documentBytes").and_then(Value::as_str) {
@@ -263,7 +266,11 @@ fn read_catalog_from_cache() -> Result<Value, String> {
 
         // Prefer non-expired entries; among equals pick the freshest.
         let is_fresh = stale_at > now_ms;
-        let score = if is_fresh { fetched_at + i64::MAX / 2 } else { fetched_at };
+        let score = if is_fresh {
+            fetched_at + i64::MAX / 2
+        } else {
+            fetched_at
+        };
         if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
             best = Some((score, catalog));
         }
@@ -322,7 +329,10 @@ fn extract_models_from_catalog(catalog: &Value) -> Vec<Value> {
 }
 
 pub(crate) async fn is_claude_mode(app_settings: &Mutex<crate::types::AppSettings>) -> bool {
-    matches!(app_settings.lock().await.local_provider, LocalAgentProvider::Claude)
+    matches!(
+        app_settings.lock().await.local_provider,
+        LocalAgentProvider::Claude
+    )
 }
 
 pub(crate) fn connect_workspace_claude<E: EventSink>(workspace_id: &str, event_sink: E) {
@@ -340,7 +350,7 @@ pub(crate) async fn start_thread_claude<E: EventSink>(
     workspace_id: &str,
     event_sink: E,
 ) -> Result<Value, String> {
-    let thread_id = claude_state.new_thread(workspace_id).await;
+    let thread_id = claude_state.new_thread(workspace_id).await?;
     let created_at = now_ms();
 
     event_sink.emit_app_server_event(AppServerEvent {
@@ -379,7 +389,8 @@ pub(crate) async fn list_threads_claude(
                 "id": t.thread_id,
                 "status": { "type": "idle" },
                 "createdAt": t.created_at,
-                "preview": null,
+                "preview": t.preview,
+                "name": t.name,
             })
         })
         .collect();
@@ -403,23 +414,7 @@ pub(crate) async fn read_thread_claude(
     workspace_id: &str,
     thread_id: &str,
 ) -> Result<Value, String> {
-    let thread = claude_state.get_thread(workspace_id, thread_id).await;
-    let (created_at, session_id) = thread
-        .map(|t| (t.created_at, t.session_id))
-        .unwrap_or_else(|| (now_ms(), None));
-
-    Ok(json!({
-        "result": {
-            "thread": {
-                "id": thread_id,
-                "status": { "type": "idle" },
-                "createdAt": created_at,
-                "preview": null,
-                "sessionId": session_id,
-            },
-            "items": []
-        }
-    }))
+    claude_state.threads.read_response(workspace_id, thread_id)
 }
 
 /// Resolve the absolute path of the `claude` binary by asking a login shell.
@@ -427,7 +422,8 @@ pub(crate) async fn read_thread_claude(
 /// npm global bins, etc.), so a bare `Command::new("claude")` silently fails.
 async fn resolve_claude_bin() -> String {
     use crate::shared::provider_setup_core::{resolve_provider_bin, SetupProvider};
-    resolve_provider_bin(SetupProvider::Claude).await
+    resolve_provider_bin(SetupProvider::Claude)
+        .await
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| SetupProvider::Claude.bin().to_string())
 }
@@ -450,9 +446,11 @@ fn data_url_to_temp_file(data_url: &str) -> Option<String> {
     } else {
         "png"
     };
-    let bytes = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .ok()?;
     let path = std::env::temp_dir().join(format!("hopper-claude-img-{}.{}", Uuid::new_v4(), ext));
-    std::fs::write(&path, bytes).ok()?;
+    crate::shared::provider_runtime_core::write_private_temp_file(&path, &bytes).ok()?;
     Some(path.to_string_lossy().into_owned())
 }
 
@@ -468,10 +466,113 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     event_sink: E,
 ) -> Result<Value, String> {
     // Ensure thread exists in state
-    claude_state.ensure_thread(&workspace_id, &thread_id).await;
+    claude_state
+        .threads
+        .require_resumable_for_send(&workspace_id, &thread_id)?;
+    let event_sink = ProviderEventSink::new(event_sink, Arc::clone(&claude_state.threads));
 
     let session_id = claude_state.get_session_id(&workspace_id, &thread_id).await;
     let turn_id = Uuid::new_v4().to_string();
+
+    // Resolve image paths (convert data URLs to temp files).
+    let mut temp_files = crate::shared::provider_runtime_core::TemporaryFiles::default();
+    let mut image_paths: Vec<String> = Vec::new();
+    if let Some(ref image_list) = images {
+        for image in image_list {
+            let path = if image.starts_with("data:") {
+                match data_url_to_temp_file(image) {
+                    Some(p) => {
+                        temp_files.track(p.clone());
+                        p
+                    }
+                    None => continue,
+                }
+            } else {
+                image.clone()
+            };
+            image_paths.push(path);
+        }
+    }
+
+    // Build content blocks for the user message event.
+    let mut content_blocks: Vec<Value> = vec![json!({ "type": "text", "text": text })];
+    for image in images.as_deref().unwrap_or_default() {
+        content_blocks.push(if image.starts_with("data:") {
+            json!({ "type": "image", "url": image })
+        } else {
+            json!({ "type": "localImage", "path": image })
+        });
+    }
+
+    // Start (or reuse) the permission server so hooks can route approvals to the UI.
+    let permission_server = claude_state
+        .get_or_start_permission_server(event_sink.clone())
+        .await?;
+
+    // Resolve the claude binary (GUI apps don't have the full shell PATH)
+    let claude_bin = resolve_claude_bin().await;
+
+    // Build claude command
+    let mut cmd = tokio_command(&claude_bin);
+    crate::shared::process_core::configure_owned_process(&mut cmd);
+    cmd.arg("--output-format").arg("stream-json");
+    // --verbose is required by the CLI when using --output-format=stream-json with -p.
+    // In stream-json mode all output (including verbose info) is valid JSON lines.
+    cmd.arg("--verbose");
+    if let Some(ref sid) = session_id {
+        cmd.arg("--resume").arg(sid);
+    }
+    let resolved_model = model_id
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("claude-sonnet-4-6");
+    cmd.arg("--model").arg(resolved_model);
+    if let Some(effort) = effort.filter(|value| !value.trim().is_empty()) {
+        cmd.arg("--effort").arg(effort);
+    }
+    cmd.arg("-p").arg(&text);
+    for path in &image_paths {
+        cmd.arg("--image").arg(path);
+    }
+    if !workspace_cwd.is_empty() {
+        cmd.current_dir(&workspace_cwd);
+    }
+    cmd.arg("--settings").arg(
+        crate::shared::provider_setup_core::claude_hook_settings(
+            permission_server.port,
+            &permission_server.token,
+            &workspace_id,
+            &thread_id,
+            &turn_id,
+        )
+        .to_string(),
+    );
+    // Older Hopper hooks stay dormant; leave the user's global file untouched.
+    cmd.env_remove("CODEXMONITOR_PERMISSION_PORT");
+    cmd.env_remove("CODEXMONITOR_WORKSPACE_ID");
+    // Close stdin — without this, claude may block waiting for input.
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::piped());
+    // Pipe stderr so we can consume it — leaving it un-read can deadlock
+    // the process when the OS pipe buffer fills up.
+    cmd.stderr(std::process::Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| {
+        format!(
+            "Failed to spawn claude (tried '{claude_bin}'). \
+             Make sure claude-code is installed: npm install -g @anthropic-ai/claude-code\n{e}"
+        )
+    })?;
+
+    // Register child PID so kill_running_turn can interrupt it.
+    let child_pid = child.id();
+    if let Some(pid) = child_pid {
+        claude_state
+            .register_pid(&workspace_id, &thread_id, pid)
+            .await?;
+    }
+
+    let stdout = child.stdout.take().ok_or("missing stdout")?;
 
     // Emit thread/status/changed to running
     event_sink.emit_app_server_event(AppServerEvent {
@@ -497,32 +598,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         }),
     });
 
-    // Resolve image paths (convert data URLs to temp files).
-    let mut temp_files: Vec<String> = Vec::new();
-    let mut image_paths: Vec<String> = Vec::new();
-    if let Some(ref image_list) = images {
-        for image in image_list {
-            let path = if image.starts_with("data:") {
-                match data_url_to_temp_file(image) {
-                    Some(p) => {
-                        temp_files.push(p.clone());
-                        p
-                    }
-                    None => continue,
-                }
-            } else {
-                image.clone()
-            };
-            image_paths.push(path);
-        }
-    }
-
-    // Build content blocks for the user message event.
-    let mut content_blocks: Vec<Value> = vec![json!({ "type": "text", "text": text })];
-    for path in &image_paths {
-        content_blocks.push(json!({ "type": "localImage", "path": path }));
-    }
-
     // Emit user message item
     let user_item_id = Uuid::new_v4().to_string();
     let user_item = json!({
@@ -546,73 +621,13 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         }),
     });
 
-    // Start (or reuse) the permission server so hooks can route approvals to the UI.
-    let permission_server = claude_state
-        .get_or_start_permission_server(event_sink.clone())
-        .await;
-
-    // Resolve the claude binary (GUI apps don't have the full shell PATH)
-    let claude_bin = resolve_claude_bin().await;
-
-    // Build claude command
-    let mut cmd = tokio_command(&claude_bin);
-    cmd.arg("--output-format").arg("stream-json");
-    // --verbose is required by the CLI when using --output-format=stream-json with -p.
-    // In stream-json mode all output (including verbose info) is valid JSON lines.
-    cmd.arg("--verbose");
-    if let Some(ref sid) = session_id {
-        cmd.arg("--resume").arg(sid);
-    }
-    let resolved_model = model_id
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or("claude-sonnet-4-6");
-    cmd.arg("--model").arg(resolved_model);
-    if let Some(effort) = effort.filter(|value| !value.trim().is_empty()) {
-        cmd.arg("--effort").arg(effort);
-    }
-    cmd.arg("-p").arg(&text);
-    for path in &image_paths {
-        cmd.arg("--image").arg(path);
-    }
-    if !workspace_cwd.is_empty() {
-        cmd.current_dir(&workspace_cwd);
-    }
-    cmd.arg("--settings").arg(crate::shared::provider_setup_core::claude_hook_settings(
-        permission_server.port, &permission_server.token, &workspace_id, &thread_id, &turn_id,
-    ).to_string());
-    // Older Hopper hooks stay dormant; leave the user's global file untouched.
-    cmd.env_remove("CODEXMONITOR_PERMISSION_PORT");
-    cmd.env_remove("CODEXMONITOR_WORKSPACE_ID");
-    // Close stdin — without this, claude may block waiting for input.
-    cmd.stdin(std::process::Stdio::null());
-    cmd.stdout(std::process::Stdio::piped());
-    // Pipe stderr so we can consume it — leaving it un-read can deadlock
-    // the process when the OS pipe buffer fills up.
-    cmd.stderr(std::process::Stdio::piped());
-
-    let mut child = cmd.spawn().map_err(|e| {
-        format!(
-            "Failed to spawn claude (tried '{claude_bin}'). \
-             Make sure claude-code is installed: npm install -g @anthropic-ai/claude-code\n{e}"
-        )
-    })?;
-
-    // Register child PID so kill_running_turn can interrupt it.
-    if let Some(pid) = child.id() {
-        claude_state.register_pid(&workspace_id, &thread_id, pid).await;
-    }
-
-    let stdout = child.stdout.take().ok_or("missing stdout")?;
     // Consume stderr in a background task to prevent pipe buffer deadlock.
-    // Errors are printed to the host process stderr for debugging.
+    // Provider result/error events report failures without logging private output.
     if let Some(stderr) = child.stderr.take() {
         tokio::spawn(async move {
             use tokio::io::AsyncBufReadExt;
             let mut lines = tokio::io::BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                eprintln!("[claude stderr] {line}");
-            }
+            while let Ok(Some(_)) = lines.next_line().await {}
         });
     }
 
@@ -624,7 +639,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
 
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
-        let mut new_session_id: Option<String> = None;
         // tool_use_id -> started item (completed with the tool_result)
         let mut tool_items: HashMap<String, Value> = HashMap::new();
         // Thinking blocks already shown, keyed "message_id:block_index"
@@ -647,14 +661,10 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                 continue;
             }
 
-            // Log every raw line for debugging — visible in the terminal that
-            // launched the Tauri app.
-            eprintln!("[claude stdout] {line}");
-
             let event: Value = match serde_json::from_str(&line) {
                 Ok(v) => v,
                 Err(e) => {
-                    eprintln!("[claude parse error] {e}: {line}");
+                    eprintln!("[claude parse error] {e}");
                     continue;
                 }
             };
@@ -664,7 +674,15 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
             match event_type {
                 "system" => {
                     if let Some(sid) = event.get("session_id").and_then(|s| s.as_str()) {
-                        new_session_id = Some(sid.to_string());
+                        if let Err(message) = claude_state
+                            .set_session_id(&workspace_id, &thread_id, sid.to_string())
+                            .await
+                        {
+                            event_sink.emit_app_server_event(AppServerEvent {
+                                workspace_id: workspace_id.clone(),
+                                message: json!({"method": "error", "params": {"threadId": thread_id, "error": {"message": message}, "willRetry": false}}),
+                            });
+                        }
                     }
                 }
                 "assistant" => {
@@ -724,15 +742,21 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                         .and_then(|id| id.as_str())
                                         .unwrap_or("")
                                         .to_string();
-                                    if !tool_use_id.is_empty() && !tool_items.contains_key(&tool_use_id) {
+                                    if !tool_use_id.is_empty()
+                                        && !tool_items.contains_key(&tool_use_id)
+                                    {
                                         let tool_name = block
                                             .get("name")
                                             .and_then(|n| n.as_str())
                                             .unwrap_or("unknown");
                                         let tool_input =
                                             block.get("input").cloned().unwrap_or(json!({}));
-                                        let item =
-                                            tool_started_item(&tool_use_id, tool_name, &tool_input, &turn_id);
+                                        let item = tool_started_item(
+                                            &tool_use_id,
+                                            tool_name,
+                                            &tool_input,
+                                            &turn_id,
+                                        );
                                         tool_items.insert(tool_use_id.clone(), item.clone());
                                         event_sink.emit_app_server_event(AppServerEvent {
                                             workspace_id: workspace_id.clone(),
@@ -801,9 +825,11 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
 
                         // Emit only the *new* portion of text as a delta so the frontend
                         // can incrementally append rather than re-render the whole message.
-                        let prev_len = message_texts.get(&msg_id).map(|s| s.len()).unwrap_or(0);
-                        if full_text.len() > prev_len {
-                            let delta = full_text[prev_len..].to_string();
+                        if let Some(delta) = stream_items::update_text_snapshot(
+                            &mut message_texts,
+                            &msg_id,
+                            full_text,
+                        ) {
                             event_sink.emit_app_server_event(AppServerEvent {
                                 workspace_id: workspace_id.clone(),
                                 message: json!({
@@ -815,7 +841,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                     }
                                 }),
                             });
-                            message_texts.insert(msg_id.clone(), full_text);
                         }
                     }
                 }
@@ -865,7 +890,9 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                                 };
                                 // Complete the started item so the row keeps its tool and target.
                                 let item = match tool_items.get(&tool_use_id) {
-                                    Some(started) => tool_completed_item(started, &output, is_error),
+                                    Some(started) => {
+                                        tool_completed_item(started, &output, is_error)
+                                    }
                                     None => json!({
                                         "type": "commandExecution",
                                         "id": format!("tool-{tool_use_id}"),
@@ -888,9 +915,27 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                 }
                 "result" => {
                     if let Some(sid) = event.get("session_id").and_then(|s| s.as_str()) {
-                        new_session_id = Some(sid.to_string());
+                        if let Err(message) = claude_state
+                            .set_session_id(&workspace_id, &thread_id, sid.to_string())
+                            .await
+                        {
+                            event_sink.emit_app_server_event(AppServerEvent {
+                                workspace_id: workspace_id.clone(),
+                                message: json!({"method": "error", "params": {"threadId": thread_id, "error": {"message": message}, "willRetry": false}}),
+                            });
+                        }
                     }
                     turn_completed = true;
+
+                    if let Some(message) = stream_items::result_error(&event) {
+                        event_sink.emit_app_server_event(AppServerEvent {
+                            workspace_id: workspace_id.clone(),
+                            message: json!({ "method": "error", "params": {
+                                "threadId": thread_id, "turnId": turn_id,
+                                "error": { "message": message }, "willRetry": false,
+                            }}),
+                        });
+                    }
 
                     // The result carries the turn's authoritative usage and the real context window.
                     context_window_tokens = context_window(&usage_model, event.get("modelUsage"));
@@ -904,7 +949,9 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                         });
                     let last = last_usage.unwrap_or(turn_total);
                     let thread_total = prior_tokens.add(turn_total);
-                    claude_state.set_token_total(&workspace_id, &thread_id, thread_total).await;
+                    claude_state
+                        .set_token_total(&workspace_id, &thread_id, thread_total)
+                        .await;
                     event_sink.emit_app_server_event(AppServerEvent {
                         workspace_id: workspace_id.clone(),
                         message: json!({
@@ -1027,7 +1074,11 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         // (crash, unexpected output, etc.), always mark the turn as done so
         // the UI doesn't stay stuck on "Working..." forever.
         if !turn_completed {
-            eprintln!("[claude] process exited without result event — emitting fallback completion");
+            event_sink.emit_app_server_event(AppServerEvent {
+                workspace_id: workspace_id.clone(),
+                message: json!({"method": "error", "params": {"threadId": thread_id, "turnId": turn_id,
+                    "error": {"message": "Claude exited without completing the turn. Check your provider sign-in and try again."}, "willRetry": false}}),
+            });
             // Complete any partially-streamed messages.
             for (msg_id, text) in &message_texts {
                 event_sink.emit_app_server_event(AppServerEvent {
@@ -1069,17 +1120,13 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
             });
         }
 
-        if let Some(sid) = new_session_id {
-            claude_state.set_session_id(&workspace_id, &thread_id, sid).await;
-        }
-
         let _ = child.wait().await;
-        claude_state.deregister_pid(&workspace_id, &thread_id).await;
+        claude_state
+            .deregister_pid(&workspace_id, &thread_id, child_pid)
+            .await;
 
         // Clean up temp files created from data URL images.
-        for path in &temp_files {
-            let _ = std::fs::remove_file(path);
-        }
+        drop(temp_files);
     });
 
     Ok(json!({
@@ -1090,4 +1137,54 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
             }
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saved_threads_resume_with_the_same_provider_session_and_name() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let dir = std::env::temp_dir().join(format!("hopper-claude-{}", Uuid::new_v4()));
+                let path = dir.join("conversations.json");
+                let state = ClaudeState::load(path.clone()).unwrap();
+                let thread = state.new_thread("workspace").await.unwrap();
+                state
+                    .set_session_id("workspace", &thread, "provider-session".into())
+                    .await
+                    .unwrap();
+                state
+                    .set_thread_name("workspace", &thread, "Saved conversation".into())
+                    .unwrap();
+                drop(state);
+                let state = ClaudeState::load(path).unwrap();
+                assert_eq!(
+                    state.get_session_id("workspace", &thread).await.as_deref(),
+                    Some("provider-session")
+                );
+                assert!(state.ensure_thread("workspace", "missing").await.is_err());
+                assert!(state
+                    .ensure_thread("other-workspace", &thread)
+                    .await
+                    .is_err());
+                assert_eq!(
+                    read_thread_claude(&state, "workspace", &thread)
+                        .await
+                        .unwrap()["result"]["thread"]["name"],
+                    "Saved conversation"
+                );
+                assert_eq!(
+                    list_threads_claude(&state, "workspace").await.unwrap()["result"]["data"][0]
+                        ["id"],
+                    thread
+                );
+                drop(state);
+                std::fs::remove_dir_all(dir).unwrap();
+            });
+    }
 }

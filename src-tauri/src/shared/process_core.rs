@@ -31,6 +31,15 @@ pub(crate) fn std_command(program: impl AsRef<OsStr>) -> std::process::Command {
     command
 }
 
+pub(crate) fn configure_owned_process(command: &mut Command) {
+    command.kill_on_drop(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.as_std_mut().process_group(0);
+    }
+}
+
 /// Stop a registered provider process. Windows also terminates its children;
 /// Unix preserves the providers' existing graceful SIGTERM behavior.
 pub(crate) async fn terminate_process(pid: u32) {
@@ -40,7 +49,9 @@ pub(crate) async fn terminate_process(pid: u32) {
     }
     #[cfg(unix)]
     unsafe {
-        libc::kill(pid as libc::pid_t, libc::SIGTERM);
+        let pid = pid as libc::pid_t;
+        let target = if libc::getpgid(pid) == pid { -pid } else { pid };
+        libc::kill(target, libc::SIGTERM);
     }
     #[cfg(windows)]
     {
@@ -54,6 +65,20 @@ pub(crate) async fn terminate_process(pid: u32) {
             .status()
             .await;
     }
+}
+
+pub(crate) async fn kill_registered_process_tree(pid: u32) {
+    if pid == 0 || pid > i32::MAX as u32 {
+        return;
+    }
+    #[cfg(unix)]
+    unsafe {
+        let pid = pid as libc::pid_t;
+        let target = if libc::getpgid(pid) == pid { -pid } else { pid };
+        libc::kill(target, libc::SIGKILL);
+    }
+    #[cfg(windows)]
+    terminate_process(pid).await;
 }
 
 pub(crate) async fn kill_child_process_tree(child: &mut Child) {

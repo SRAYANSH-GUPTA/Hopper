@@ -1,6 +1,6 @@
 # Provider setup
 
-Hopper displays **Connect your coding agents** on first launch. It is also available under **Settings → Codex**. Setup runs on the machine executing the agents: the desktop for local mode, or the connected daemon host for remote mode.
+Hopper displays **Connect your coding agents** on first launch. It is also available under **Settings → Codex**. Setup runs on the machine executing the agents: the desktop for local mode, or the connected daemon host for remote mode. Claude Code and Antigravity conversations require local mode. Remote conversations currently support Codex only; selecting another provider produces an actionable error. Installing a provider on a daemon host does not enable remote conversation support for it.
 
 ## New installations
 
@@ -33,9 +33,15 @@ Hopper does not copy account tokens, personal settings, shell profiles, or proje
 
 Claude approvals use a session-only HTTP PreToolUse hook supplied through `--settings`, without Python, curl, or writes to `~/.claude/settings.json`. The hook calls a loopback endpoint authenticated with a per-process token. Legacy Hopper shell hooks remain inactive because their environment variables are removed from the child process. Existing user configuration files remain intact.
 
-Antigravity permission bypass is **on by default**: the **Allow Antigravity to run tools without asking** setting adds `--dangerously-skip-permissions` to every agy run. With it turned off, agy's headless mode auto-denies tools that need permission; Hopper then shows an error naming the blocked permission and an approval toast whose **Allow & retry** reruns that turn once with permissions allowed (never automatically, even in full-access mode).
+Antigravity permission bypass is **off by default**. Existing explicitly saved preferences are preserved. Enabling **Allow Antigravity to run tools without asking** adds `--dangerously-skip-permissions` to every agy run. With it turned off, agy's headless mode auto-denies tools that need permission; Hopper then shows an error naming the blocked permission and an approval toast whose **Allow & retry** reruns that turn once with permissions allowed (never automatically, even in full-access mode).
 
 Claude's `AskUserQuestion` calls are shown as an inline question card instead of a permission toast; the answers return to the running turn as the tool's `updatedInput`. agy cannot pause for answers in headless mode, so its questions appear in the same card and the answer is sent as the next message in that conversation.
+
+## Conversation recovery
+
+Local Claude and Antigravity conversations are saved separately as `claude-conversations.json` and `antigravity-conversations.json` in Hopper's app data directory. Each file preserves workspace and thread identity, provider session IDs, names, and completed conversation items. An interrupted turn is shown as interrupted after restart. A streaming item that had not completed before a crash may be missing. Local image attachments still need their source files; pasted image data is stored with the conversation.
+
+Writes use private atomic snapshots. Only one Hopper app instance can hold a provider history file open; a second instance receives a lock error instead of overwriting newer history. Corrupt or incompatible files produce an error containing their path and are never silently replaced. Each provider history file has a 128 MiB limit; reaching it reports a save error and blocks further turns until the file is backed up and reduced. No conversation is automatically pruned. Disk failures retain pending updates in memory and retry when another turn is requested after access is restored. Back up the files before manual repairs. Threads without a saved provider session cannot recover context that was never persisted; Hopper requires a new conversation instead of silently resuming with no context.
 
 ## Terminal fallback
 

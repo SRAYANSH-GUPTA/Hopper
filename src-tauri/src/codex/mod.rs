@@ -8,10 +8,10 @@ pub(crate) mod args;
 pub(crate) mod config;
 pub(crate) mod home;
 
+use crate::antigravity;
 use crate::backend::app_server::spawn_workspace_session as spawn_workspace_session_inner;
 pub(crate) use crate::backend::app_server::WorkspaceSession;
 use crate::backend::events::AppServerEvent;
-use crate::antigravity;
 use crate::claude;
 use crate::event_sink::TauriEventSink;
 use crate::remote_backend;
@@ -97,7 +97,12 @@ pub(crate) async fn start_thread(
 
     if antigravity::is_antigravity_mode(&state.app_settings).await {
         let event_sink = TauriEventSink::new(app.clone());
-        return antigravity::start_thread_antigravity(&state.antigravity_state, &workspace_id, event_sink).await;
+        return antigravity::start_thread_antigravity(
+            &state.antigravity_state,
+            &workspace_id,
+            event_sink,
+        )
+        .await;
     }
 
     codex_core::start_thread_core(&state.sessions, &state.workspaces, workspace_id).await
@@ -125,7 +130,12 @@ pub(crate) async fn resume_thread(
     }
 
     if antigravity::is_antigravity_mode(&state.app_settings).await {
-        return antigravity::read_thread_antigravity(&state.antigravity_state, &workspace_id, &thread_id).await;
+        return antigravity::read_thread_antigravity(
+            &state.antigravity_state,
+            &workspace_id,
+            &thread_id,
+        )
+        .await;
     }
 
     codex_core::resume_thread_core(&state.sessions, workspace_id, thread_id).await
@@ -153,7 +163,12 @@ pub(crate) async fn read_thread(
     }
 
     if antigravity::is_antigravity_mode(&state.app_settings).await {
-        return antigravity::read_thread_antigravity(&state.antigravity_state, &workspace_id, &thread_id).await;
+        return antigravity::read_thread_antigravity(
+            &state.antigravity_state,
+            &workspace_id,
+            &thread_id,
+        )
+        .await;
     }
 
     codex_core::read_thread_core(&state.sessions, workspace_id, thread_id).await
@@ -283,7 +298,15 @@ pub(crate) async fn list_threads(
     let mut next_cursor = Value::Null;
 
     // 1. Fetch Codex threads
-    match codex_core::list_threads_core(&state.sessions, workspace_id.clone(), cursor.clone(), limit, sort_key.clone()).await {
+    match codex_core::list_threads_core(
+        &state.sessions,
+        workspace_id.clone(),
+        cursor.clone(),
+        limit,
+        sort_key.clone(),
+    )
+    .await
+    {
         Ok(codex_val) => {
             let result = codex_val.get("result").unwrap_or(&codex_val);
             if let Some(data) = result.get("data").and_then(|d| d.as_array()) {
@@ -351,9 +374,17 @@ pub(crate) async fn list_threads(
     all_threads.sort_by(|a, b| {
         let get_ts = |t: &Value| {
             if is_created_sort {
-                t.get("createdAt").or_else(|| t.get("created_at")).and_then(|v| v.as_i64()).unwrap_or(0)
+                t.get("createdAt")
+                    .or_else(|| t.get("created_at"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0)
             } else {
-                t.get("updatedAt").or_else(|| t.get("updated_at")).or_else(|| t.get("createdAt")).or_else(|| t.get("created_at")).and_then(|v| v.as_i64()).unwrap_or(0)
+                t.get("updatedAt")
+                    .or_else(|| t.get("updated_at"))
+                    .or_else(|| t.get("createdAt"))
+                    .or_else(|| t.get("created_at"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0)
             }
         };
         let ts_a = get_ts(a);
@@ -448,6 +479,16 @@ pub(crate) async fn set_thread_name(
         .await;
     }
 
+    if crate::claude::is_claude_mode(&state.app_settings).await {
+        return state
+            .claude_state
+            .set_thread_name(&workspace_id, &thread_id, name);
+    }
+    if crate::antigravity::is_antigravity_mode(&state.app_settings).await {
+        return state
+            .antigravity_state
+            .set_thread_name(&workspace_id, &thread_id, name);
+    }
     codex_core::set_thread_name_core(&state.sessions, workspace_id, thread_id, name).await
 }
 
@@ -656,12 +697,18 @@ pub(crate) async fn turn_interrupt(
     }
 
     if claude::is_claude_mode(&state.app_settings).await {
-        state.claude_state.kill_running_turn(&workspace_id, &thread_id).await;
+        state
+            .claude_state
+            .kill_running_turn(&workspace_id, &thread_id)
+            .await;
         return Ok(json!({ "result": "ok" }));
     }
 
     if antigravity::is_antigravity_mode(&state.app_settings).await {
-        state.antigravity_state.kill_running_turn(&workspace_id, &thread_id).await;
+        state
+            .antigravity_state
+            .kill_running_turn(&workspace_id, &thread_id)
+            .await;
         return Ok(json!({ "result": "ok" }));
     }
 
@@ -692,14 +739,7 @@ pub(crate) async fn start_review(
         .await;
     }
 
-    codex_core::start_review_core(
-        &state.sessions,
-        workspace_id,
-        thread_id,
-        target,
-        delivery,
-    )
-    .await
+    codex_core::start_review_core(&state.sessions, workspace_id, thread_id, target, delivery).await
 }
 
 #[tauri::command]
@@ -729,13 +769,7 @@ pub(crate) async fn model_list(
         &state.sessions,
         &state.app_settings,
         |entry, default_bin, codex_args, codex_home| {
-            spawn_workspace_session(
-                entry,
-                default_bin,
-                codex_args,
-                app.clone(),
-                codex_home,
-            )
+            spawn_workspace_session(entry, default_bin, codex_args, app.clone(), codex_home)
         },
     )
     .await?;
@@ -1068,7 +1102,10 @@ pub(crate) async fn respond_to_server_request(
                 state.claude_state.resolve_question(id_str, answers).await;
             } else {
                 let approved = result.get("decision").and_then(|d| d.as_str()) == Some("accept");
-                state.claude_state.resolve_permission(id_str, approved).await;
+                state
+                    .claude_state
+                    .resolve_permission(id_str, approved)
+                    .await;
             }
             return Ok(());
         }
