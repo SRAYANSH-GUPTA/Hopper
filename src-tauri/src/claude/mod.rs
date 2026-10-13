@@ -1,3 +1,4 @@
+mod input;
 pub(crate) mod permission_server;
 mod stream_items;
 
@@ -5,9 +6,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use base64::Engine;
-
 use crate::shared::process_core::tokio_command;
+use base64::Engine;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex;
@@ -428,32 +428,6 @@ async fn resolve_claude_bin() -> String {
         .unwrap_or_else(|| SetupProvider::Claude.bin().to_string())
 }
 
-fn data_url_to_temp_file(data_url: &str) -> Option<String> {
-    let rest = data_url.strip_prefix("data:")?;
-    let semi = rest.find(';')?;
-    let header = &rest[..semi];
-    let after_semi = &rest[semi + 1..];
-    let comma = after_semi.find(',')?;
-    let data = &after_semi[comma + 1..];
-    let ext = if header.contains("image/png") {
-        "png"
-    } else if header.contains("image/jpeg") || header.contains("image/jpg") {
-        "jpg"
-    } else if header.contains("image/gif") {
-        "gif"
-    } else if header.contains("image/webp") {
-        "webp"
-    } else {
-        "png"
-    };
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(data)
-        .ok()?;
-    let path = std::env::temp_dir().join(format!("hopper-claude-img-{}.{}", Uuid::new_v4(), ext));
-    crate::shared::provider_runtime_core::write_private_temp_file(&path, &bytes).ok()?;
-    Some(path.to_string_lossy().into_owned())
-}
-
 pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     claude_state: Arc<ClaudeState>,
     workspace_id: String,
@@ -474,25 +448,11 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     let session_id = claude_state.get_session_id(&workspace_id, &thread_id).await;
     let turn_id = Uuid::new_v4().to_string();
 
-    // Resolve image paths (convert data URLs to temp files).
-    let mut temp_files = crate::shared::provider_runtime_core::TemporaryFiles::default();
-    let mut image_paths: Vec<String> = Vec::new();
-    if let Some(ref image_list) = images {
-        for image in image_list {
-            let path = if image.starts_with("data:") {
-                match data_url_to_temp_file(image) {
-                    Some(p) => {
-                        temp_files.track(p.clone());
-                        p
-                    }
-                    None => continue,
-                }
-            } else {
-                image.clone()
-            };
-            image_paths.push(path);
-        }
-    }
+    let image_input = images
+        .as_deref()
+        .filter(|images| !images.is_empty())
+        .map(|images| input::image_prompt(&text, images))
+        .transpose()?;
 
     // Build content blocks for the user message event.
     let mut content_blocks: Vec<Value> = vec![json!({ "type": "text", "text": text })];
@@ -530,9 +490,11 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     if let Some(effort) = effort.filter(|value| !value.trim().is_empty()) {
         cmd.arg("--effort").arg(effort);
     }
-    cmd.arg("-p").arg(&text);
-    for path in &image_paths {
-        cmd.arg("--image").arg(path);
+    cmd.arg("-p");
+    if image_input.is_some() {
+        cmd.arg("--input-format").arg("stream-json");
+    } else {
+        cmd.arg(&text);
     }
     if !workspace_cwd.is_empty() {
         cmd.current_dir(&workspace_cwd);
@@ -550,8 +512,11 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     // Older Hopper hooks stay dormant; leave the user's global file untouched.
     cmd.env_remove("CODEXMONITOR_PERMISSION_PORT");
     cmd.env_remove("CODEXMONITOR_WORKSPACE_ID");
-    // Close stdin — without this, claude may block waiting for input.
-    cmd.stdin(std::process::Stdio::null());
+    cmd.stdin(if image_input.is_some() {
+        std::process::Stdio::piped()
+    } else {
+        std::process::Stdio::null()
+    });
     cmd.stdout(std::process::Stdio::piped());
     // Pipe stderr so we can consume it — leaving it un-read can deadlock
     // the process when the OS pipe buffer fills up.
@@ -572,6 +537,14 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
             .await?;
     }
 
+    if let Some(bytes) = image_input {
+        if let Err(error) = input::write_prompt(&mut child, &bytes, Duration::from_secs(10)).await {
+            claude_state
+                .deregister_pid(&workspace_id, &thread_id, child_pid)
+                .await;
+            return Err(error);
+        }
+    }
     let stdout = child.stdout.take().ok_or("missing stdout")?;
 
     // Emit thread/status/changed to running
@@ -1124,9 +1097,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         claude_state
             .deregister_pid(&workspace_id, &thread_id, child_pid)
             .await;
-
-        // Clean up temp files created from data URL images.
-        drop(temp_files);
     });
 
     Ok(json!({

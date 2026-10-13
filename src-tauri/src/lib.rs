@@ -51,6 +51,8 @@ mod workspaces;
 
 #[cfg(desktop)]
 static EXIT_CLEANUP_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+#[cfg(desktop)]
+static EXIT_CLEANUP_COMPLETE: AtomicBool = AtomicBool::new(false);
 
 #[cfg(desktop)]
 async fn stop_processes_for_exit(app_handle: tauri::AppHandle) {
@@ -378,12 +380,15 @@ pub fn run() {
     app.run(|app_handle, event| {
         #[cfg(desktop)]
         if let RunEvent::ExitRequested { api, .. } = event {
-            if !EXIT_CLEANUP_IN_PROGRESS.load(Ordering::SeqCst) {
-                api.prevent_exit();
-                EXIT_CLEANUP_IN_PROGRESS.store(true, Ordering::SeqCst);
+            if EXIT_CLEANUP_COMPLETE.load(Ordering::SeqCst) {
+                return;
+            }
+            api.prevent_exit();
+            if !EXIT_CLEANUP_IN_PROGRESS.swap(true, Ordering::SeqCst) {
                 let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
                     stop_processes_for_exit(app_handle.clone()).await;
+                    EXIT_CLEANUP_COMPLETE.store(true, Ordering::SeqCst);
                     app_handle.exit(0);
                 });
             }

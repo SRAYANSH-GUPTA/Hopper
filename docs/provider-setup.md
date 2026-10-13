@@ -35,6 +35,8 @@ Claude approvals use a session-only HTTP PreToolUse hook supplied through `--set
 
 Antigravity permission bypass is **off by default**. Existing explicitly saved preferences are preserved. Enabling **Allow Antigravity to run tools without asking** adds `--dangerously-skip-permissions` to every agy run. With it turned off, agy's headless mode auto-denies tools that need permission; Hopper then shows an error naming the blocked permission and an approval toast whose **Allow & retry** reruns that turn once with permissions allowed (never automatically, even in full-access mode).
 
+Claude image attachments use stream-json input. Attach up to eight PNG, JPEG, GIF, or WebP images, each at most 5 MiB and totaling at most 20 MiB per message. Unsupported or unreadable attachments fail before a turn starts.
+
 Claude's `AskUserQuestion` calls are shown as an inline question card instead of a permission toast; the answers return to the running turn as the tool's `updatedInput`. agy cannot pause for answers in headless mode, so its questions appear in the same card and the answer is sent as the next message in that conversation.
 
 ## Conversation recovery

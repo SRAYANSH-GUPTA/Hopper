@@ -44,18 +44,20 @@ pub(crate) struct ProviderSessionStore {
     path: Option<PathBuf>,
     data: Mutex<StoreData>,
     write_error: Mutex<Option<String>>,
-    _lock: Option<std::fs::File>,
+    _lock: Option<HistoryLock>,
 }
 
-impl Drop for ProviderSessionStore {
+struct HistoryLock(std::fs::File);
+
+impl Drop for HistoryLock {
     fn drop(&mut self) {
         #[cfg(unix)]
-        if let Some(file) = &self._lock {
+        {
             use std::os::fd::AsRawFd;
-            // A concurrent fork can briefly inherit the descriptor before its
-            // close-on-exec runs. Explicitly release our finished store's lock.
+            // Release even when loading fails: a concurrent fork can briefly
+            // inherit the descriptor before its close-on-exec runs.
             unsafe {
-                libc::flock(file.as_raw_fd(), libc::LOCK_UN);
+                libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
             }
         }
     }
@@ -389,7 +391,7 @@ impl ProviderSessionStore {
     }
 }
 
-fn lock_store(path: &std::path::Path) -> Result<std::fs::File, String> {
+fn lock_store(path: &std::path::Path) -> Result<HistoryLock, String> {
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -418,7 +420,7 @@ fn lock_store(path: &std::path::Path) -> Result<std::fs::File, String> {
             return Err(format!("Cannot lock provider conversations at {}: {}. Another Hopper instance may be using this history; close it before restarting.", path.display(), std::io::Error::last_os_error()));
         }
     }
-    Ok(file)
+    Ok(HistoryLock(file))
 }
 
 fn encode_history(data: &StoreData, limit: usize) -> Result<Vec<u8>, String> {
