@@ -192,17 +192,6 @@
   background: rgba(192, 246, 106, 0.28);
 }
 
-/* Home is full-screen — sidebar removed from DOM, collapse its grid column */
-.app.show-home {
-  grid-template-columns: 1fr !important;
-}
-
-/* Hide window chrome elements on home for true full-screen feel */
-.app.show-home .drag-strip,
-.app.show-home .titlebar-controls {
-  display: none !important;
-}
-
 .home-genz-corner-text {
   position: absolute;
   bottom: clamp(20px, 4vw, 40px);

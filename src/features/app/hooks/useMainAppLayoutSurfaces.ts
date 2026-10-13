@@ -416,6 +416,7 @@ function buildPrimarySurface({
       usageShowRemaining: appSettings.usageShowRemaining,
       activeProviderLabel: PROVIDER_MAP.get(appSettings.localProvider ?? DEFAULT_PROVIDER_ID)?.label ?? "Codex",
       webChatTransfer,
+      onOpenSettings: sidebarHandlers.onOpenSettings,
       onAddWorkspace: handleAddWorkspace,
       onSelectHome: sidebarHandlers.onSelectHome,
       onSelectWorkspace: sidebarHandlers.onSelectWorkspace,

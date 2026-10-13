@@ -17,6 +17,7 @@ import Folders from "lucide-react/dist/esm/icons/folders";
 import ListChecks from "lucide-react/dist/esm/icons/list-checks";
 import Store from "lucide-react/dist/esm/icons/store";
 import Plug from "lucide-react/dist/esm/icons/plug";
+import Settings from "lucide-react/dist/esm/icons/settings";
 import { MarketplaceView } from "../../marketplace/components/MarketplaceView";
 import { McpView } from "../../mcp/components/McpView";
 import { AiWebView, type AssistantTransfer } from "../../ai-web/components/AiWebView";
@@ -139,7 +140,7 @@ type SidebarProps = {
   usageShowRemaining: boolean;
   activeProviderLabel: string;
   webChatTransfer?: AssistantTransfer;
-  // onOpenSettings: () => void;
+  onOpenSettings: () => void;
   onAddWorkspace: () => void;
   onSelectHome: () => void;
   onSelectWorkspace: (id: string) => void;
@@ -211,7 +212,7 @@ export const Sidebar = memo(function Sidebar({
   usageShowRemaining,
   activeProviderLabel,
   webChatTransfer,
-  // onOpenSettings,
+  onOpenSettings,
   onAddWorkspace,
   onSelectHome,
   onSelectWorkspace,
@@ -1181,11 +1182,18 @@ export const Sidebar = memo(function Sidebar({
         activeProviderLabel={activeProviderLabel}
         localUsageSnapshot={localUsageSnapshot}
         isLoadingLocalUsage={isLoadingLocalUsage}
-        // onOpenSettings={onOpenSettings}
       />
           </>
         )
         }
+        <button
+          type="button"
+          className="sidebar-labeled-button sidebar-bottom-settings-btn"
+          onClick={onOpenSettings}
+        >
+          <Settings size={16} aria-hidden />
+          <span>Settings</span>
+        </button>
       </div>
     </aside>
   );

@@ -70,6 +70,22 @@ const baseProps = {
 };
 
 describe("Sidebar", () => {
+  it("opens settings from explorer and source control", () => {
+    const onOpenSettings = vi.fn();
+    render(<Sidebar
+      {...baseProps}
+      activeProviderLabel="Codex"
+      onOpenSettings={onOpenSettings}
+      gitPanelNode={<div>Source control panel</div>}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(onOpenSettings).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Source Control" }));
+    expect(screen.getByText("Source control panel")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(onOpenSettings).toHaveBeenCalledTimes(2);
+  });
+
   it("shows recent threads above collapsed projects and updates their activity order", () => {
     const project = { id: "project", name: "Project", path: "/tmp/project", connected: true, settings: { sidebarCollapsed: true } };
     const tree = { ...project, id: "tree", name: "Worktree", kind: "worktree" as const, parentId: "project" };

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { TabletLayout } from "./TabletLayout";
 
 afterEach(cleanup);
@@ -23,5 +23,29 @@ it("keeps projects closed until requested and returns to content from navigation
   fireEvent.click(screen.getByRole("button", { name: "Chats" }));
   expect(screen.queryByText("Project list")).toBeNull();
   expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-expanded")).toBe("false");
+  expect(screen.getByText("Home content").closest("section")?.hidden).toBe(false);
+});
+
+it("keeps workspace and settings actions reachable from the home projects toggle", () => {
+  const onSelectWorkspace = vi.fn();
+  const onOpenSettings = vi.fn();
+  render(<TabletLayout
+    tabletNavNode={<button>Chats</button>}
+    approvalToastsNode={null} updateToastNode={null} errorToastsNode={null}
+    homeNode={<div>Home content</div>} showHome showWorkspace={false}
+    sidebarNode={<aside>
+      <button onClick={onSelectWorkspace}>Existing workspace</button>
+      <button onClick={onOpenSettings}>Settings</button>
+    </aside>} tabletTab="codex"
+    onSidebarResizeStart={() => {}} topbarLeftNode={null}
+    messagesNode={null} composerNode={null} gitDiffPanelNode={null}
+    gitDiffViewerNode={null} debugPanelNode={null}
+  />);
+  fireEvent.click(screen.getByRole("button", { name: "Projects" }));
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  expect(onOpenSettings).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Existing workspace" }));
+  expect(onSelectWorkspace).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Close projects" }));
   expect(screen.getByText("Home content").closest("section")?.hidden).toBe(false);
 });

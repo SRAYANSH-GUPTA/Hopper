@@ -136,16 +136,14 @@ export function DesktopLayout({
 
   return (
     <>
-      {!showHome && sidebarNode}
-      {!showHome && (
-        <div
-          className="sidebar-resizer"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          onMouseDown={onSidebarResizeStart}
-        />
-      )}
+      {sidebarNode}
+      <div
+        className="sidebar-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        onMouseDown={onSidebarResizeStart}
+      />
 
       <section className="main main-no-right-panel">
         {updateToastNode}
