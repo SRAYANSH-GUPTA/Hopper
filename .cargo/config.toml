@@ -1,0 +1,12 @@
+[env]
+# whisper-rs forwards GGML_* to CMake. Host CPU tuning produces binaries that
+# can crash with illegal instructions on older Linux machines and Intel Macs.
+# GGML_NATIVE=OFF alone enables optional x86 instructions in whisper.cpp, so
+# explicitly keep the portable baseline. Local developers may override these.
+GGML_NATIVE = "OFF"
+GGML_SSE42 = "OFF"
+GGML_AVX = "OFF"
+GGML_AVX2 = "OFF"
+GGML_FMA = "OFF"
+GGML_F16C = "OFF"
+GGML_BMI2 = "OFF"

@@ -4,6 +4,22 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 #[test]
+fn privileged_capabilities_only_target_application_webviews() {
+    let capabilities: Value = serde_json::from_str(include_str!("../capabilities/default.json"))
+        .expect("capabilities must be valid JSON");
+    for capability in capabilities["capabilities"].as_array().unwrap() {
+        // Window selectors also grant privileges to embedded remote child views.
+        assert!(capability.get("windows").is_none());
+        assert!(capability.get("remote").is_none());
+        let webviews = capability["webviews"].as_array().unwrap();
+        assert!(!webviews.is_empty());
+        for webview in webviews {
+            assert!(matches!(webview.as_str(), Some("main" | "about")));
+        }
+    }
+}
+
+#[test]
 fn macos_private_api_feature_matches_config() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let config_path = manifest_dir.join("tauri.conf.json");

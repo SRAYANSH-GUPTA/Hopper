@@ -3,8 +3,8 @@
   "capabilities": [
     {
       "identifier": "desktop-default",
-      "description": "Capability for desktop windows",
-      "windows": ["main", "about"],
+      "description": "Capability for trusted desktop application webviews",
+      "webviews": ["main", "about"],
       "platforms": ["macOS", "windows", "linux"],
       "permissions": [
         "core:default",
@@ -31,8 +31,8 @@
     },
     {
       "identifier": "mobile-default",
-      "description": "Capability for mobile main window",
-      "windows": ["main"],
+      "description": "Capability for the trusted mobile application webview",
+      "webviews": ["main"],
       "platforms": ["iOS", "android"],
       "permissions": [
         "core:default",
