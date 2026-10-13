@@ -1,9 +1,9 @@
 export const STORAGE_KEY_PENDING_POST_UPDATE_VERSION =
   "hopper.pendingPostUpdateVersion";
 const GITHUB_RELEASES_API_BASE =
-  "https://api.github.com/repos/Dimillian/Hopper/releases";
+  "https://api.github.com/repos/SRAYANSH-GUPTA/Hopper/releases";
 const GITHUB_RELEASES_WEB_BASE =
-  "https://github.com/Dimillian/Hopper/releases";
+  "https://github.com/SRAYANSH-GUPTA/Hopper/releases";
 
 type GitHubReleaseResponse = {
   tag_name?: string;
