@@ -783,6 +783,38 @@ export async function providerUsageOutput(
   return invoke("provider_usage_output", payload);
 }
 
+export type ClaudePluginScope = "user" | "project" | "local";
+export type ClaudePlugin = {
+  id: string;
+  name: string;
+  marketplace: string | null;
+  version: string | null;
+  scope: string;
+  enabled: boolean | null;
+  projectPath: string | null;
+  canModify: boolean;
+};
+export type ClaudePluginsResult = { plugins: ClaudePlugin[] };
+export type ClaudePluginActionInput = {
+  workspaceId?: string | null;
+  action: "enable" | "disable" | "install" | "uninstall";
+  plugin: string;
+  scope: ClaudePluginScope;
+};
+
+export function claudePluginsList(workspaceId?: string | null) {
+  return invoke<ClaudePluginsResult>("claude_plugins_list", {
+    workspaceId: workspaceId ?? null,
+  });
+}
+
+export function claudePluginAction(input: ClaudePluginActionInput) {
+  return invoke<{ message: string }>("claude_plugin_action", {
+    ...input,
+    workspaceId: input.workspaceId ?? null,
+  });
+}
+
 export async function getModelList(workspaceId: string) {
   return invoke<any>("model_list", { workspaceId });
 }

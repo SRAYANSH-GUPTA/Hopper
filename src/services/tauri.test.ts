@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import * as notification from "@tauri-apps/plugin-notification";
 import {
+  claudePluginsList,
+  claudePluginAction,
   getProviderSetupStatus,
   runProviderSetupAction,
   saveProviderSetup,
@@ -80,6 +82,45 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 }));
 
 describe("tauri invoke wrappers", () => {
+  it("lists Claude plugins with an optional workspace context", async () => {
+    vi.mocked(invoke).mockResolvedValue({ plugins: [] });
+    await expect(claudePluginsList("workspace-1")).resolves.toEqual({ plugins: [] });
+    expect(invoke).toHaveBeenLastCalledWith("claude_plugins_list", {
+      workspaceId: "workspace-1",
+    });
+    await claudePluginsList();
+    expect(invoke).toHaveBeenLastCalledWith("claude_plugins_list", { workspaceId: null });
+  });
+
+  it("forwards explicit Claude plugin action and scope without broadening the request", async () => {
+    vi.mocked(invoke).mockResolvedValue({ message: "Enabled" });
+    await expect(
+      claudePluginAction({
+        workspaceId: "workspace-1",
+        plugin: "review@team",
+        action: "enable",
+        scope: "local",
+      }),
+    ).resolves.toEqual({ message: "Enabled" });
+    expect(invoke).toHaveBeenLastCalledWith("claude_plugin_action", {
+      workspaceId: "workspace-1",
+      plugin: "review@team",
+      action: "enable",
+      scope: "local",
+    });
+    await claudePluginAction({
+      plugin: "review@team",
+      action: "uninstall",
+      scope: "user",
+    });
+    expect(invoke).toHaveBeenLastCalledWith("claude_plugin_action", {
+      workspaceId: null,
+      plugin: "review@team",
+      action: "uninstall",
+      scope: "user",
+    });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     const invokeMock = vi.mocked(invoke);

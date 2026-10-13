@@ -176,6 +176,7 @@ fn can_retry_after_disconnect(method: &str) -> bool {
             | "list_threads"
             | "local_usage_snapshot"
             | "provider_usage_output"
+            | "claude_plugins_list"
             | "list_workspace_files"
             | "list_workspaces"
             | "model_list"
@@ -274,6 +275,8 @@ mod tests {
         assert!(can_retry_after_disconnect("resume_thread"));
         assert!(can_retry_after_disconnect("list_threads"));
         assert!(can_retry_after_disconnect("local_usage_snapshot"));
+        assert!(can_retry_after_disconnect("claude_plugins_list"));
+        assert!(!can_retry_after_disconnect("claude_plugin_action"));
         assert!(!can_retry_after_disconnect("send_user_message"));
         assert!(!can_retry_after_disconnect("start_thread"));
         assert!(!can_retry_after_disconnect("remove_workspace"));

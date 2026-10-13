@@ -10,6 +10,7 @@ mod antigravity;
 mod asset_protocol;
 mod backend;
 mod claude;
+mod claude_plugins;
 mod codex;
 mod daemon_binary;
 mod dictation;
@@ -242,6 +243,8 @@ pub fn run() {
             tray::set_tray_recent_threads,
             tray::set_tray_session_usage,
             provider_setup::provider_setup_status,
+            claude_plugins::claude_plugins_list,
+            claude_plugins::claude_plugin_action,
             provider_setup::provider_setup_action,
             provider_setup::provider_setup_save,
             codex::codex_doctor,

@@ -210,7 +210,11 @@ fn scan_skill_dir(collector: &mut Collector, path: &Path, source: Source<'_>) {
         return;
     }
     let skill_file = path.join("SKILL.md");
-    if let Some(parsed) = skill_file.is_file().then(|| parse_file(&skill_file)).flatten() {
+    if let Some(parsed) = skill_file
+        .is_file()
+        .then(|| parse_file(&skill_file))
+        .flatten()
+    {
         push_parsed(collector, parsed, &dir_name, "skill", source, None);
     }
 }
@@ -228,7 +232,11 @@ fn scan_skill_files(collector: &mut Collector, dir: &Path, source: Source<'_>) {
         if !path.is_file() || !is_markdown(&path) {
             continue;
         }
-        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()).map(str::to_string) else {
+        let Some(stem) = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map(str::to_string)
+        else {
             continue;
         };
         if let Some(parsed) = parse_file(&path) {
@@ -326,29 +334,47 @@ fn scan_plugin(collector: &mut Collector, install_path: &Path, source: Source<'_
 
 /// Skills and commands of installed, enabled Claude Code plugins.
 fn scan_claude_plugins(collector: &mut Collector, claude_home: &Path, workspace: Option<&Path>) {
-    let Some(registry) = read_json(&claude_home.join("plugins").join("installed_plugins.json")) else {
+    let Some(registry) = read_json(&claude_home.join("plugins").join("installed_plugins.json"))
+    else {
         return;
     };
-    let enabled = read_json(&claude_home.join("settings.json"))
-        .and_then(|settings| settings.get("enabledPlugins").cloned())
-        .unwrap_or(Value::Null);
+    // Claude resolves plugin preferences from user, project, then local
+    // settings. In particular, a local disable must hide a user installation.
+    let mut settings_paths = vec![claude_home.join("settings.json")];
+    if let Some(workspace) = workspace {
+        settings_paths.push(workspace.join(".claude/settings.json"));
+        settings_paths.push(workspace.join(".claude/settings.local.json"));
+    }
+    let mut enabled = HashMap::new();
+    for path in settings_paths {
+        if let Some(settings) = read_json(&path) {
+            if let Some(plugins) = settings.get("enabledPlugins").and_then(Value::as_object) {
+                for (id, value) in plugins {
+                    if let Some(value) = value.as_bool() {
+                        enabled.insert(id.clone(), value);
+                    }
+                }
+            }
+        }
+    }
     let Some(plugins) = registry.get("plugins").and_then(Value::as_object) else {
         return;
     };
     let mut keys: Vec<&String> = plugins.keys().collect();
     keys.sort();
     for key in keys {
-        if enabled.get(key).and_then(Value::as_bool) == Some(false) {
+        if enabled.get(key) == Some(&false) {
             continue;
         }
         let plugin_name = key.split('@').next().unwrap_or(key.as_str());
         let installs = plugins[key].as_array().cloned().unwrap_or_default();
-        let install = installs.iter().find(|install| {
-            match install.get("projectPath").and_then(Value::as_str) {
-                Some(project) => workspace.is_some_and(|workspace| workspace == Path::new(project)),
-                None => true,
-            }
-        });
+        let install = installs
+            .iter()
+            .filter_map(|install| {
+                plugin_install_priority(install, workspace).map(|rank| (rank, install))
+            })
+            .max_by_key(|(rank, _)| *rank)
+            .map(|(_, install)| install);
         let Some(install_path) = install
             .and_then(|install| install.get("installPath"))
             .and_then(Value::as_str)
@@ -362,6 +388,28 @@ fn scan_claude_plugins(collector: &mut Collector, claude_home: &Path, workspace:
             invocation: "slash",
         };
         scan_plugin(collector, &install_path, source);
+    }
+}
+
+fn plugin_install_priority(install: &Value, workspace: Option<&Path>) -> Option<u8> {
+    let project = install.get("projectPath").and_then(Value::as_str);
+    if let Some(project) = project {
+        let workspace = workspace?;
+        let project = Path::new(project);
+        let same_project = workspace == project
+            || matches!((workspace.canonicalize(), project.canonicalize()), (Ok(left), Ok(right)) if left == right);
+        if !same_project {
+            return None;
+        }
+    }
+    match install.get("scope").and_then(Value::as_str) {
+        Some("local") if project.is_some() => Some(3),
+        Some("project") if project.is_some() => Some(2),
+        Some("user") => Some(1),
+        Some("managed") => Some(0),
+        // Older registries omit scope; a projectPath still restricts visibility.
+        None => Some(1 + u8::from(project.is_some())),
+        _ => None,
     }
 }
 
@@ -435,7 +483,11 @@ pub(crate) async fn slash_commands_list_core(
         None => None,
     };
     task::spawn_blocking(move || {
-        list_slash_commands(&provider, workspace_path.as_deref(), &ProviderDirs::resolve())
+        list_slash_commands(
+            &provider,
+            workspace_path.as_deref(),
+            &ProviderDirs::resolve(),
+        )
     })
     .await
     .map_err(|_| "slash command discovery failed".to_string())
@@ -478,17 +530,44 @@ mod tests {
             &claude_home.join("skills/hidden/SKILL.md"),
             "---\nname: hidden\nuser-invocable: false\n---\n",
         );
-        write(&claude_home.join("skills/.system/SKILL.md"), "---\nname: system\n---\n");
-        write(&claude_home.join("skills/no-skill-file/README.md"), "nothing");
-        write(&claude_home.join("commands/deploy.md"), "Deploy the app to staging.\n");
-        write(&claude_home.join("commands/frontend/component.md"), "---\ndescription: Make a component\n---\n");
-        write(&workspace.join(".claude/skills/graphify/SKILL.md"), "---\nname: graphify\n---\n");
-        write(&workspace.join(".claude/commands/test-all.md"), "---\ndescription: Run tests\n---\n");
+        write(
+            &claude_home.join("skills/.system/SKILL.md"),
+            "---\nname: system\n---\n",
+        );
+        write(
+            &claude_home.join("skills/no-skill-file/README.md"),
+            "nothing",
+        );
+        write(
+            &claude_home.join("commands/deploy.md"),
+            "Deploy the app to staging.\n",
+        );
+        write(
+            &claude_home.join("commands/frontend/component.md"),
+            "---\ndescription: Make a component\n---\n",
+        );
+        write(
+            &workspace.join(".claude/skills/graphify/SKILL.md"),
+            "---\nname: graphify\n---\n",
+        );
+        write(
+            &workspace.join(".claude/commands/test-all.md"),
+            "---\ndescription: Run tests\n---\n",
+        );
         let plugin_dir = root.join("plugins/design");
         let disabled_dir = root.join("plugins/off");
-        write(&plugin_dir.join("skills/frontend-design/SKILL.md"), "---\ndescription: Design UI\n---\n");
-        write(&plugin_dir.join("commands/review.md"), "Review the design.\n");
-        write(&disabled_dir.join("skills/off-skill/SKILL.md"), "---\n---\n");
+        write(
+            &plugin_dir.join("skills/frontend-design/SKILL.md"),
+            "---\ndescription: Design UI\n---\n",
+        );
+        write(
+            &plugin_dir.join("commands/review.md"),
+            "Review the design.\n",
+        );
+        write(
+            &disabled_dir.join("skills/off-skill/SKILL.md"),
+            "---\n---\n",
+        );
         write(
             &claude_home.join("plugins/installed_plugins.json"),
             &serde_json::json!({
@@ -522,15 +601,126 @@ mod tests {
             ]
         );
         let graphify = &entries[0];
-        assert_eq!(graphify.description.as_deref(), Some("Build a knowledge graph"));
+        assert_eq!(
+            graphify.description.as_deref(),
+            Some("Build a knowledge graph")
+        );
         assert_eq!(graphify.argument_hint.as_deref(), Some("<path>"));
-        assert_eq!((graphify.kind, graphify.scope, graphify.invocation), ("skill", "user", "slash"));
-        assert_eq!(entries[1].description.as_deref(), Some("Deploy the app to staging."));
-        assert_eq!(entries[2].description.as_deref(), Some("Make a component (frontend)"));
+        assert_eq!(
+            (graphify.kind, graphify.scope, graphify.invocation),
+            ("skill", "user", "slash")
+        );
+        assert_eq!(
+            entries[1].description.as_deref(),
+            Some("Deploy the app to staging.")
+        );
+        assert_eq!(
+            entries[2].description.as_deref(),
+            Some("Make a component (frontend)")
+        );
         assert_eq!(entries[3].scope, "project");
         assert_eq!(entries[4].plugin.as_deref(), Some("design"));
         assert_eq!(entries[5].kind, "command");
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn plugin_settings_use_local_then_project_then_user_precedence() {
+        let root = temp_dir("plugin-settings");
+        let claude_home = root.join("claude");
+        let workspace = root.join("ws");
+        let plugin_dir = root.join("plugin");
+        write(&plugin_dir.join("commands/run.md"), "Run plugin\n");
+        write(
+            &claude_home.join("plugins/installed_plugins.json"),
+            &serde_json::json!({"plugins":{"test@market":[{"scope":"user","installPath":plugin_dir}]}}).to_string(),
+        );
+        write(
+            &claude_home.join("settings.json"),
+            r#"{"enabledPlugins":{"test@market":true}}"#,
+        );
+        write(
+            &workspace.join(".claude/settings.json"),
+            r#"{"enabledPlugins":{"test@market":false}}"#,
+        );
+        let dirs = ProviderDirs {
+            claude_home: Some(claude_home),
+            ..ProviderDirs::default()
+        };
+        assert!(list_slash_commands("claude", Some(&workspace), &dirs).is_empty());
+        assert_eq!(
+            names(&list_slash_commands("claude", None, &dirs)),
+            vec!["test:run"]
+        );
+        write(
+            &workspace.join(".claude/settings.local.json"),
+            r#"{"enabledPlugins":{"test@market":true}}"#,
+        );
+        assert_eq!(
+            names(&list_slash_commands("claude", Some(&workspace), &dirs)),
+            vec!["test:run"]
+        );
+        write(
+            &workspace.join(".claude/settings.local.json"),
+            r#"{"enabledPlugins":{"test@market":false}}"#,
+        );
+        assert!(list_slash_commands("claude", Some(&workspace), &dirs).is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn plugin_installations_are_scoped_to_their_workspace() {
+        let root = temp_dir("plugin-scope");
+        let claude_home = root.join("claude");
+        let workspace = root.join("ws");
+        let other_workspace = root.join("other-ws");
+        let user = root.join("user-plugin");
+        let project = root.join("project-plugin");
+        let local = root.join("local-plugin");
+        let other = root.join("other-plugin");
+        for (path, command) in [
+            (&user, "user"),
+            (&project, "project"),
+            (&local, "local"),
+            (&other, "other"),
+        ] {
+            write(&path.join(format!("commands/{command}.md")), "Run plugin\n");
+        }
+        write(
+            &claude_home.join("plugins/installed_plugins.json"),
+            &serde_json::json!({"plugins":{
+                "test@market":[
+                    {"scope":"user","installPath":user},
+                    {"scope":"local","installPath":local,"projectPath":workspace},
+                    {"scope":"project","installPath":project,"projectPath":workspace},
+                    {"scope":"local","installPath":other,"projectPath":other_workspace}
+                ],
+                "managed@market":[{"scope":"managed","installPath":user}],
+                "invalid@market":[{"scope":"local","installPath":other}],
+                "elsewhere@market":[{"scope":"project","installPath":other,"projectPath":other_workspace}]
+            }}).to_string(),
+        );
+        let dirs = ProviderDirs {
+            claude_home: Some(claude_home),
+            ..ProviderDirs::default()
+        };
+        assert_eq!(
+            names(&list_slash_commands("claude", None, &dirs)),
+            vec!["managed:user", "test:user"]
+        );
+        assert_eq!(
+            names(&list_slash_commands("claude", Some(&workspace), &dirs)),
+            vec!["managed:user", "test:local"]
+        );
+        assert_eq!(
+            names(&list_slash_commands(
+                "claude",
+                Some(&other_workspace),
+                &dirs
+            )),
+            vec!["elsewhere:other", "managed:user", "test:other"]
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -542,13 +732,23 @@ mod tests {
             &plugin_dir.join(".claude-plugin/plugin.json"),
             r#"{ "name": "ui", "skills": ["./.claude/skills/ui-pro", "../escape"], "commands": "./extra/run.md" }"#,
         );
-        write(&plugin_dir.join(".claude/skills/ui-pro/SKILL.md"), "---\nname: ui-pro\n---\n");
-        write(&plugin_dir.join(".claude/skills/other/SKILL.md"), "---\nname: other\n---\n");
+        write(
+            &plugin_dir.join(".claude/skills/ui-pro/SKILL.md"),
+            "---\nname: ui-pro\n---\n",
+        );
+        write(
+            &plugin_dir.join(".claude/skills/other/SKILL.md"),
+            "---\nname: other\n---\n",
+        );
         write(&plugin_dir.join("extra/run.md"), "> Run the thing\n");
-        write(&root.join("plugins/escape/SKILL.md"), "---\nname: escape\n---\n");
+        write(
+            &root.join("plugins/escape/SKILL.md"),
+            "---\nname: escape\n---\n",
+        );
         write(
             &claude_home.join("plugins/installed_plugins.json"),
-            &serde_json::json!({ "plugins": { "ui@market": [{ "installPath": plugin_dir }] } }).to_string(),
+            &serde_json::json!({ "plugins": { "ui@market": [{ "installPath": plugin_dir }] } })
+                .to_string(),
         );
         let dirs = ProviderDirs {
             claude_home: Some(claude_home),
@@ -565,8 +765,14 @@ mod tests {
         let root = temp_dir("codex");
         let codex_home = root.join("codex");
         let workspace = root.join("ws");
-        write(&codex_home.join("skills/devops-helper/SKILL.md"), "---\ndescription: CI help\n---\n");
-        write(&workspace.join(".agents/skills/local/SKILL.md"), "---\n---\nLocal skill body\n");
+        write(
+            &codex_home.join("skills/devops-helper/SKILL.md"),
+            "---\ndescription: CI help\n---\n",
+        );
+        write(
+            &workspace.join(".agents/skills/local/SKILL.md"),
+            "---\n---\nLocal skill body\n",
+        );
         let dirs = ProviderDirs {
             codex_home: Some(codex_home),
             ..ProviderDirs::default()
@@ -582,8 +788,14 @@ mod tests {
     fn lists_antigravity_skill_files_and_dirs() {
         let root = temp_dir("agy");
         let skills = root.join(".gemini/antigravity-cli/skills");
-        write(&skills.join("devops-helper.md"), "---\ndescription: CI help\n---\n");
-        write(&skills.join("folder-skill/SKILL.md"), "---\nname: folder-skill\n---\n");
+        write(
+            &skills.join("devops-helper.md"),
+            "---\ndescription: CI help\n---\n",
+        );
+        write(
+            &skills.join("folder-skill/SKILL.md"),
+            "---\nname: folder-skill\n---\n",
+        );
         let dirs = ProviderDirs {
             home: Some(root.clone()),
             ..ProviderDirs::default()

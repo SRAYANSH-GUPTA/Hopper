@@ -1,5 +1,7 @@
 use super::*;
 
+#[path = "rpc/claude_plugins.rs"]
+mod claude_plugins;
 #[path = "rpc/codex.rs"]
 mod codex;
 #[path = "rpc/daemon.rs"]
