@@ -62,7 +62,9 @@ function ComposerHarness({
   externalDraft,
   onAttachImages,
 }: HarnessProps) {
-  const [draftText, setDraftText] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const storageKey = JSON.stringify([historyKey, draftKey]);
+  const draftText = drafts[storageKey] ?? "";
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   return (
@@ -95,7 +97,10 @@ function ComposerHarness({
       draftText={externalDraft ?? draftText}
       draftKey={draftKey}
       historyKey={historyKey}
-      onDraftChange={setDraftText}
+      onDraftChange={(next) => setDrafts((prev) => ({ ...prev, [storageKey]: next }))}
+      onClearDraftIfUnchanged={(submittedText) => setDrafts((prev) =>
+        prev[storageKey] === submittedText ? { ...prev, [storageKey]: "" } : prev,
+      )}
       textareaRef={textareaRef}
       dictationEnabled={false}
       attachedImages={attachments}
@@ -168,6 +173,71 @@ describe("Composer send triggers", () => {
     await act(async () => { finish({ status: "sent" }); });
 
     expect(textarea.value).toBe("Shared wording");
+  });
+
+  it.each([
+    { historyKey: "workspace-1", draftKey: "thread-2" },
+    { historyKey: "workspace-2", draftKey: "thread-1" },
+  ])("allows a separate draft to send while preserving each pending lock: %j", async (other) => {
+    const finishers = new Map<string, (result: SendMessageResult) => void>();
+    const onSend = vi.fn((message: string) => new Promise<SendMessageResult>((resolve) => {
+      finishers.set(message, resolve);
+    }));
+    const { rerender } = render(<ComposerHarness onSend={onSend} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "First pending message" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    rerender(<ComposerHarness onSend={onSend} {...other} />);
+    fireEvent.change(textarea, { target: { value: "Second pending message" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledTimes(2);
+
+    rerender(<ComposerHarness onSend={onSend} />);
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledTimes(2);
+    await act(async () => { finishers.get("Second pending message")?.({ status: "sent" }); });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledTimes(2);
+
+    await act(async () => { finishers.get("First pending message")?.({ status: "blocked" }); });
+    expect(textarea.value).toBe("First pending message");
+    expect((screen.getByLabelText("Send") as HTMLButtonElement).disabled).toBe(false);
+    rerender(<ComposerHarness onSend={onSend} {...other} />);
+    expect(textarea.value).toBe("");
+  });
+
+  it("clears an accepted originating draft after the user switches threads", async () => {
+    let finish!: (result: SendMessageResult) => void;
+    const onSend = vi.fn(() => new Promise<SendMessageResult>((resolve) => { finish = resolve; }));
+    const { rerender } = render(<ComposerHarness onSend={onSend} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "Accepted message" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    rerender(<ComposerHarness onSend={onSend} draftKey="thread-2" />);
+    fireEvent.change(textarea, { target: { value: "Other thread draft" } });
+
+    await act(async () => { finish({ status: "sent" }); });
+
+    expect(textarea.value).toBe("Other thread draft");
+    rerender(<ComposerHarness onSend={onSend} />);
+    expect(textarea.value).toBe("");
+  });
+
+  it("keeps newer saved text in the originating thread after switching away", async () => {
+    let finish!: (result: SendMessageResult) => void;
+    const onSend = vi.fn(() => new Promise<SendMessageResult>((resolve) => { finish = resolve; }));
+    const { rerender } = render(<ComposerHarness onSend={onSend} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "Accepted message" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    fireEvent.change(textarea, { target: { value: "Next message" } });
+    rerender(<ComposerHarness onSend={onSend} draftKey="thread-2" />);
+
+    await act(async () => { finish({ status: "sent" }); });
+
+    rerender(<ComposerHarness onSend={onSend} />);
+    expect(textarea.value).toBe("Next message");
   });
 
   it("restores text and attachments when a newly created thread rejects its first message", async () => {

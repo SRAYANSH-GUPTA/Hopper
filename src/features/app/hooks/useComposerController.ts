@@ -156,6 +156,19 @@ export function useComposerController({
     [draftKey],
   );
 
+  const handleClearDraftIfUnchanged = useCallback(
+    (submittedText: string) => {
+      setComposerDraftsByThread((prev) => {
+        if (prev[draftKey] !== submittedText) {
+          return prev;
+        }
+        const { [draftKey]: _, ...rest } = prev;
+        return rest;
+      });
+    },
+    [draftKey],
+  );
+
   const handleSendPrompt = useCallback(
     (text: string, appMentions?: AppMention[]) => {
       if (!text.trim()) {
@@ -216,6 +229,7 @@ export function useComposerController({
     setComposerInsert,
     activeDraft,
     handleDraftChange,
+    handleClearDraftIfUnchanged,
     handleSendPrompt,
     handleEditQueued,
     handleDeleteQueued,

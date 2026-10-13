@@ -99,6 +99,7 @@ type ComposerProps = {
   sendLabel?: string;
   draftText?: string;
   onDraftChange?: (text: string) => void;
+  onClearDraftIfUnchanged?: (expectedText: string) => void;
   historyKey?: string | null;
   draftKey?: string | null;
   attachedImages?: string[];
@@ -221,6 +222,7 @@ export const Composer = memo(function Composer({
   sendLabel = "Send",
   draftText = "",
   onDraftChange,
+  onClearDraftIfUnchanged,
   historyKey = null,
   draftKey = null,
   attachedImages = [],
@@ -278,10 +280,16 @@ export const Composer = memo(function Composer({
   const [text, setText] = useState(draftText);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [appMentionBindings, setAppMentionBindings] = useState<AppMentionBinding[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const submittingRef = useRef(false);
-  const currentDraftRef = useRef({ text, historyKey, draftKey, onDraftChange, onAttachImages });
-  currentDraftRef.current = { text, historyKey, draftKey, onDraftChange, onAttachImages };
+  const [submittingDrafts, setSubmittingDrafts] = useState<Set<string>>(() => new Set());
+  const submittingDraftsRef = useRef(new Set<string>());
+  const submissionKey = JSON.stringify([historyKey, draftKey]);
+  const isSubmitting = submittingDrafts.has(submissionKey);
+  const currentDraftRef = useRef({
+    text, historyKey, draftKey, onDraftChange, onClearDraftIfUnchanged, onAttachImages,
+  });
+  currentDraftRef.current = {
+    text, historyKey, draftKey, onDraftChange, onClearDraftIfUnchanged, onAttachImages,
+  };
   const internalRef = useRef<HTMLTextAreaElement | null>(null);
   const textareaRef = externalTextareaRef ?? internalRef;
   const editorSettings = editorSettingsProp ?? DEFAULT_EDITOR_SETTINGS;
@@ -427,7 +435,7 @@ export const Composer = memo(function Composer({
   );
 
   const handleSend = useCallback((submitIntent: ComposerSendIntent = "default") => {
-    if (disabled || submittingRef.current) {
+    if (disabled || submittingDraftsRef.current.has(submissionKey)) {
       return;
     }
     const trimmed = text.trim();
@@ -459,7 +467,7 @@ export const Composer = memo(function Composer({
           currentDraftRef.current.text = text;
           setText(text);
           current.onDraftChange?.(text);
-          submittedDraft.onDraftChange?.("");
+          submittedDraft.onClearDraftIfUnchanged?.(text);
           setAppMentionBindings(appMentionBindings);
         }
         if (!sameDraft && createdThreadDraft && current.text === text) {
@@ -471,12 +479,14 @@ export const Composer = memo(function Composer({
         });
         return;
       }
+      // The user may have selected another thread before acceptance. Clear the
+      // original stored draft only if it still contains this submission.
+      submittedDraft.onClearDraftIfUnchanged?.(text);
       if ((sameDraft && current.text === text) ||
         (!sameDraft && createdThreadDraft && (!current.text || current.text === text))) {
         currentDraftRef.current.text = "";
         setText("");
         current.onDraftChange?.("");
-        if (!sameDraft) submittedDraft.onDraftChange?.("");
         resetHistoryNavigation();
         setAppMentionBindings([]);
       }
@@ -488,11 +498,11 @@ export const Composer = memo(function Composer({
       });
     };
     const settled = () => {
-      submittingRef.current = false;
-      setIsSubmitting(false);
+      submittingDraftsRef.current.delete(submissionKey);
+      setSubmittingDrafts(new Set(submittingDraftsRef.current));
     };
-    submittingRef.current = true;
-    setIsSubmitting(true);
+    submittingDraftsRef.current.add(submissionKey);
+    setSubmittingDrafts(new Set(submittingDraftsRef.current));
     try {
       const result = onSend(textToSend, images,
         resolvedMentions.length > 0 ? resolvedMentions : undefined, submitIntent);
@@ -514,6 +524,7 @@ export const Composer = memo(function Composer({
     planCommandPrefix,
     recordHistory,
     resetHistoryNavigation,
+    submissionKey,
     text,
   ]);
 

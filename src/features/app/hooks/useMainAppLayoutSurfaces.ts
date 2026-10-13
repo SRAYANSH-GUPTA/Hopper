@@ -509,6 +509,7 @@ function buildPrimarySurface({
           draftText: composerWorkspaceState.activeDraft,
           draftKey: activeThreadId,
           onDraftChange: composerWorkspaceState.handleDraftChange,
+          onClearDraftIfUnchanged: composerWorkspaceState.handleClearDraftIfUnchanged,
           attachedImages: composerWorkspaceState.activeImages,
           onPickImages: composerWorkspaceState.pickImages,
           onAttachImages: composerWorkspaceState.attachImages,
