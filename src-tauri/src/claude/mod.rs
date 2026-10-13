@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::shared::process_core::tokio_command;
+use crate::shared::claude_commands_core;
 use base64::Engine;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -437,6 +438,8 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     model_id: Option<String>,
     effort: Option<String>,
     images: Option<Vec<String>>,
+    access_mode: Option<String>,
+    collaboration_mode: Option<Value>,
     event_sink: E,
 ) -> Result<Value, String> {
     // Ensure thread exists in state
@@ -447,6 +450,14 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
 
     let session_id = claude_state.get_session_id(&workspace_id, &thread_id).await;
     let turn_id = Uuid::new_v4().to_string();
+    let permission_mode = claude_commands_core::permission_mode(access_mode.as_deref(), collaboration_mode.as_ref())?;
+    let claude_bin = resolve_claude_bin().await;
+    // Unknown commands become ordinary paid model turns in newer Claude Code.
+    // Query its real registry without a prompt before forwarding any slash command.
+    if claude_commands_core::leading_command(&text).is_some() {
+        let commands = claude_commands_core::discover_commands(&claude_bin, Some(&workspace_cwd), permission_mode).await?;
+        claude_commands_core::ensure_supported(&text, &commands)?;
+    }
 
     let image_input = images
         .as_deref()
@@ -469,9 +480,6 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
         .get_or_start_permission_server(event_sink.clone())
         .await?;
 
-    // Resolve the claude binary (GUI apps don't have the full shell PATH)
-    let claude_bin = resolve_claude_bin().await;
-
     // Build claude command
     let mut cmd = tokio_command(&claude_bin);
     crate::shared::process_core::configure_owned_process(&mut cmd);
@@ -479,6 +487,7 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     // --verbose is required by the CLI when using --output-format=stream-json with -p.
     // In stream-json mode all output (including verbose info) is valid JSON lines.
     cmd.arg("--verbose");
+    cmd.arg("--permission-mode").arg(permission_mode);
     if let Some(ref sid) = session_id {
         cmd.arg("--resume").arg(sid);
     }
@@ -499,16 +508,21 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
     if !workspace_cwd.is_empty() {
         cmd.current_dir(&workspace_cwd);
     }
-    cmd.arg("--settings").arg(
-        crate::shared::provider_setup_core::claude_hook_settings(
+    let mut hook_settings = crate::shared::provider_setup_core::claude_hook_settings(
             permission_server.port,
             &permission_server.token,
             &workspace_id,
             &thread_id,
             &turn_id,
-        )
-        .to_string(),
-    );
+        );
+    // Bind the permission mode to this turn's authenticated callback URL. In plan
+    // mode the hook must defer to Claude's policy, never approve a write itself.
+    if let Some(url) = hook_settings["hooks"]["PreToolUse"][0]["hooks"][0]["url"].as_str() {
+        let mut url = reqwest::Url::parse(url).map_err(|error| error.to_string())?;
+        url.query_pairs_mut().append_pair("permission_mode", permission_mode);
+        hook_settings["hooks"]["PreToolUse"][0]["hooks"][0]["url"] = json!(url.as_str());
+    }
+    cmd.arg("--settings").arg(hook_settings.to_string());
     // Older Hopper hooks stay dormant; leave the user's global file untouched.
     cmd.env_remove("CODEXMONITOR_PERMISSION_PORT");
     cmd.env_remove("CODEXMONITOR_WORKSPACE_ID");
@@ -646,6 +660,13 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
 
             match event_type {
                 "system" => {
+                    if let Some(text) = claude_commands_core::compact_notice(&event) {
+                        let id = format!("compact-{turn_id}");
+                        event_sink.emit_app_server_event(AppServerEvent {
+                            workspace_id: workspace_id.clone(),
+                            message: json!({"method":"item/completed","params":{"threadId":thread_id,"item":{"type":"agentMessage","id":id,"turnId":turn_id,"text":text}}}),
+                        });
+                    }
                     if let Some(sid) = event.get("session_id").and_then(|s| s.as_str()) {
                         if let Err(message) = claude_state
                             .set_session_id(&workspace_id, &thread_id, sid.to_string())
@@ -887,6 +908,9 @@ pub(crate) async fn send_message_claude<E: EventSink + 'static>(
                     }
                 }
                 "result" => {
+                    if let Some(text) = claude_commands_core::result_text(&event, message_texts.values().any(|text| !text.trim().is_empty())) {
+                        message_texts.insert(format!("result-{turn_id}"), text);
+                    }
                     if let Some(sid) = event.get("session_id").and_then(|s| s.as_str()) {
                         if let Err(message) = claude_state
                             .set_session_id(&workspace_id, &thread_id, sid.to_string())

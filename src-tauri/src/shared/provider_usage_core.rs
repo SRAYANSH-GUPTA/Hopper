@@ -7,8 +7,6 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use regex::Regex;
 use tokio::process::Command;
 
-use crate::shared::process_core::tokio_command;
-
 async fn resolve_binary(binary: &str, fallbacks: &[&str]) -> String {
     let out = Command::new("/bin/sh")
         .args(["-lc", &format!("which {binary} 2>/dev/null || command -v {binary} 2>/dev/null")])
@@ -38,41 +36,6 @@ async fn resolve_binary(binary: &str, fallbacks: &[&str]) -> String {
     }
 
     binary.to_string()
-}
-
-async fn run_binary_usage(
-    binary: &str,
-    fallbacks: &[&str],
-    workspace_path: Option<String>,
-) -> Result<String, String> {
-    let resolved_binary = resolve_binary(binary, fallbacks).await;
-    let mut command = tokio_command(&resolved_binary);
-    command.arg("/usage");
-    if let Some(path) = workspace_path.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
-        command.current_dir(path);
-    }
-
-    let output = command
-        .output()
-        .await
-        .map_err(|err| format!("Failed to run {binary} usage: {err}"))?;
-
-    let mut text = String::new();
-    text.push_str(&String::from_utf8_lossy(&output.stdout));
-    text.push_str(&String::from_utf8_lossy(&output.stderr));
-    let trimmed = text.trim().to_string();
-    if !trimmed.is_empty() {
-        return Ok(trimmed);
-    }
-
-    if output.status.success() {
-        return Err(format!("{binary} usage returned no output."));
-    }
-
-    Err(format!(
-        "{binary} usage exited with status {} and returned no output.",
-        output.status
-    ))
 }
 
 fn strip_ansi_sequences(text: &str) -> String {
@@ -381,15 +344,8 @@ pub(crate) async fn provider_usage_output_core(
 ) -> Result<String, String> {
     match provider {
         "claude" => {
-            run_binary_usage(
-                "claude",
-                &[
-                    "/usr/local/bin/claude",
-                    "/opt/homebrew/bin/claude",
-                ],
-                workspace_path,
-            )
-            .await
+            let binary = super::provider_setup_core::resolve_provider_bin(super::provider_setup_core::SetupProvider::Claude).await.ok_or("Claude Code is not installed. Open provider setup to install it.")?;
+            super::claude_commands_core::usage_report(&binary.to_string_lossy(), workspace_path.as_deref()).await
         }
         "antigravity" => {
             let resolved_binary = resolve_binary(

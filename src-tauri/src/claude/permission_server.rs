@@ -18,6 +18,21 @@ const QUESTION_TIMEOUT: std::time::Duration =
     std::time::Duration::from_secs(CLAUDE_HOOK_TIMEOUT_SECS - 20);
 const ASK_USER_QUESTION_TOOL: &str = "AskUserQuestion";
 
+fn mode_hook_response(mode: Option<&str>, tool_name: &str) -> Option<Value> {
+    if tool_name == ASK_USER_QUESTION_TOOL {
+        return None;
+    }
+    match mode {
+        Some("plan") if tool_name == "ExitPlanMode" => Some(claude_permission_response(&ClaudeHookOutcome::Deny {
+            reason: "Planning is enabled in Hopper. Turn off Plan mode in Hopper before implementing changes.".into(),
+        })),
+        // No permissionDecision: keep Claude's native plan/read-only checks, or
+        // the explicit full-access policy, instead of the hook granting access.
+        Some("plan" | "bypassPermissions") => Some(json!({})),
+        _ => None,
+    }
+}
+
 struct PendingRequest {
     sender: oneshot::Sender<ClaudeHookOutcome>,
     /// Original AskUserQuestion input, present for question requests.
@@ -288,6 +303,13 @@ async fn handle_connection<E: EventSink>(
 
     let tool_input = data.get("tool_input").cloned().unwrap_or(json!({}));
 
+    if let Some(response) =
+        mode_hook_response(query.get("permission_mode").map(String::as_str), &tool_name)
+    {
+        let _ = write_http_response(&mut stream, 200, &response.to_string()).await;
+        return;
+    }
+
     if tool_name == ASK_USER_QUESTION_TOOL {
         let tool_use_id = data
             .get("tool_use_id")
@@ -486,6 +508,27 @@ async fn read_request(stream: &mut TcpStream) -> Result<(String, String), String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plan_hook_never_grants_tools_or_silently_exits_plan() {
+        for tool in ["Write", "Edit", "Bash", "mcp__server__mutate", "Read"] {
+            assert_eq!(mode_hook_response(Some("plan"), tool), Some(json!({})));
+        }
+        assert_eq!(
+            mode_hook_response(Some("plan"), "ExitPlanMode").unwrap()["hookSpecificOutput"]
+                ["permissionDecision"],
+            "deny"
+        );
+        assert_eq!(
+            mode_hook_response(Some("plan"), ASK_USER_QUESTION_TOOL),
+            None
+        );
+        assert_eq!(mode_hook_response(Some("default"), "Write"), None);
+        assert_eq!(
+            mode_hook_response(Some("bypassPermissions"), "Write"),
+            Some(json!({}))
+        );
+    }
 
     #[derive(Clone)]
     struct TestSink(tokio::sync::mpsc::UnboundedSender<AppServerEvent>);

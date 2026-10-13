@@ -565,6 +565,8 @@ pub(crate) async fn send_user_message(
             model_id,
             effort,
             images,
+            access_mode,
+            collaboration_mode,
             event_sink,
         )
         .await;
