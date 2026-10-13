@@ -186,7 +186,7 @@ pub(super) fn github_repo_names_match(existing: &str, requested: &str) -> bool {
 fn git_remote_url(repo_root: &Path, remote_name: &str) -> Option<String> {
     let repo = Repository::open(repo_root).ok()?;
     let remote = repo.find_remote(remote_name).ok()?;
-    remote.url().map(|url| url.to_string())
+    remote.url().ok().map(|url| url.to_string())
 }
 
 fn gh_repo_create_args<'a>(
@@ -320,7 +320,7 @@ fn upstream_remote_and_branch(repo_root: &Path) -> Result<Option<(String, String
     if !head.is_branch() {
         return Ok(None);
     }
-    let branch_name = match head.shorthand() {
+    let branch_name = match head.shorthand().ok() {
         Some(name) => name,
         None => return Ok(None),
     };
@@ -332,7 +332,10 @@ fn upstream_remote_and_branch(repo_root: &Path) -> Result<Option<(String, String
         Err(_) => return Ok(None),
     };
     let upstream_ref = upstream_branch.get();
-    let upstream_name = upstream_ref.name().or_else(|| upstream_ref.shorthand());
+    let upstream_name = upstream_ref
+        .name()
+        .ok()
+        .or_else(|| upstream_ref.shorthand().ok());
     Ok(upstream_name.and_then(parse_upstream_ref))
 }
 
@@ -610,7 +613,7 @@ pub(super) async fn create_github_repo_inner(
     let origin_url_before = local_repo
         .find_remote("origin")
         .ok()
-        .and_then(|remote| remote.url().map(|url| url.to_string()));
+        .and_then(|remote| remote.url().ok().map(|url| url.to_string()));
 
     let full_name = if repo.contains('/') {
         repo
@@ -679,7 +682,7 @@ pub(super) async fn create_github_repo_inner(
         let name = head
             .as_ref()
             .filter(|head| head.is_branch())
-            .and_then(|head| head.shorthand())
+            .and_then(|head| head.shorthand().ok())
             .map(str::to_string);
         name.and_then(|name| validate_branch_name(&name).ok())
     };

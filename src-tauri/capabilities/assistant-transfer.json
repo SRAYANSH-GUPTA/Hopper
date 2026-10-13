@@ -1,0 +1,33 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "assistant-transfer",
+  "description": "Only the two assistant transfer commands on explicitly supported HTTPS provider pages.",
+  "local": false,
+  "webviews": [
+    "ai-chatbot-*"
+  ],
+  "platforms": [
+    "macOS",
+    "windows",
+    "linux"
+  ],
+  "remote": {
+    "urls": [
+      "https://chatgpt.com/*",
+      "https://www.chatgpt.com/*",
+      "https://chat.openai.com/*",
+      "https://www.chat.openai.com/*",
+      "https://claude.ai/*",
+      "https://www.claude.ai/*",
+      "https://gemini.google.com/*",
+      "https://www.gemini.google.com/*",
+      "https://copilot.microsoft.com/*",
+      "https://www.copilot.microsoft.com/*",
+      "https://chat.mistral.ai/*",
+      "https://www.chat.mistral.ai/*"
+    ]
+  },
+  "permissions": [
+    "allow-assistant-transfer"
+  ]
+}

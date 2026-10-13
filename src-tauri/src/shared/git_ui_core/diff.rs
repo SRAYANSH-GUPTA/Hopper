@@ -342,7 +342,7 @@ pub(super) async fn get_git_status_inner(
     let branch_name = repo
         .head()
         .ok()
-        .and_then(|head| head.shorthand().map(|s| s.to_string()))
+        .and_then(|head| head.shorthand().ok().map(|s| s.to_string()))
         .unwrap_or_else(|| "unknown".to_string());
 
     let mut status_options = StatusOptions::new();
@@ -358,7 +358,7 @@ pub(super) async fn get_git_status_inner(
         .map_err(|e| e.to_string())?;
     let status_paths: Vec<PathBuf> = statuses
         .iter()
-        .filter_map(|entry| entry.path().map(PathBuf::from))
+        .filter_map(|entry| entry.path().ok().map(PathBuf::from))
         .filter(|path| !path.as_os_str().is_empty())
         .collect();
     let ignored_paths = collect_ignored_paths_with_git(&repo, &status_paths);

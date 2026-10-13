@@ -17,16 +17,26 @@ use super::context::workspace_entry_for_id;
 fn github_repo_from_path(path: &Path) -> Result<String, String> {
     let repo = Repository::open(path).map_err(|e| e.to_string())?;
     let remotes = repo.remotes().map_err(|e| e.to_string())?;
-    let name = if remotes.iter().any(|remote| remote == Some("origin")) {
+    let name = if remotes
+        .iter()
+        .any(|remote| remote.ok().flatten() == Some("origin"))
+    {
         "origin".to_string()
     } else {
-        remotes.iter().flatten().next().unwrap_or("").to_string()
+        remotes
+            .iter()
+            .filter_map(|remote| remote.ok().flatten())
+            .next()
+            .unwrap_or("")
+            .to_string()
     };
     if name.is_empty() {
         return Err("No git remote configured.".to_string());
     }
     let remote = repo.find_remote(&name).map_err(|e| e.to_string())?;
-    let remote_url = remote.url().ok_or("Remote has no URL configured.")?;
+    let remote_url = remote
+        .url()
+        .map_err(|error| format!("Remote URL is unavailable: {error}"))?;
     parse_github_repo(remote_url).ok_or("Remote is not a GitHub repository.".to_string())
 }
 

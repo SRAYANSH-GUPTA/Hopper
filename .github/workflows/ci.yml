@@ -36,7 +36,7 @@ jobs:
   dependencies:
     name: Dependency security
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,6 +44,19 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm audit --package-lock-only --audit-level=high
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-0.22.2-${{ runner.os }}-${{ runner.arch }}
+      - name: Install pinned Rust dependency auditor
+        shell: bash
+        run: |
+          if ! cargo audit --version 2>/dev/null | grep -Fxq 'cargo-audit 0.22.2'; then
+            cargo install cargo-audit --version 0.22.2 --locked
+          fi
+      - name: Audit Rust dependencies
+        run: cargo audit --file src-tauri/Cargo.lock
 
   native:
     name: Native (${{ matrix.name }})

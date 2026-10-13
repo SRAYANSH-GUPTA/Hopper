@@ -8,5 +8,7 @@
     <string>Hopper</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Allow access to the microphone for dictation.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Allow Hopper to open Terminal for provider sign-in.</string>
   </dict>
 </plist>

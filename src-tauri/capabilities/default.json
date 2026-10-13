@@ -4,9 +4,17 @@
     {
       "identifier": "desktop-default",
       "description": "Capability for trusted desktop application webviews",
-      "webviews": ["main", "about"],
-      "platforms": ["macOS", "windows", "linux"],
+      "webviews": [
+        "main",
+        "about"
+      ],
+      "platforms": [
+        "macOS",
+        "windows",
+        "linux"
+      ],
       "permissions": [
+        "allow-app-commands",
         "core:default",
         "core:webview:default",
         "core:webview:allow-create-webview",
@@ -32,9 +40,15 @@
     {
       "identifier": "mobile-default",
       "description": "Capability for the trusted mobile application webview",
-      "webviews": ["main"],
-      "platforms": ["iOS", "android"],
+      "webviews": [
+        "main"
+      ],
+      "platforms": [
+        "iOS",
+        "android"
+      ],
       "permissions": [
+        "allow-app-commands",
         "core:default",
         "core:webview:allow-set-webview-zoom",
         "opener:default",

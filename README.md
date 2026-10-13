@@ -234,9 +234,24 @@ Artifacts will be in `src-tauri/target/release/bundle/` (platform-specific subfo
 
 ### Linux and macOS distribution
 
-The release matrix builds Linux x86_64 and aarch64 packages (AppImage, Debian, and RPM), plus macOS Intel and Apple Silicon bundles (DMG and signed updater archives). Linux builders use Ubuntu 22.04 to keep the glibc baseline compatible with that distribution. `.cargo/config.toml` disables host-specific Whisper CPU tuning and optional x86 instructions so distribution binaries do not require the build runner's CPU features. Linux installations still need the platform's graphics, desktop, and audio support; compatibility with every distribution or older OS version is not implied. See [Tauri's Linux distribution requirements](https://v2.tauri.app/distribute/appimage/).
+The distribution targets and native CI builders are:
 
-The `Release` GitHub Actions workflow is manually dispatched. It first runs the reusable CI workflow, including frontend lint, type checks, tests, dependency audit, Rust checks/tests, and native application builds. Every platform must pass before bundles are uploaded. The workflow creates a **draft release by default**; select `publish` only when the artifacts are ready for public distribution. It uses the checked-out commit and does not change versions or create a version-bump PR.
+| Platform | Runtime baseline | Packages | CI builder |
+| --- | --- | --- | --- |
+| Linux x86_64 | Ubuntu 22.04 or compatible glibc 2.35+ desktop, updated WebKitGTK 4.1 | AppImage, `.deb`, `.rpm` | `ubuntu-22.04` |
+| Linux aarch64 | Ubuntu 22.04 or compatible glibc 2.35+ desktop, updated WebKitGTK 4.1 | AppImage, `.deb`, `.rpm` | `ubuntu-22.04-arm` |
+| macOS Intel | macOS 13.3+ with current OS/WebKit updates | `.dmg`, signed `.app.tar.gz` updater archive | `macos-15-intel` |
+| macOS Apple Silicon | macOS 13.3+ with current OS/WebKit updates | `.dmg`, signed `.app.tar.gz` updater archive | `macos-15` |
+
+Linux installations need GTK3, WebKitGTK 4.1, desktop graphics and audio libraries; AppImage mounting also needs FUSE support or extraction. Install current distribution security updates. The glibc baseline follows [Ubuntu 22.04's toolchain](https://discourse.ubuntu.com/t/jammy-jellyfish-release-notes/24668/1); newer build hosts can raise binary requirements, as described in [Tauri's Linux distribution requirements](https://v2.tauri.app/distribute/appimage/). Alpine/musl and older glibc distributions require their own source builds and validation. `.cargo/config.toml` disables host-specific Whisper CPU tuning and optional x86 instructions so distribution binaries do not require the build runner's CPU features.
+
+The explicit macOS minimum in `tauri.conf.json` avoids Tauri's default 10.13 claim: Hopper uses modern WebKit features and [Vite 7's Safari 16 JavaScript target](https://v7.vite.dev/config/build-options#build-target). macOS 13.3 provides the Safari 16.4 generation of WebKit. Native CI runs on macOS 15; the minimum OS, signed installation, provider sign-in, embedded browsers, microphone, and updater still require acceptance testing on actual supported machines before a public release. The matrix describes distribution targets, not verified compatibility with every Linux distribution or macOS version.
+
+The `Release` GitHub Actions workflow is manually dispatched. It first runs the reusable CI workflow, including frontend lint, type checks, tests, npm and Rust dependency audits, Rust checks/tests, and native application builds. Every platform must pass before bundles are uploaded. The workflow creates a **draft release by default**; select `publish` only when the artifacts are ready for public distribution. It uses the checked-out commit and does not change versions or create a version-bump PR.
+
+Tauri must remain at version 2.11.6 or newer to include the [cross-webview IPC channel isolation fix](https://github.com/tauri-apps/tauri/security/advisories/GHSA-w28w-mhc8-qvjv). Application commands have explicit permissions: trusted application webviews receive the registered command set, and supported assistant HTTPS origins receive only reply and file-import commands. Configuration tests check command coverage and reject other domains, protocols, and ports.
+
+The Rust audit gate rejects published vulnerabilities without ignored advisories. Upstream warnings remain visible: GTK3 uses `glib` 0.18, which carries [RUSTSEC-2024-0429](https://rustsec.org/advisories/RUSTSEC-2024-0429.html) for `VariantStrIter`; Hopper does not call this API directly, and moving to `glib` 0.20 requires an upstream GTK stack migration. `proc-macro-error` 1 and `serial` 0.4 have unmaintained notices through the GTK macros and terminal dependencies. These warnings remain release maintenance risks; a passing audit is not a claim that every dependency is free of defects.
 
 Before running it, update the version consistently in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`. The workflow rejects version mismatches and updater endpoints that do not match the releasing GitHub repository. The updater endpoint is `https://github.com/SRAYANSH-GUPTA/Hopper/releases/latest/download/latest.json`.
 
@@ -255,6 +270,8 @@ Configure these values in the GitHub **release** environment:
 | Variable | `APPLE_TEAM_ID` | Apple Developer team ID |
 
 The checked-in updater public key alone does not establish ownership: releases require its matching private key. Configure a key controlled by this project before the first distribution; keep that private key secure and available for later updates. See [Tauri updater signing](https://v2.tauri.app/plugin/updater/) and [macOS signing and notarization](https://v2.tauri.app/distribute/sign/macos/).
+
+The signed macOS application declares microphone and Apple Events permissions. Provider sign-in opens Terminal through Apple Events; macOS asks the user for automation permission, and denying it prevents that login action. The entitlement and usage text follow [Apple's automation entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.automation.apple-events) and [usage-description requirements](https://developer.apple.com/documentation/bundleresources/information-property-list/nsappleeventsusagedescription).
 
 Release packaging verifies updater signatures against the shipped public key, requires all platform artifacts, and generates `latest.json` plus `SHA256SUMS`. macOS builds also verify code signatures, notarization tickets, and Gatekeeper acceptance on the build runner. CI success does not replace testing fresh installs, updates, microphone permission, terminal sessions, and provider setup on physical target systems.
 

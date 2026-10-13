@@ -46,14 +46,15 @@ pub(super) async fn get_git_log_inner(
 
     if let Ok(head) = repo.head() {
         if head.is_branch() {
-            if let Some(branch_name) = head.shorthand() {
+            if let Ok(branch_name) = head.shorthand() {
                 if let Ok(branch) = repo.find_branch(branch_name, BranchType::Local) {
                     if let Ok(upstream_branch) = branch.upstream() {
                         let upstream_ref = upstream_branch.get();
                         upstream = upstream_ref
                             .shorthand()
+                            .ok()
                             .map(|name| name.to_string())
-                            .or_else(|| upstream_ref.name().map(|name| name.to_string()));
+                            .or_else(|| upstream_ref.name().ok().map(|name| name.to_string()));
                         if let (Some(head_oid), Some(upstream_oid)) =
                             (head.target(), upstream_ref.target())
                         {
@@ -108,14 +109,22 @@ pub(super) async fn get_git_remote_inner(
     let repo_root = resolve_git_root(&entry)?;
     let repo = Repository::open(&repo_root).map_err(|e| e.to_string())?;
     let remotes = repo.remotes().map_err(|e| e.to_string())?;
-    let name = if remotes.iter().any(|remote| remote == Some("origin")) {
+    let name = if remotes
+        .iter()
+        .any(|remote| remote.ok().flatten() == Some("origin"))
+    {
         "origin".to_string()
     } else {
-        remotes.iter().flatten().next().unwrap_or("").to_string()
+        remotes
+            .iter()
+            .filter_map(|remote| remote.ok().flatten())
+            .next()
+            .unwrap_or("")
+            .to_string()
     };
     if name.is_empty() {
         return Ok(None);
     }
     let remote = repo.find_remote(&name).map_err(|e| e.to_string())?;
-    Ok(remote.url().map(|url| url.to_string()))
+    Ok(remote.url().ok().map(|url| url.to_string()))
 }

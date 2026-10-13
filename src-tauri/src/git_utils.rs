@@ -25,7 +25,7 @@ pub(crate) fn image_mime_type(path: &str) -> Option<&'static str> {
 }
 
 pub(crate) fn commit_to_entry(commit: git2::Commit) -> GitLogEntry {
-    let summary = commit.summary().unwrap_or("").to_string();
+    let summary = commit.summary().ok().flatten().unwrap_or("").to_string();
     let author = commit.author().name().unwrap_or("").to_string();
     let timestamp = commit.time().seconds();
     GitLogEntry {
@@ -87,7 +87,7 @@ pub(crate) fn diff_patch_to_string(patch: &mut git2::Patch) -> Result<String, gi
     Ok(buf
         .as_str()
         .map(|value| value.to_string())
-        .unwrap_or_else(|| String::from_utf8_lossy(&buf).to_string()))
+        .unwrap_or_else(|_| String::from_utf8_lossy(&buf).to_string()))
 }
 
 #[cfg(test)]
@@ -108,10 +108,8 @@ mod tests {
 
     #[test]
     fn checkout_branch_missing_does_not_change_head() {
-        let root = std::env::temp_dir().join(format!(
-            "hopper-git-utils-test-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("hopper-git-utils-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).expect("create temp repo root");
         let repo = Repository::init(&root).expect("init repo");
 
