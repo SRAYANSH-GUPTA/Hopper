@@ -514,6 +514,17 @@ describe("Claude composer commands", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("dismisses command dialogs when leaving a thread without reopening them on return", async () => {
+    const onSend = vi.fn();
+    const { rerender } = render(<ComposerHarness onSend={onSend} activeProviderId="claude" draftKey="thread-a" externalDraft="/status" />);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("dialog", { name: "Claude session" })).toBeTruthy();
+    rerender(<ComposerHarness onSend={onSend} activeProviderId="claude" draftKey="thread-b" />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rerender(<ComposerHarness onSend={onSend} activeProviderId="claude" draftKey="thread-a" />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("carries plan intent with provider commands for the messaging layer", () => {
     const onSend = vi.fn();
     render(<ComposerHarness onSend={onSend} activeProviderId="claude" planCommandPrefix externalDraft="/compact keep decisions" />);

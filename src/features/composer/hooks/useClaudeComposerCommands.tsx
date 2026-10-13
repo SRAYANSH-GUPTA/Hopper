@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { ClaudeCommandDialog, type ClaudeCommandDialogProps } from "@/features/claude/components/ClaudeCommandDialog";
 import { parseClaudeCommand, type ClaudeDialog } from "@/features/claude/utils/commands";
 import { notifySlashCommandsChanged } from "@services/events";
@@ -18,6 +18,7 @@ export function useClaudeComposerCommands(options: Options) {
   const { provider, workspaceId, draftKey, setDraft, focusComposer, onPlanModeToggle, isPlanMode, models, onSelectModel } = options;
   const scope = JSON.stringify([provider, workspaceId, draftKey]);
   const [dialog, setDialog] = useState<{ kind: ClaudeDialog; scope: string } | null>(null);
+  useEffect(() => { setDialog(null); }, [scope]);
   const close = useCallback(() => { setDialog(null); focusComposer(); }, [focusComposer]);
   const insert = (text: string) => { setDraft(text); close(); };
   const run = useCallback((text: string): { nextDraft: string } | null => {
