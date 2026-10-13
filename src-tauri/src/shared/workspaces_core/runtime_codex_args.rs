@@ -12,8 +12,8 @@ use crate::codex::home::resolve_workspace_codex_home;
 use crate::shared::process_core::kill_child_process_tree;
 use crate::types::{AppSettings, WorkspaceEntry};
 
-use super::connect::workspace_session_spawn_lock;
 use super::helpers::resolve_entry_and_parent;
+use super::spawn_gate::workspace_session_spawn_lock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -35,7 +35,7 @@ where
     Fut: Future<Output = Result<Arc<WorkspaceSession>, String>>,
 {
     let (entry, parent_entry) = resolve_entry_and_parent(workspaces, &workspace_id).await?;
-    let _spawn_guard = workspace_session_spawn_lock().lock().await;
+    let _spawn_guard = workspace_session_spawn_lock().acquire().await?;
 
     let (default_bin, resolved_args) = {
         let settings = app_settings.lock().await;
@@ -129,8 +129,8 @@ where
 mod tests {
     use super::*;
 
-    use std::process::Stdio;
     use std::collections::HashSet;
+    use std::process::Stdio;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
     use tokio::process::Command;

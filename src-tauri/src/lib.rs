@@ -57,6 +57,10 @@ static EXIT_CLEANUP_COMPLETE: AtomicBool = AtomicBool::new(false);
 #[cfg(desktop)]
 async fn stop_processes_for_exit(app_handle: tauri::AppHandle) {
     let state = app_handle.state::<state::AppState>();
+    // An initializing Codex process is not in `sessions` until its handshake
+    // finishes. Wait for that publication and permanently reject queued/new
+    // spawns before taking the final snapshot of children to stop.
+    let _spawn_guard = shared::workspaces_core::close_workspace_session_spawning().await;
     // Local sessions are owned by this UI process, independently of whether
     // the user elected to keep the separately managed daemon available.
     state.claude_state.shutdown().await;

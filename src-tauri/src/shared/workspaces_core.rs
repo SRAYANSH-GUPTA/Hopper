@@ -4,6 +4,7 @@ mod git_orchestration;
 mod helpers;
 mod io;
 mod runtime_codex_args;
+mod spawn_gate;
 mod worktree;
 
 pub(crate) use connect::connect_workspace_core;
@@ -11,6 +12,7 @@ pub(crate) use crud_persistence::{
     add_clone_core, add_workspace_core, add_workspace_from_git_url_core, remove_workspace_core,
     update_workspace_settings_core,
 };
+pub(crate) use spawn_gate::close_workspace_session_spawning;
 pub(crate) use git_orchestration::{apply_worktree_changes_core, run_git_command_unit};
 pub(crate) use helpers::{is_workspace_path_dir_core, list_workspaces_core};
 pub(crate) use io::{

@@ -15,13 +15,12 @@ use crate::types::{
     WorktreeSetupStatus,
 };
 
-use super::connect::{
-    kill_session_by_id, take_live_shared_session, uses_codex_provider, workspace_session_spawn_lock,
-};
+use super::connect::{kill_session_by_id, take_live_shared_session, uses_codex_provider};
 use super::helpers::{
     copy_agents_md_from_parent_to_worktree, normalize_setup_script, workspace_path_to_string,
     worktree_setup_marker_path, AGENTS_MD_FILE_NAME,
 };
+use super::spawn_gate::workspace_session_spawn_lock;
 
 pub(crate) async fn worktree_setup_status_core(
     workspaces: &Mutex<HashMap<String, WorkspaceEntry>>,
@@ -222,7 +221,7 @@ where
         },
     };
 
-    let _spawn_guard = workspace_session_spawn_lock().lock().await;
+    let _spawn_guard = workspace_session_spawn_lock().acquire().await?;
     let use_codex = uses_codex_provider(app_settings).await;
     let existing_session = if use_codex {
         take_live_shared_session(sessions).await

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::OnceLock;
 
 use tokio::sync::Mutex;
 
@@ -13,18 +12,13 @@ use crate::shared::process_core::kill_child_process_tree;
 use crate::types::{AppSettings, LocalAgentProvider, WorkspaceEntry};
 
 use super::helpers::resolve_entry_and_parent;
-
-static CONNECT_WORKSPACE_SPAWN_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+use super::spawn_gate::workspace_session_spawn_lock;
 
 pub(super) async fn uses_codex_provider(app_settings: &Mutex<AppSettings>) -> bool {
     matches!(
         app_settings.lock().await.local_provider,
         LocalAgentProvider::Codex
     )
-}
-
-pub(super) fn workspace_session_spawn_lock() -> &'static Mutex<()> {
-    CONNECT_WORKSPACE_SPAWN_LOCK.get_or_init(|| Mutex::new(()))
 }
 
 async fn session_process_is_alive(session: &Arc<WorkspaceSession>) -> bool {
@@ -70,7 +64,7 @@ where
     Fut: Future<Output = Result<Arc<WorkspaceSession>, String>>,
 {
     let (entry, parent_entry) = resolve_entry_and_parent(workspaces, &workspace_id).await?;
-    let _spawn_guard = workspace_session_spawn_lock().lock().await;
+    let _spawn_guard = workspace_session_spawn_lock().acquire().await?;
     if let Some(existing_for_entry) = {
         let sessions = sessions.lock().await;
         sessions.get(&entry.id).cloned()

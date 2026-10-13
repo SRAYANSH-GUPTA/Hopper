@@ -15,12 +15,11 @@ use crate::storage::write_workspaces;
 use crate::types::{AppSettings, WorkspaceEntry, WorkspaceInfo, WorkspaceKind, WorkspaceSettings};
 use crate::utils::normalize_windows_namespace_path;
 
-use super::connect::{
-    kill_session_by_id, take_live_shared_session, uses_codex_provider, workspace_session_spawn_lock,
-};
+use super::connect::{kill_session_by_id, take_live_shared_session, uses_codex_provider};
 use super::helpers::{
     normalize_setup_script, normalize_workspace_path_input, workspace_path_to_string,
 };
+use super::spawn_gate::workspace_session_spawn_lock;
 
 pub(crate) async fn add_workspace_core<F, Fut>(
     path: String,
@@ -55,7 +54,7 @@ where
         settings: WorkspaceSettings::default(),
     };
 
-    let _spawn_guard = workspace_session_spawn_lock().lock().await;
+    let _spawn_guard = workspace_session_spawn_lock().acquire().await?;
     let use_codex = uses_codex_provider(app_settings).await;
     let existing_session = if use_codex {
         take_live_shared_session(sessions).await
@@ -217,7 +216,7 @@ where
         },
     };
 
-    let _spawn_guard = workspace_session_spawn_lock().lock().await;
+    let _spawn_guard = workspace_session_spawn_lock().acquire().await?;
     let use_codex = uses_codex_provider(app_settings).await;
     let existing_session = if use_codex {
         take_live_shared_session(sessions).await
@@ -410,7 +409,7 @@ where
         settings: WorkspaceSettings::default(),
     };
 
-    let _spawn_guard = workspace_session_spawn_lock().lock().await;
+    let _spawn_guard = workspace_session_spawn_lock().acquire().await?;
     let use_codex = uses_codex_provider(app_settings).await;
     let existing_session = if use_codex {
         take_live_shared_session(sessions).await
