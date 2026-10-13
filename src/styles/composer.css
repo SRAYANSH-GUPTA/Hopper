@@ -1115,6 +1115,7 @@
   }
 
   .app.layout-phone .composer-meta {
+    min-width: 0;
     flex-wrap: nowrap;
     overflow-x: auto;
     gap: 6px;
@@ -1123,6 +1124,11 @@
   }
 
   .app.layout-phone .composer-context {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .app.layout-phone .composer-context > :not(.composer-send-btn) {
     display: none;
   }
 
