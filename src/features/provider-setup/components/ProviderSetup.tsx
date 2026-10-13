@@ -60,7 +60,10 @@ export function ProviderSetup({ enabled = true, onboarding = false, targetKey, r
             <div className="provider-setup-provider-heading">
               {focused ? <strong>{provider.label}</strong> : (
                 <label className="provider-setup-choice">
-                  <input type="checkbox" checked={selected} disabled={Boolean(busy)} onChange={(event) => setup.setPreferences((prev) => prev && ({ ...prev, [key]: event.target.checked }))} />
+                  <input type="checkbox" checked={selected} disabled={Boolean(busy)} onChange={(event) => {
+                    const checked = event.currentTarget.checked;
+                    setup.setPreferences((prev) => prev && ({ ...prev, [key]: checked }));
+                  }} />
                   <strong>{provider.label}</strong>
                 </label>
               )}
@@ -85,8 +88,11 @@ export function ProviderSetup({ enabled = true, onboarding = false, targetKey, r
                 {remote && <p className="provider-setup-note">On the host, run <code>{provider.id === "codex" ? "codex login" : provider.id === "claude" ? "claude auth login" : "agy"}</code>, complete sign-in, then test here.</p>}
                 {provider.id === "antigravity" && (
                   <label className="provider-setup-permissions">
-                    <input type="checkbox" checked={preferences?.antigravityAutoApprove ?? true} disabled={Boolean(busy)} onChange={(event) => setup.setPreferences((prev) => prev && ({ ...prev, antigravityAutoApprove: event.target.checked }))} />
-                    <span>Allow Antigravity to run tools without asking<p className="provider-setup-note">Allows file changes and terminal commands without approval. On by default to prevent requests from stopping in Hopper's headless mode.</p></span>
+                    <input type="checkbox" checked={preferences?.antigravityAutoApprove ?? false} disabled={Boolean(busy)} onChange={(event) => {
+                      const checked = event.currentTarget.checked;
+                      setup.setPreferences((prev) => prev && ({ ...prev, antigravityAutoApprove: checked }));
+                    }} />
+                    <span>Allow Antigravity to run tools without asking<p className="provider-setup-note">Allows file changes and terminal commands without approval. Disabled by default.</p></span>
                   </label>
                 )}
               </>

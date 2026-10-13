@@ -24,6 +24,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 describe("ProviderSetup", () => {
+  it("keeps automatic tool approval disabled when the host has no saved preference", async () => {
+    const legacyStatus = structuredClone(status);
+    Reflect.deleteProperty(legacyStatus.preferences, "antigravityAutoApprove");
+    vi.mocked(getProviderSetupStatus).mockResolvedValue(legacyStatus);
+    render(<ProviderSetup targetKey="local" />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Antigravity" }));
+
+    const bypass = screen.getByRole("checkbox", { name: /Allow Antigravity/ }) as HTMLInputElement;
+    expect(bypass.checked).toBe(false);
+    fireEvent.click(bypass);
+    fireEvent.click(screen.getByRole("button", { name: "Save setup preferences" }));
+
+    await waitFor(() => expect(saveProviderSetup).toHaveBeenCalledWith(
+      expect.objectContaining({ antigravityAutoApprove: true }),
+    ));
+  });
+
   it("does not install or sign in automatically and requires a verified selected provider", async () => {
     const configured = vi.fn().mockResolvedValue(undefined);
     render(<ProviderSetup onboarding targetKey="local" onConfigured={configured} />);
