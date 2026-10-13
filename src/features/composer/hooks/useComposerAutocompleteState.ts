@@ -303,7 +303,7 @@ export function useComposerAutocompleteState({
         {
           id: "resume",
           label: "resume",
-          description: "refresh the active thread",
+          description: "find and reopen a past conversation",
           insertText: "resume",
           group: "Slash",
         },

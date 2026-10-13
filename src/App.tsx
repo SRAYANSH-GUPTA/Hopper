@@ -36,6 +36,7 @@ import "./styles/clone-modal.css";
 import "./styles/workspace-from-url-modal.css";
 import "./styles/mobile-remote-workspace-modal.css";
 import "./styles/branch-switcher-modal.css";
+import "./styles/resume-thread-picker.css";
 import "./styles/git-init-modal.css";
 import "./styles/settings.css";
 import "./styles/marketplace.css";

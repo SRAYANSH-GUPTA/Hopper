@@ -1,0 +1,69 @@
+.resume-thread-picker .ds-modal-card {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(580px, calc(100vh - 80px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.resume-thread-picker-title {
+  padding: 18px 18px 10px;
+}
+
+.resume-thread-picker-search {
+  margin: 0 18px 12px;
+}
+
+.resume-thread-picker-list {
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.resume-thread-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ds-text-strong);
+  text-align: left;
+  cursor: pointer;
+}
+
+.resume-thread-picker-row:hover,
+.resume-thread-picker-row.selected {
+  background: var(--ds-surface-muted);
+}
+
+.resume-thread-picker-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resume-thread-picker-meta {
+  flex-shrink: 0;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+}
+
+.resume-thread-picker-empty,
+.resume-thread-picker-more {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  color: var(--ds-text-faint);
+  text-align: center;
+  font-size: 13px;
+}
+
+.resume-thread-picker-more {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}

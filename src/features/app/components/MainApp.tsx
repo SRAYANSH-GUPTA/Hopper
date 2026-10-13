@@ -3,6 +3,7 @@ import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import successSoundUrl from "@/assets/success-notification.mp3";
 import errorSoundUrl from "@/assets/error-notification.mp3";
 import { MainAppShell } from "@app/components/MainAppShell";
+import { ResumeThreadPicker } from "@threads/components/ResumeThreadPicker";
 import { useThreads } from "@threads/hooks/useThreads";
 import { usePullRequestComposer } from "@/features/git/hooks/usePullRequestComposer";
 import { useAutoExitEmptyDiff } from "@/features/git/hooks/useAutoExitEmptyDiff";
@@ -515,7 +516,6 @@ export default function MainApp() {
     startFork,
     startReview,
     startUncommittedReview,
-    startResume,
     startCompact,
     startApps,
     startMcp,
@@ -1252,6 +1252,18 @@ export default function MainApp() {
   const hasActivePlan = Boolean(
     activePlan && (activePlan.steps.length > 0 || activePlan.explanation)
   );
+  const [resumePicker, setResumePicker] = useState<{
+    workspaceId: string;
+    query: string;
+  } | null>(null);
+  const startResume = useCallback(async (text: string) => {
+    if (!activeWorkspace) return;
+    setResumePicker({
+      workspaceId: activeWorkspace.id,
+      query: text.replace(/^\/resume\b/i, "").trim(),
+    });
+    await listThreadsForWorkspace(activeWorkspace);
+  }, [activeWorkspace, listThreadsForWorkspace]);
   const composerWorkspaceState = useMainAppComposerWorkspaceState({
     view: {
       activeTab,
@@ -2052,7 +2064,23 @@ export default function MainApp() {
   });
 
   return <>
-    <MainAppShell {...mainAppShellProps} />
+    <MainAppShell {...mainAppShellProps} resumePickerNode={resumePicker && activeWorkspace?.id === resumePicker.workspaceId ? (
+      <ResumeThreadPicker
+        key={resumePicker.workspaceId}
+        threads={threadsByWorkspace[resumePicker.workspaceId] ?? []}
+        currentThreadId={activeThreadId}
+        initialQuery={resumePicker.query}
+        loading={threadListLoadingByWorkspace[resumePicker.workspaceId] ?? false}
+        paging={threadListPagingByWorkspace[resumePicker.workspaceId] ?? false}
+        hasMore={Boolean(threadListCursorByWorkspace[resumePicker.workspaceId])}
+        onLoadMore={() => void loadOlderThreadsForWorkspace(activeWorkspace)}
+        onSelect={(threadId) => {
+          sidebarMenuOrchestration.onSelectThread(resumePicker.workspaceId, threadId);
+          setResumePicker(null);
+        }}
+        onClose={() => setResumePicker(null)}
+      />
+    ) : null} />
     <ProviderSetup
       enabled={!appSettingsLoading}
       onboarding

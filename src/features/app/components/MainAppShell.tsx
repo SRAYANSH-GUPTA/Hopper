@@ -1,4 +1,4 @@
-import { lazy, Suspense, type CSSProperties, type ComponentProps, type RefObject } from "react";
+import { lazy, Suspense, type CSSProperties, type ComponentProps, type RefObject, type ReactNode } from "react";
 import { AppLayout } from "@app/components/AppLayout";
 import { AppModals } from "@app/components/AppModals";
 import type { AppModalsProps } from "@app/components/AppModals";
@@ -36,6 +36,7 @@ type MainAppShellProps = {
   appModalsProps: AppModalsProps;
   showMobileSetupWizard: boolean;
   mobileSetupWizardProps: ComponentProps<typeof MobileServerSetupWizard>;
+  resumePickerNode?: ReactNode;
 };
 
 export function MainAppShell({
@@ -50,6 +51,7 @@ export function MainAppShell({
   appModalsProps,
   showMobileSetupWizard,
   mobileSetupWizardProps,
+  resumePickerNode,
 }: MainAppShellProps) {
   return (
     <div className={`${appClassName}${isResizing ? " is-resizing" : ""}`} style={appStyle} ref={appRef}>
@@ -63,6 +65,7 @@ export function MainAppShell({
       ) : null}
       <AppLayout {...appLayoutProps} />
       <AppModals {...appModalsProps} />
+      {resumePickerNode}
       {showMobileSetupWizard ? <MobileServerSetupWizard {...mobileSetupWizardProps} /> : null}
     </div>
   );
