@@ -273,7 +273,7 @@ The checked-in updater public key alone does not establish ownership: releases r
 
 The signed macOS application declares microphone and Apple Events permissions. Provider sign-in opens Terminal through Apple Events; macOS asks the user for automation permission, and denying it prevents that login action. The entitlement and usage text follow [Apple's automation entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.automation.apple-events) and [usage-description requirements](https://developer.apple.com/documentation/bundleresources/information-property-list/nsappleeventsusagedescription).
 
-Release packaging verifies updater signatures against the shipped public key, requires all platform artifacts, and generates `latest.json` plus `SHA256SUMS`. macOS builds also verify code signatures, notarization tickets, and Gatekeeper acceptance on the build runner. CI success does not replace testing fresh installs, updates, microphone permission, terminal sessions, and provider setup on physical target systems.
+Release packaging verifies updater signatures against the shipped public key, requires all platform artifacts, and generates `latest.json` plus `SHA256SUMS`. The manifest uses installer-specific targets so AppImage, Debian, RPM, MSI, and NSIS installations receive matching update packages; generic targets remain available for older clients. macOS builds also verify code signatures, notarization tickets, and Gatekeeper acceptance on the build runner. CI success does not replace testing fresh installs, updates, microphone permission, terminal sessions, and provider setup on physical target systems.
 
 ### Windows (opt-in)
 

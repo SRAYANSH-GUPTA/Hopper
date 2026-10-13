@@ -48,7 +48,7 @@ function stagePlatform(root, config, key, platform) {
     const filename = path.join(bundle, `Hopper.${extension}`);
     const contents = Buffer.from(`fixture ${platform} ${extension}`);
     writeFileSync(filename, contents);
-    if (["AppImage", "app.tar.gz", "exe", "msi"].includes(extension)) {
+    if (["AppImage", "deb", "rpm", "app.tar.gz", "exe", "msi"].includes(extension)) {
       writeFileSync(`${filename}.sig`, key.signature(contents));
     }
   }
@@ -118,16 +118,57 @@ test("complete release uses unique platform filenames and verifies every updater
   for (const platform of Object.keys(releasePlatforms)) stagePlatform(root, config, key, platform);
   const output = path.join(root, "release-artifacts");
   const manifest = createManifest(config, output, new Date("2026-01-01T00:00:00Z"));
-  assert.deepEqual(Object.keys(manifest.platforms), Object.keys(releasePlatforms));
-  assert.equal(new Set(Object.values(manifest.platforms).map((platform) => platform.url)).size, 5);
-  for (const [platform, metadata] of Object.entries(manifest.platforms)) {
+  const installers = {
+    "linux-x86_64": { appimage: "AppImage", deb: "deb", rpm: "rpm" },
+    "linux-aarch64": { appimage: "AppImage", deb: "deb", rpm: "rpm" },
+    "darwin-aarch64": { app: "app.tar.gz" },
+    "darwin-x86_64": { app: "app.tar.gz" },
+    "windows-x86_64": { nsis: "exe", msi: "msi" },
+  };
+  const expectedKeys = Object.entries(installers).flatMap(([platform, formats]) =>
+    [platform, ...Object.keys(formats).map((installer) => `${platform}-${installer}`)]);
+  assert.deepEqual(Object.keys(manifest.platforms).sort(), expectedKeys.sort());
+  assert.equal(new Set(Object.values(manifest.platforms).map((platform) => platform.url)).size, 10);
+  for (const metadata of Object.values(manifest.platforms)) {
     assert.ok(metadata.url.startsWith(`https://github.com/${repository}/releases/download/v1.2.3/`));
-    assert.ok(metadata.url.includes(platform));
+  }
+  for (const [platform, formats] of Object.entries(installers)) {
+    for (const [installer, extension] of Object.entries(formats)) {
+      const metadata = manifest.platforms[`${platform}-${installer}`];
+      assert.ok(metadata.url.endsWith(`Hopper_1.2.3_${platform}.${extension}`));
+      verifyUpdaterSignature(Buffer.from(`fixture ${platform} ${extension}`), metadata.signature, key.publicKey);
+    }
+    const legacyInstaller = platform.startsWith("linux") ? "appimage" : platform.startsWith("windows") ? "nsis" : "app";
+    assert.deepEqual(manifest.platforms[platform], manifest.platforms[`${platform}-${legacyInstaller}`]);
   }
   assert.ok(manifest.platforms["windows-x86_64"].url.endsWith(".exe"));
   assert.match(readFileSync(path.join(output, "SHA256SUMS"), "utf8"), /^[a-f0-9]{64}  /);
   writeFileSync(path.join(output, "Hopper_1.2.3_linux-x86_64.AppImage"), "tampered");
   assert.throws(() => createManifest(config, output), /verification failed/);
+});
+
+test("Linux package updates require signatures and reject modified Debian or RPM artifacts", (t) => {
+  const root = fixture(t);
+  const key = signingKey();
+  const config = { version: "1.2.3", repository, publicKey: key.publicKey };
+  let linuxBundle;
+  for (const platform of Object.keys(releasePlatforms)) {
+    const bundle = stagePlatform(root, config, key, platform);
+    if (platform === "linux-x86_64") linuxBundle = bundle;
+  }
+  const output = path.join(root, "release-artifacts");
+  for (const extension of ["deb", "rpm"]) {
+    const artifact = path.join(output, `Hopper_1.2.3_linux-x86_64.${extension}`);
+    const contents = readFileSync(artifact);
+    writeFileSync(artifact, "tampered package");
+    assert.throws(() => createManifest(config, output), /verification failed/);
+    writeFileSync(artifact, contents);
+    const signaturePath = path.join(linuxBundle, `Hopper.${extension}.sig`);
+    const signature = readFileSync(signaturePath);
+    rmSync(signaturePath);
+    assert.throws(() => stageArtifacts(config, "linux-x86_64", linuxBundle, path.join(root, `unsigned-${extension}`)), /ENOENT/);
+    writeFileSync(signaturePath, signature);
+  }
 });
 
 test("release refuses missing platforms and ambiguous bundle outputs", (t) => {

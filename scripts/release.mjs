@@ -99,9 +99,15 @@ export function verifyUpdaterSignature(contents, encodedSignature, encodedPublic
     "Updater signature verification failed");
 }
 
-function isSigned(extension) {
-  return ["AppImage", "app.tar.gz", "exe", "msi"].includes(extension);
-}
+// Installer names must match tauri-plugin-updater's OS-ARCH-INSTALLER lookup.
+const updaterInstallers = Object.freeze({
+  AppImage: "appimage",
+  deb: "deb",
+  rpm: "rpm",
+  "app.tar.gz": "app",
+  exe: "nsis",
+  msi: "msi",
+});
 
 function artifactName(config, platform, extension) {
   return `Hopper_${config.version}_${platform}.${extension}`;
@@ -128,7 +134,7 @@ export function stageArtifacts(config, platform, bundleDirectory, outputDirector
     requireValue(statSync(source).size > 0, `Empty release artifact: ${source}`);
     const destination = path.join(outputDirectory, artifactName(config, platform, extension));
     requireValue(!existsSync(destination), `Duplicate artifact: ${destination}`);
-    if (isSigned(extension)) {
+    if (Object.hasOwn(updaterInstallers, extension)) {
       const signature = readFileSync(`${source}.sig`, "utf8").trim();
       verifyUpdaterSignature(readFileSync(source), signature, config.publicKey);
       writeFileSync(`${destination}.sig`, `${signature}\n`);
@@ -146,16 +152,18 @@ export function createManifest(config, directory, now = new Date()) {
       const artifact = path.join(directory, filename);
       requireValue(existsSync(artifact) && statSync(artifact).size > 0, `Missing or empty release artifact: ${filename}`);
       expected.push(filename);
-      if (isSigned(extension)) {
+      if (Object.hasOwn(updaterInstallers, extension)) {
         const signature = readFileSync(`${artifact}.sig`, "utf8").trim();
         verifyUpdaterSignature(readFileSync(artifact), signature, config.publicKey);
         expected.push(`${filename}.sig`);
-        // NSIS is the Windows updater; MSI remains available for manual installs.
-        if (extension !== "msi") {
-          platforms[platform] = {
-            url: `https://github.com/${config.repository}/releases/download/v${config.version}/${encodeURIComponent(filename)}`,
-            signature,
-          };
+        const metadata = {
+          url: `https://github.com/${config.repository}/releases/download/v${config.version}/${encodeURIComponent(filename)}`,
+          signature,
+        };
+        platforms[`${platform}-${updaterInstallers[extension]}`] = metadata;
+        // Preserve the generic targets for clients predating bundle-specific lookup.
+        if (["AppImage", "app.tar.gz", "exe"].includes(extension)) {
+          platforms[platform] = metadata;
         }
       }
     }
