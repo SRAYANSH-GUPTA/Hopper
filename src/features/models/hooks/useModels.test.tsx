@@ -23,6 +23,32 @@ describe("useModels", () => {
     vi.clearAllMocks();
   });
 
+  it("does not offer Codex fallback or configuration when a non-Codex catalog is unavailable", async () => {
+    vi.mocked(getModelList).mockRejectedValue(new Error("Catalog unavailable"));
+    vi.mocked(getConfigModel).mockResolvedValue("gpt-6-astra");
+    const { result } = renderHook(() => useModels({
+      activeWorkspace: workspace, selectionKey: "claude:thread-1", includeCodexDefaults: false,
+    }));
+    await act(async () => { await result.current.refreshModels(); });
+    expect(getModelList).toHaveBeenCalled();
+    expect(getConfigModel).not.toHaveBeenCalled();
+    expect(result.current.models).toEqual([]);
+    expect(result.current.selectedModelId).toBeNull();
+  });
+
+  it("keeps a non-Codex catalog free of the configured Codex model", async () => {
+    vi.mocked(getModelList).mockResolvedValue({ result: { data: [
+      { id: "claude-sonnet-4-6", displayName: "Claude Sonnet", isDefault: true },
+    ] } });
+    vi.mocked(getConfigModel).mockResolvedValue("gpt-6-astra");
+    const { result } = renderHook(() => useModels({
+      activeWorkspace: workspace, selectionKey: "claude:thread-1", includeCodexDefaults: false,
+    }));
+    await waitFor(() => expect(result.current.selectedModelId).toBe("claude-sonnet-4-6"));
+    expect(result.current.models.map((model) => model.id)).toEqual(["claude-sonnet-4-6"]);
+    expect(getConfigModel).not.toHaveBeenCalled();
+  });
+
   it("adds the config model when it is missing from model/list", async () => {
     vi.mocked(getModelList).mockResolvedValueOnce({
       result: {

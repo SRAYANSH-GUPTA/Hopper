@@ -12,6 +12,7 @@ type UseModelsOptions = {
   preferredModelId?: string | null;
   preferredEffort?: string | null;
   selectionKey?: string | null;
+  includeCodexDefaults?: boolean;
   staticModels?: {
     id: string;
     label: string;
@@ -49,6 +50,7 @@ export function useModels({
   preferredModelId = null,
   preferredEffort = null,
   selectionKey = null,
+  includeCodexDefaults = true,
   staticModels = null,
   refreshTrigger = 0,
 }: UseModelsOptions) {
@@ -243,7 +245,7 @@ export function useModels({
     try {
       const [modelListResult, configModelResult] = await Promise.allSettled([
         getModelList(workspaceId),
-        getConfigModel(workspaceId),
+        includeCodexDefaults ? getConfigModel(workspaceId) : Promise.resolve(null),
       ]);
       const configModelFromConfig =
         configModelResult.status === "fulfilled"
@@ -284,7 +286,9 @@ export function useModels({
       });
       if (fetchGeneration.current !== myGeneration) return;
       setConfigModel(configModelFromConfig);
-      const dataFromServer: ModelOption[] = parseModelListResponse(response);
+      const dataFromServer: ModelOption[] = parseModelListResponse(response, {
+        includeFallback: includeCodexDefaults,
+      });
       const data = (() => {
         if (!configModelFromConfig) {
           return dataFromServer;
@@ -307,6 +311,10 @@ export function useModels({
         return [configOption, ...dataFromServer];
       })();
       setModels(data);
+      if (data.length === 0) {
+        setSelectedModelIdState(null);
+        setSelectedEffortState(null);
+      }
       lastLoadedSelectionKeyRef.current = selectionKey;
       lastFetchedWorkspaceId.current = workspaceId;
       lastFetchedStaticMode.current = false;
@@ -339,6 +347,7 @@ export function useModels({
       inFlight.current = false;
     }
   }, [
+    includeCodexDefaults,
     isConnected,
     onDebug,
     preferredModelId,

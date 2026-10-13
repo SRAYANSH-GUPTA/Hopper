@@ -323,6 +323,7 @@ export default function MainApp() {
     preferredEffort,
     selectionKey: `${activeProvider}:${threadCodexSelectionKey ?? ""}`,
     staticModels: activeProviderConfig.staticModels,
+    includeCodexDefaults: activeProvider === "codex",
     refreshTrigger: providerSwitchCount,
   });
 
