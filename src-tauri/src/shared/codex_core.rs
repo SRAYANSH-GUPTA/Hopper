@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
+#[cfg(target_os = "macos")]
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{oneshot, Mutex};

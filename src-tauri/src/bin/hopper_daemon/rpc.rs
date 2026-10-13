@@ -6,12 +6,12 @@ mod codex;
 mod daemon;
 #[path = "rpc/dispatcher.rs"]
 mod dispatcher;
-#[path = "rpc/provider_setup.rs"]
-mod provider_setup;
 #[path = "rpc/git.rs"]
 mod git;
 #[path = "rpc/prompts.rs"]
 mod prompts;
+#[path = "rpc/provider_setup.rs"]
+mod provider_setup;
 #[path = "rpc/workspace.rs"]
 mod workspace;
 
@@ -87,10 +87,7 @@ pub(super) fn parse_optional_string(value: &Value, key: &str) -> Option<String> 
     }
 }
 
-pub(super) fn parse_optional_nullable_string(
-    value: &Value,
-    key: &str,
-) -> Option<Option<String>> {
+pub(super) fn parse_optional_nullable_string(value: &Value, key: &str) -> Option<Option<String>> {
     match value {
         Value::Object(map) => match map.get(key) {
             Some(Value::Null) => Some(None),
@@ -159,7 +156,7 @@ pub(super) async fn handle_rpc_request(
 
 pub(super) async fn forward_events(
     mut rx: broadcast::Receiver<DaemonEvent>,
-    out_tx_events: mpsc::UnboundedSender<String>,
+    out_tx_events: mpsc::Sender<String>,
 ) {
     loop {
         let event = match rx.recv().await {
@@ -172,32 +169,49 @@ pub(super) async fn forward_events(
             continue;
         };
 
-        if out_tx_events.send(payload).is_err() {
+        if out_tx_events.send(payload).await.is_err() {
             break;
         }
     }
 }
 
-pub(super) fn spawn_rpc_response_task(
+pub(super) async fn spawn_rpc_response_task(
     state: Arc<DaemonState>,
-    out_tx: mpsc::UnboundedSender<String>,
+    out_tx: mpsc::Sender<String>,
     id: Option<u64>,
     method: String,
     params: Value,
     client_version: String,
     request_limiter: Arc<Semaphore>,
 ) {
+    // Acquire before spawning: waiting for a semaphore inside a spawned task
+    // still lets a client allocate an unlimited number of tasks and payloads.
+    // A process-wide limit also bounds requests whose clients have disconnected.
+    static GLOBAL_REQUEST_LIMIT: std::sync::OnceLock<Arc<Semaphore>> = std::sync::OnceLock::new();
+    let global_limiter = GLOBAL_REQUEST_LIMIT.get_or_init(|| Arc::new(Semaphore::new(128)));
+    let permits = request_limiter.try_acquire_owned().and_then(|local| {
+        Arc::clone(global_limiter)
+            .try_acquire_owned()
+            .map(|global| (local, global))
+    });
+    let Ok(permits) = permits else {
+        if let Some(response) = build_error_response(
+            id,
+            "Too many in-flight requests; retry when pending requests finish",
+        ) {
+            let _ = out_tx.send(response).await;
+        }
+        return;
+    };
     tokio::spawn(async move {
-        let Ok(_permit) = request_limiter.acquire_owned().await else {
-            return;
-        };
+        let _permits = permits;
         let result = handle_rpc_request(&state, &method, params, client_version).await;
         let response = match result {
             Ok(result) => build_result_response(id, result),
             Err(message) => build_error_response(id, &message),
         };
         if let Some(response) = response {
-            let _ = out_tx.send(response);
+            let _ = out_tx.send(response).await;
         }
     });
 }

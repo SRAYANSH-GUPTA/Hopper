@@ -122,7 +122,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let state = state::AppState::load(&app.handle());
+            let state = state::AppState::load(&app.handle())?;
             app.manage(state);
             #[cfg(desktop)]
             if let Some(main_window) = app.get_webview_window("main") {

@@ -1,6 +1,6 @@
 use std::fs::File;
-use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::io::{Read, Write};
+use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -102,6 +102,15 @@ pub(crate) fn write_text_file_within(
     file_context: &str,
     allow_external_symlink_target: bool,
 ) -> Result<(), String> {
+    if !matches!(
+        Path::new(filename)
+            .components()
+            .collect::<Vec<_>>()
+            .as_slice(),
+        [Component::Normal(_)]
+    ) {
+        return Err(format!("Invalid {file_context} path"));
+    }
     let canonical_root = if create_root {
         resolve_or_create_root(root, root_context)?
     } else {
@@ -114,11 +123,16 @@ pub(crate) fn write_text_file_within(
         return Err(format!("Invalid {file_context} path"));
     }
 
-    let target_path = if candidate.exists() {
-        let candidate_is_symlink = std::fs::symlink_metadata(&candidate)
-            .map_err(|err| format!("Failed to resolve {file_context}: {err}"))?
-            .file_type()
-            .is_symlink();
+    // `exists()` follows symlinks and reports false for a dangling link. Treating
+    // that case as a new file would create its target outside the workspace.
+    let metadata = match std::fs::symlink_metadata(&candidate) {
+        Ok(metadata) => Some(metadata),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("Failed to resolve {file_context}: {error}")),
+    };
+    let target_exists = metadata.is_some();
+    let target_path = if let Some(metadata) = metadata {
+        let candidate_is_symlink = metadata.file_type().is_symlink();
         let canonical_path = candidate
             .canonicalize()
             .map_err(|err| format!("Failed to resolve {file_context}: {err}"))?;
@@ -132,7 +146,20 @@ pub(crate) fn write_text_file_within(
         candidate
     };
 
-    std::fs::write(&target_path, content)
+    let mut options = std::fs::OpenOptions::new();
+    options
+        .write(true)
+        .truncate(true)
+        .create_new(!target_exists);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Even if a link is introduced after the checks above, do not follow it.
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    options
+        .open(&target_path)
+        .and_then(|mut file| file.write_all(content.as_bytes()))
         .map_err(|err| format!("Failed to write {file_context}: {err}"))
 }
 
@@ -203,6 +230,51 @@ mod tests {
         )
         .expect_err("should reject symlink escape");
         assert!(error.contains("Invalid AGENTS.md path"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_rejects_dangling_symlink_escape_without_creating_its_target() {
+        use std::os::unix::fs::symlink;
+        let root = temp_dir();
+        let outside = temp_dir();
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let outside_file = outside.join("not-created.md");
+        symlink(&outside_file, root.join("AGENTS.md")).unwrap();
+
+        assert!(write_text_file_within(
+            &root,
+            "AGENTS.md",
+            "escape",
+            false,
+            "workspace root",
+            "AGENTS.md",
+            false,
+        )
+        .is_err());
+        assert!(!outside_file.exists());
+        assert!(root.join("AGENTS.md").is_symlink());
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[test]
+    fn write_rejects_relative_traversal_to_a_missing_file() {
+        let root = temp_dir();
+        std::fs::create_dir_all(root.join("workspace")).unwrap();
+        assert!(write_text_file_within(
+            &root.join("workspace"),
+            "../outside.md",
+            "escape",
+            false,
+            "workspace root",
+            "AGENTS.md",
+            false,
+        )
+        .is_err());
+        assert!(!root.join("outside.md").exists());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]

@@ -9,6 +9,7 @@ pub(super) async fn try_handle(
         "ping" => Some(Ok(json!({ "ok": true }))),
         "daemon_info" => Some(Ok(state.daemon_info())),
         "daemon_shutdown" => {
+            state.stop_sessions().await;
             tokio::spawn(async {
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 std::process::exit(0);

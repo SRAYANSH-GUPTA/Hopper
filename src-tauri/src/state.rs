@@ -48,16 +48,15 @@ pub(crate) struct AppState {
 }
 
 impl AppState {
-    pub(crate) fn load(app: &AppHandle) -> Self {
-        let data_dir = app
-            .path()
-            .app_data_dir()
-            .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+    pub(crate) fn load(app: &AppHandle) -> Result<Self, String> {
+        let data_dir = app.path().app_data_dir().map_err(|error| {
+            format!("Cannot locate Hopper's application data directory: {error}")
+        })?;
         let storage_path = data_dir.join("workspaces.json");
         let settings_path = data_dir.join("settings.json");
-        let workspaces = read_workspaces(&storage_path).unwrap_or_default();
-        let app_settings = read_settings(&settings_path).unwrap_or_default();
-        Self {
+        let workspaces = read_workspaces(&storage_path)?;
+        let app_settings = read_settings(&settings_path)?;
+        Ok(Self {
             workspaces: Mutex::new(workspaces),
             sessions: Mutex::new(HashMap::new()),
             terminal_sessions: Mutex::new(HashMap::new()),
@@ -70,6 +69,6 @@ impl AppState {
             dictation: Mutex::new(DictationState::default()),
             codex_login_cancels: Mutex::new(HashMap::new()),
             tcp_daemon: Mutex::new(TcpDaemonRuntime::default()),
-        }
+        })
     }
 }

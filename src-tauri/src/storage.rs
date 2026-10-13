@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use crate::types::{AppSettings, WorkspaceEntry, WorkspaceSettings};
 use serde_json::Value;
@@ -143,11 +144,13 @@ fn try_rewrite_settings_with_normalized_paths(path: &PathBuf, settings: &AppSett
 }
 
 pub(crate) fn read_workspaces(path: &PathBuf) -> Result<HashMap<String, WorkspaceEntry>, String> {
-    if !path.exists() {
-        return Ok(HashMap::new());
-    }
-    let data = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let list: Vec<WorkspaceEntry> = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    let data = match std::fs::read_to_string(path) {
+        Ok(data) => data,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
+        Err(error) => return Err(storage_read_error(path, error)),
+    };
+    let list: Vec<WorkspaceEntry> =
+        serde_json::from_str(&data).map_err(|error| storage_read_error(path, error))?;
     let (list, _) = normalize_workspace_entries(list);
     Ok(list
         .into_iter()
@@ -156,20 +159,21 @@ pub(crate) fn read_workspaces(path: &PathBuf) -> Result<HashMap<String, Workspac
 }
 
 pub(crate) fn write_workspaces(path: &PathBuf, entries: &[WorkspaceEntry]) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
     let (entries, _) = normalize_workspace_entries(entries.iter().cloned());
     let data = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
-    std::fs::write(path, data).map_err(|e| e.to_string())
+    write_storage_atomic(path, data.as_bytes()).map_err(|e| e.to_string())
 }
 
 pub(crate) fn read_settings(path: &PathBuf) -> Result<AppSettings, String> {
-    if !path.exists() {
-        return Ok(AppSettings::default());
-    }
-    let data = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let mut value: Value = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    let data = match std::fs::read_to_string(path) {
+        Ok(data) => data,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(AppSettings::default())
+        }
+        Err(error) => return Err(storage_read_error(path, error)),
+    };
+    let mut value: Value =
+        serde_json::from_str(&data).map_err(|error| storage_read_error(path, error))?;
     migrate_follow_up_message_behavior(&mut value);
     match serde_json::from_value(value.clone()) {
         Ok(settings) => Ok(finalize_loaded_settings(path, settings)),
@@ -178,18 +182,56 @@ pub(crate) fn read_settings(path: &PathBuf) -> Result<AppSettings, String> {
             migrate_follow_up_message_behavior(&mut value);
             serde_json::from_value(value)
                 .map(|settings| finalize_loaded_settings(path, settings))
-                .map_err(|e| e.to_string())
+                .map_err(|error| storage_read_error(path, error))
         }
     }
 }
 
 pub(crate) fn write_settings(path: &PathBuf, settings: &AppSettings) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
     let (settings, _) = normalize_app_settings(settings.clone());
     let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(path, data).map_err(|e| e.to_string())
+    write_storage_atomic(path, data.as_bytes()).map_err(|e| e.to_string())
+}
+
+fn storage_read_error(path: &Path, error: impl std::fmt::Display) -> String {
+    format!(
+        "Cannot load {}: {error}. Repair or restore this file before restarting Hopper; its contents have not been replaced.",
+        path.display()
+    )
+}
+
+// Both the desktop app and daemon use this persistence path. Write and sync a
+// private sibling first so a failed write or interrupted process cannot truncate
+// the last complete settings/workspace snapshot.
+fn write_storage_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let temporary = parent.join(format!(".hopper-{}.tmp", uuid::Uuid::new_v4()));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Settings include remote authentication tokens.
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temporary)?;
+    let result = (|| {
+        file.write_all(data)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, path)?;
+        #[cfg(unix)]
+        std::fs::File::open(parent)?.sync_all()?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
 }
 
 fn finalize_loaded_settings(path: &PathBuf, settings: AppSettings) -> AppSettings {
@@ -245,9 +287,76 @@ fn migrate_follow_up_message_behavior(value: &mut Value) {
 
 #[cfg(test)]
 mod tests {
-    use super::{read_settings, read_workspaces, write_settings, write_workspaces};
+    use super::{
+        read_settings, read_workspaces, write_settings, write_storage_atomic, write_workspaces,
+    };
     use crate::types::{AppSettings, WorkspaceEntry, WorkspaceKind, WorkspaceSettings};
     use uuid::Uuid;
+
+    #[test]
+    fn corrupt_storage_returns_a_recovery_error_without_overwriting_data() {
+        let temp_dir = std::env::temp_dir().join(format!("hopper-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        for filename in ["settings.json", "workspaces.json"] {
+            let path = temp_dir.join(filename);
+            let contents = b"{interrupted JSON";
+            std::fs::write(&path, contents).unwrap();
+            let error = if filename == "settings.json" {
+                read_settings(&path).unwrap_err()
+            } else {
+                read_workspaces(&path).unwrap_err()
+            };
+            assert!(error.contains(&path.display().to_string()));
+            assert!(error.contains("Repair or restore"));
+            assert_eq!(std::fs::read(&path).unwrap(), contents);
+        }
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn missing_storage_uses_initial_defaults() {
+        let root = std::env::temp_dir().join(format!("hopper-test-{}", Uuid::new_v4()));
+        assert!(read_settings(&root.join("settings.json")).is_ok());
+        assert!(read_workspaces(&root.join("workspaces.json"))
+            .unwrap()
+            .is_empty());
+        assert!(!root.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_preserves_the_previous_snapshot_for_existing_readers() {
+        use std::io::Read;
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("hopper-test-{}", Uuid::new_v4()));
+        let path = root.join("settings.json");
+        write_storage_atomic(&path, b"previous complete snapshot").unwrap();
+        let mut previous_reader = std::fs::File::open(&path).unwrap();
+        write_storage_atomic(&path, b"next snapshot").unwrap();
+
+        let mut previous = String::new();
+        previous_reader.read_to_string(&mut previous).unwrap();
+        assert_eq!(previous, "previous complete snapshot");
+        assert_eq!(std::fs::read(&path).unwrap(), b"next snapshot");
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_atomic_replace_preserves_destination_and_cleans_temporary_file() {
+        let root = std::env::temp_dir().join(format!("hopper-test-{}", Uuid::new_v4()));
+        let path = root.join("settings.json");
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(path.join("existing"), b"keep me").unwrap();
+        assert!(write_storage_atomic(&path, b"new data").is_err());
+        assert_eq!(std::fs::read(path.join("existing")).unwrap(), b"keep me");
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn write_read_workspaces_persists_sort_and_group() {
@@ -333,7 +442,10 @@ mod tests {
         let persisted_entries: Vec<WorkspaceEntry> =
             serde_json::from_str(&persisted).expect("deserialize persisted workspaces");
         assert_eq!(persisted_entries.len(), 1);
-        assert_eq!(persisted_entries[0].path, r"\\?\I:\gpt-projects\json-composer");
+        assert_eq!(
+            persisted_entries[0].path,
+            r"\\?\I:\gpt-projects\json-composer"
+        );
     }
 
     #[test]

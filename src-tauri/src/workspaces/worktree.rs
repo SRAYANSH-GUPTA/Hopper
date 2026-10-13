@@ -11,8 +11,8 @@ pub(crate) fn sanitize_clone_dir_name(name: &str) -> String {
     worktree_core::sanitize_clone_dir_name(name)
 }
 
-pub(crate) fn unique_worktree_path(base_dir: &PathBuf, name: &str) -> PathBuf {
-    worktree_core::unique_worktree_path_best_effort(base_dir, name)
+pub(crate) fn unique_worktree_path(base_dir: &PathBuf, name: &str) -> Result<PathBuf, String> {
+    worktree_core::unique_worktree_path_strict(base_dir, name)
 }
 
 pub(crate) fn unique_worktree_path_for_rename(
@@ -25,5 +25,5 @@ pub(crate) fn unique_worktree_path_for_rename(
 
 #[cfg(test)]
 pub(crate) fn build_clone_destination_path(copies_folder: &PathBuf, copy_name: &str) -> PathBuf {
-    worktree_core::build_clone_destination_path(copies_folder, copy_name)
+    worktree_core::reserve_clone_destination(copies_folder, copy_name).expect("reserve clone path")
 }

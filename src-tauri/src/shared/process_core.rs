@@ -57,6 +57,17 @@ pub(crate) async fn terminate_process(pid: u32) {
 }
 
 pub(crate) async fn kill_child_process_tree(child: &mut Child) {
+    #[cfg(unix)]
+    if let Some(pid) = child.id().filter(|pid| *pid > 0 && *pid <= i32::MAX as u32) {
+        let pid = pid as libc::pid_t;
+        // Only signal a group when this child leads it. Ordinary children share
+        // Hopper's process group and must never cause us to kill the app itself.
+        unsafe {
+            if libc::getpgid(pid) == pid {
+                libc::kill(-pid, libc::SIGKILL);
+            }
+        }
+    }
     #[cfg(windows)]
     {
         if let Some(pid) = child.id() {
@@ -69,8 +80,71 @@ pub(crate) async fn kill_child_process_tree(child: &mut Child) {
 
 #[cfg(all(test, any(unix, windows)))]
 mod tests {
-    use super::{terminate_process, tokio_command};
+    use super::{kill_child_process_tree, terminate_process, tokio_command};
     use std::time::Duration;
+
+    #[cfg(unix)]
+    #[test]
+    fn terminates_descendants_in_an_isolated_process_group() {
+        use std::os::unix::process::CommandExt;
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let mut command = tokio_command("sh");
+                command
+                    .args(["-c", "sleep 60 & echo ready; wait"])
+                    .stdout(std::process::Stdio::piped())
+                    .kill_on_drop(true);
+                command.as_std_mut().process_group(0);
+                let mut child = command.spawn().unwrap();
+                let pid = child.id().unwrap() as libc::pid_t;
+                let mut stdout = BufReader::new(child.stdout.take().unwrap());
+                let mut ready = String::new();
+                stdout.read_line(&mut ready).await.unwrap();
+                assert_eq!(ready.trim(), "ready");
+
+                kill_child_process_tree(&mut child).await;
+                let result = tokio::time::timeout(
+                    Duration::from_secs(2),
+                    stdout.read_to_end(&mut Vec::new()),
+                )
+                .await;
+                // Clean up even if the assertion fails on a regression.
+                if result.is_err() {
+                    unsafe {
+                        libc::kill(-pid, libc::SIGKILL);
+                    }
+                }
+                result
+                    .expect("grandchild must close its inherited stdout")
+                    .unwrap();
+                assert!(child.try_wait().unwrap().is_some());
+            });
+    }
+
+    #[test]
+    fn terminates_a_child_that_shares_the_parent_process_group() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                #[cfg(unix)]
+                let mut command = tokio_command("sleep");
+                #[cfg(unix)]
+                command.arg("60");
+                #[cfg(windows)]
+                let mut command = tokio_command("ping.exe");
+                #[cfg(windows)]
+                command.args(["-n", "60", "127.0.0.1"]);
+                let mut child = command.kill_on_drop(true).spawn().unwrap();
+                kill_child_process_tree(&mut child).await;
+                assert!(child.try_wait().unwrap().is_some());
+            });
+    }
 
     #[test]
     fn terminates_a_registered_process() {

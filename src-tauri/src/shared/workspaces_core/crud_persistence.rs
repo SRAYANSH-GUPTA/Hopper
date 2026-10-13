@@ -168,13 +168,13 @@ where
     };
 
     let destination_path =
-        worktree_core::build_clone_destination_path(&copies_folder_path, &copy_name);
+        worktree_core::reserve_clone_destination(&copies_folder_path, &copy_name)?;
     let destination_path_string = destination_path.to_string_lossy().to_string();
     let stored_destination_path = workspace_path_to_string(&destination_path);
 
     if let Err(error) = git_core::run_git_command(
         &copies_folder_path,
-        &["clone", &source_entry.path, &destination_path_string],
+        &["clone", "--", &source_entry.path, &destination_path_string],
     )
     .await
     {
@@ -359,22 +359,39 @@ where
     let folder_name = validate_target_folder_name(&folder_name)?;
 
     let clone_path = destination_parent.join(folder_name);
-    if clone_path.exists() {
-        let is_empty = std::fs::read_dir(&clone_path)
-            .map_err(|err| format!("Failed to inspect destination path: {err}"))?
-            .next()
-            .is_none();
-        if !is_empty {
-            return Err("Destination path already exists and is not empty.".to_string());
+    let created_destination = match std::fs::create_dir(&clone_path) {
+        Ok(()) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let metadata = std::fs::symlink_metadata(&clone_path)
+                .map_err(|err| format!("Failed to inspect destination path: {err}"))?;
+            if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                return Err(
+                    "Destination path must be a directory, not a symbolic link.".to_string()
+                );
+            }
+            let is_empty = std::fs::read_dir(&clone_path)
+                .map_err(|err| format!("Failed to inspect destination path: {err}"))?
+                .next()
+                .is_none();
+            if !is_empty {
+                return Err("Destination path already exists and is not empty.".to_string());
+            }
+            false
         }
-    }
+        Err(error) => return Err(format!("Failed to create destination path: {error}")),
+    };
 
     let clone_path_string = clone_path.to_string_lossy().to_string();
     let stored_clone_path = workspace_path_to_string(&clone_path);
-    if let Err(error) =
-        git_core::run_git_command(&destination_parent, &["clone", &url, &clone_path_string]).await
+    if let Err(error) = git_core::run_git_command(
+        &destination_parent,
+        &["clone", "--", &url, &clone_path_string],
+    )
+    .await
     {
-        let _ = tokio::fs::remove_dir_all(&clone_path).await;
+        if created_destination {
+            let _ = tokio::fs::remove_dir_all(&clone_path).await;
+        }
         return Err(error);
     }
 
@@ -414,7 +431,9 @@ where
         match spawn_session(entry.clone(), default_bin, codex_args, codex_home).await {
             Ok(session) => (Some(session), true),
             Err(error) => {
-                let _ = tokio::fs::remove_dir_all(&clone_path).await;
+                if created_destination {
+                    let _ = tokio::fs::remove_dir_all(&clone_path).await;
+                }
                 return Err(error);
             }
         }
@@ -438,7 +457,9 @@ where
                 kill_child_process_tree(&mut child).await;
             }
         }
-        let _ = tokio::fs::remove_dir_all(&clone_path).await;
+        if created_destination {
+            let _ = tokio::fs::remove_dir_all(&clone_path).await;
+        }
         return Err(error);
     }
 
@@ -597,50 +618,34 @@ where
         .worktrees_folder
         .map(|path| normalize_windows_namespace_path(&path));
 
-    let (entry_snapshot, previous_worktree_setup_script, child_entries) = {
+    let entry_snapshot = {
         let mut workspaces = workspaces.lock().await;
         let previous_entry = workspaces
             .get(&id)
             .cloned()
             .ok_or_else(|| "workspace not found".to_string())?;
         let previous_worktree_setup_script = previous_entry.settings.worktree_setup_script.clone();
-        let entry_snapshot = apply_settings_update(&mut workspaces, &id, settings)?;
-        let child_entries = workspaces
-            .values()
-            .filter(|entry| entry.parent_id.as_deref() == Some(&id))
-            .cloned()
-            .collect::<Vec<_>>();
-        (
-            entry_snapshot,
-            previous_worktree_setup_script,
-            child_entries,
-        )
-    };
-
-    let worktree_setup_script_changed =
-        previous_worktree_setup_script != entry_snapshot.settings.worktree_setup_script;
-    let connected = sessions.lock().await.contains_key(&id);
-
-    if worktree_setup_script_changed && !entry_snapshot.kind.is_worktree() {
-        let child_ids = child_entries
-            .iter()
-            .map(|child| child.id.clone())
-            .collect::<Vec<_>>();
-        if !child_ids.is_empty() {
-            let mut workspaces = workspaces.lock().await;
-            for child_id in child_ids {
-                if let Some(child) = workspaces.get_mut(&child_id) {
-                    child.settings.worktree_setup_script =
-                        entry_snapshot.settings.worktree_setup_script.clone();
-                }
+        // Apply and persist a candidate snapshot under the same lock. A failed
+        // disk write must not leave the parent or its children changed in memory.
+        let mut updated = workspaces.clone();
+        let entry_snapshot = apply_settings_update(&mut updated, &id, settings)?;
+        if previous_worktree_setup_script != entry_snapshot.settings.worktree_setup_script
+            && !entry_snapshot.kind.is_worktree()
+        {
+            for child in updated
+                .values_mut()
+                .filter(|entry| entry.parent_id.as_deref() == Some(&id))
+            {
+                child.settings.worktree_setup_script =
+                    entry_snapshot.settings.worktree_setup_script.clone();
             }
         }
-    }
-    let list: Vec<_> = {
-        let workspaces = workspaces.lock().await;
-        workspaces.values().cloned().collect()
+        let list: Vec<_> = updated.values().cloned().collect();
+        write_workspaces(storage_path, &list)?;
+        *workspaces = updated;
+        entry_snapshot
     };
-    write_workspaces(storage_path, &list)?;
+    let connected = sessions.lock().await.contains_key(&id);
     Ok(WorkspaceInfo {
         id: entry_snapshot.id,
         name: entry_snapshot.name,
@@ -655,13 +660,102 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{add_workspace_core, default_repo_name_from_url, validate_target_folder_name};
+    use super::{
+        add_workspace_core, add_workspace_from_git_url_core, default_repo_name_from_url,
+        update_workspace_settings_core, validate_target_folder_name,
+    };
     use crate::backend::app_server::WorkspaceSession;
-    use crate::types::{AppSettings, LocalAgentProvider, WorkspaceEntry};
+    use crate::types::{
+        AppSettings, LocalAgentProvider, WorkspaceEntry, WorkspaceKind, WorkspaceSettings,
+    };
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::sync::Mutex;
+
+    #[test]
+    fn failed_git_clone_only_cleans_up_a_destination_it_created() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+            std::fs::create_dir_all(root.join("existing")).unwrap();
+            let workspaces = Mutex::new(HashMap::new());
+            let sessions = Mutex::new(HashMap::new());
+            let settings = Mutex::new(AppSettings::default());
+            for name in ["existing", "new"] {
+                let result = add_workspace_from_git_url_core(
+                    root.join("missing-repo").to_string_lossy().into_owned(),
+                    root.to_string_lossy().into_owned(),
+                    Some(name.into()),
+                    &workspaces,
+                    &sessions,
+                    &settings,
+                    &root.join("workspaces.json"),
+                    |_, _, _, _| async { Err("must not spawn a session".into()) },
+                )
+                .await;
+                assert!(result.is_err());
+                assert!(workspaces.lock().await.is_empty());
+            }
+            assert!(root.join("existing").is_dir());
+            assert!(!root.join("new").exists());
+            std::fs::remove_dir_all(root).unwrap();
+        });
+    }
+
+    #[test]
+    fn failed_settings_write_keeps_parent_and_child_settings_in_memory() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+            let storage = root.join("workspaces.json");
+            std::fs::create_dir_all(&storage).unwrap(); // Force replacement to fail.
+            let parent = WorkspaceEntry {
+                id: "parent".into(),
+                name: "Parent".into(),
+                path: root.to_string_lossy().into_owned(),
+                kind: WorkspaceKind::Main,
+                parent_id: None,
+                worktree: None,
+                settings: WorkspaceSettings {
+                    worktree_setup_script: Some("old".into()),
+                    ..Default::default()
+                },
+            };
+            let child = WorkspaceEntry {
+                id: "child".into(),
+                parent_id: Some("parent".into()),
+                ..parent.clone()
+            };
+            let workspaces = Mutex::new(HashMap::from([
+                (parent.id.clone(), parent),
+                (child.id.clone(), child),
+            ]));
+            let sessions = Mutex::new(HashMap::new());
+            let settings = Mutex::new(AppSettings::default());
+            let result = update_workspace_settings_core(
+                "parent".into(),
+                WorkspaceSettings {
+                    worktree_setup_script: Some("new".into()),
+                    ..Default::default()
+                },
+                &workspaces,
+                &sessions,
+                &settings,
+                &storage,
+                |entries, id, settings| {
+                    let entry = entries.get_mut(id).unwrap();
+                    entry.settings = settings;
+                    Ok(entry.clone())
+                },
+                |_, _, _, _| async { Err("must not spawn a session".into()) },
+            )
+            .await;
+            assert!(result.is_err());
+            for entry in workspaces.lock().await.values() {
+                assert_eq!(entry.settings.worktree_setup_script.as_deref(), Some("old"));
+            }
+            std::fs::remove_dir_all(root).unwrap();
+        });
+    }
 
     #[test]
     fn adding_workspace_with_non_codex_provider_does_not_spawn_codex() {

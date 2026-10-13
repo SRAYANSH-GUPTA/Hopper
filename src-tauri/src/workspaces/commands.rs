@@ -292,7 +292,7 @@ pub(crate) async fn add_worktree(
         &state.app_settings,
         &state.storage_path,
         |value| sanitize_worktree_name(value),
-        |root, name| Ok(unique_worktree_path(root, name)),
+        unique_worktree_path,
         |root, branch| {
             let root = root.clone();
             let branch = branch.to_string();

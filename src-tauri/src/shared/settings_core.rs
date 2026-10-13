@@ -46,6 +46,8 @@ pub(crate) async fn update_app_settings_core(
     app_settings: &Mutex<AppSettings>,
     settings_path: &PathBuf,
 ) -> Result<AppSettings, String> {
+    // Keep disk and memory updates in one order for simultaneous RPC requests.
+    let mut current = app_settings.lock().await;
     settings.theme = "cursor".to_string();
     settings.global_worktrees_folder = settings
         .global_worktrees_folder
@@ -56,7 +58,6 @@ pub(crate) async fn update_app_settings_core(
     let _ = codex_config::write_apps_enabled(settings.experimental_apps_enabled);
     let _ = codex_config::write_personality(settings.personality.as_str());
     write_settings(settings_path, &settings)?;
-    let mut current = app_settings.lock().await;
     *current = settings.clone();
     Ok(settings)
 }

@@ -699,6 +699,7 @@ pub(crate) async fn check_codex_installation(
     codex_bin: Option<String>,
 ) -> Result<Option<String>, String> {
     let mut command = build_codex_command_with_bin(codex_bin, None, vec!["--version".to_string()])?;
+    command.kill_on_drop(true);
     command.stdout(std::process::Stdio::piped());
     command.stderr(std::process::Stdio::piped());
 
@@ -760,6 +761,12 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
         codex_args.as_deref(),
         vec!["app-server".to_string()],
     )?;
+    command.kill_on_drop(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.as_std_mut().process_group(0);
+    }
     command.current_dir(&entry.path);
     if let Some(path) = codex_home.as_ref() {
         command.env("CODEX_HOME", path);

@@ -95,6 +95,7 @@ use workspace_settings::apply_workspace_settings_update;
 
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:4732";
 const MAX_IN_FLIGHT_RPC_PER_CONNECTION: usize = 32;
+const MAX_CLIENT_CONNECTIONS: usize = 64;
 const DAEMON_NAME: &str = "hopper-daemon";
 
 fn spawn_with_client(
@@ -168,15 +169,15 @@ struct WorkspaceFileResponse {
 }
 
 impl DaemonState {
-    fn load(config: &DaemonConfig, event_sink: DaemonEventSink) -> Self {
+    fn load(config: &DaemonConfig, event_sink: DaemonEventSink) -> Result<Self, String> {
         let storage_path = config.data_dir.join("workspaces.json");
         let settings_path = config.data_dir.join("settings.json");
-        let workspaces = read_workspaces(&storage_path).unwrap_or_default();
-        let app_settings = read_settings(&settings_path).unwrap_or_default();
+        let workspaces = read_workspaces(&storage_path)?;
+        let app_settings = read_settings(&settings_path)?;
         let daemon_binary_path = std::env::current_exe()
             .ok()
             .and_then(|path| path.to_str().map(str::to_string));
-        Self {
+        Ok(Self {
             data_dir: config.data_dir.clone(),
             workspaces: Mutex::new(workspaces),
             sessions: Mutex::new(HashMap::new()),
@@ -186,7 +187,7 @@ impl DaemonState {
             event_sink,
             codex_login_cancels: Mutex::new(HashMap::new()),
             daemon_binary_path,
-        }
+        })
     }
 
     fn daemon_info(&self) -> Value {
@@ -197,6 +198,21 @@ impl DaemonState {
             "mode": "tcp",
             "binaryPath": self.daemon_binary_path,
         })
+    }
+
+    async fn stop_sessions(&self) {
+        let sessions: Vec<_> = self
+            .sessions
+            .lock()
+            .await
+            .drain()
+            .map(|(_, session)| session)
+            .collect();
+        for session in sessions {
+            let mut child = session.child.lock().await;
+            kill_child_process_tree(&mut child).await;
+        }
+        self.codex_login_cancels.lock().await.clear();
     }
 
     async fn sync_workspaces_from_storage(&self) {
@@ -1674,7 +1690,7 @@ mod tests {
             cmd
         } else {
             let mut cmd = Command::new("sh");
-            cmd.args(["-c", "cat"]);
+            cmd.args(["-c", "exec cat"]);
             cmd
         };
 
@@ -1699,6 +1715,24 @@ mod tests {
             workspace_roots: Mutex::new(HashMap::new()),
             owner_workspace_id,
         })
+    }
+
+    #[test]
+    fn shutdown_stops_shared_sessions_and_clears_runtime_state() {
+        run_async_test(async {
+            let tmp = make_temp_dir("shutdown");
+            let state = test_state(&tmp);
+            let session = make_session(make_workspace_entry("parent", &tmp.to_string_lossy()));
+            {
+                let mut sessions = state.sessions.lock().await;
+                sessions.insert("parent".into(), Arc::clone(&session));
+                sessions.insert("child".into(), Arc::clone(&session));
+            }
+            state.stop_sessions().await;
+            assert!(state.sessions.lock().await.is_empty());
+            assert!(session.child.lock().await.try_wait().unwrap().is_some());
+            std::fs::remove_dir_all(tmp).unwrap();
+        });
     }
 
     #[test]
@@ -1946,7 +1980,13 @@ fn main() {
         let event_sink = DaemonEventSink {
             tx: events_tx.clone(),
         };
-        let state = Arc::new(DaemonState::load(&config, event_sink));
+        let state = match DaemonState::load(&config, event_sink) {
+            Ok(state) => Arc::new(state),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(2);
+            }
+        };
         let config = Arc::new(config);
 
         let listener = match TcpListener::bind(config.listen).await {
@@ -1966,17 +2006,26 @@ fn main() {
                 .display()
         );
 
+        let connection_limiter = Arc::new(Semaphore::new(MAX_CLIENT_CONNECTIONS));
         loop {
             match listener.accept().await {
                 Ok((socket, _addr)) => {
+                    let Ok(permit) = Arc::clone(&connection_limiter).try_acquire_owned() else {
+                        drop(socket);
+                        continue;
+                    };
                     let config = Arc::clone(&config);
                     let state = Arc::clone(&state);
                     let events = events_tx.clone();
                     tokio::spawn(async move {
+                        let _permit = permit;
                         transport::handle_client(socket, config, state, events).await;
                     });
                 }
-                Err(_) => continue,
+                Err(error) => {
+                    eprintln!("daemon: failed to accept client: {error}");
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
             }
         }
     });
