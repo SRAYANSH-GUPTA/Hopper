@@ -15,7 +15,7 @@ type Options = Omit<ClaudeCommandDialogProps, "kind" | "onClose" | "onInsert"> &
 };
 
 export function useClaudeComposerCommands(options: Options) {
-  const { provider, workspaceId, draftKey, setDraft, focusComposer, onPlanModeToggle, isPlanMode } = options;
+  const { provider, workspaceId, draftKey, setDraft, focusComposer, onPlanModeToggle, isPlanMode, models, onSelectModel } = options;
   const scope = JSON.stringify([provider, workspaceId, draftKey]);
   const [dialog, setDialog] = useState<{ kind: ClaudeDialog; scope: string } | null>(null);
   const close = useCallback(() => { setDialog(null); focusComposer(); }, [focusComposer]);
@@ -33,12 +33,12 @@ export function useClaudeComposerCommands(options: Options) {
     }
     if (command.action === "model" && command.args) {
       const query = command.args.toLowerCase();
-      const exact = options.models.find((model) => [model.id, model.model, model.displayName].some((value) => value.toLowerCase() === query));
-      if (exact) { options.onSelectModel(exact.id); return { nextDraft: "" }; }
+      const exact = models.find((model) => [model.id, model.model, model.displayName].some((value) => value.toLowerCase() === query));
+      if (exact) { onSelectModel(exact.id); return { nextDraft: "" }; }
     }
     setDialog({ kind: command.action, scope });
     return { nextDraft: "" };
-  }, [isPlanMode, onPlanModeToggle, options.models, options.onSelectModel, provider, scope]);
+  }, [isPlanMode, onPlanModeToggle, models, onSelectModel, provider, scope]);
 
   const visible = provider === "claude" && dialog?.scope === scope ? dialog.kind : null;
   const node = visible === "plugins" ? (

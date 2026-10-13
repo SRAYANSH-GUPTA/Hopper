@@ -443,7 +443,7 @@ export const Composer = memo(function Composer({
   const focusComposer = useCallback(() => {
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, [textareaRef]);
-  const claudeCommands = useClaudeComposerCommands({
+  const { run: runClaudeCommand, node: claudeCommandNode } = useClaudeComposerCommands({
     provider: activeProviderId ?? "codex", workspaceId, workspacePath, draftKey,
     contextUsage, models, selectedModelId, accessMode, isPlanMode,
     commands: slashCommands ?? [], onSelectModel, onSelectAccessMode,
@@ -461,7 +461,7 @@ export const Composer = memo(function Composer({
     if (trimmed) {
       recordHistory(trimmed);
     }
-    const localCommand = claudeCommands.run(trimmed);
+    const localCommand = runClaudeCommand(trimmed);
     if (localCommand) {
       setComposerText(localCommand.nextDraft);
       setAppMentionBindings([]);
@@ -549,7 +549,7 @@ export const Composer = memo(function Composer({
     appMentionBindings,
     activeProviderId,
     attachedImages,
-    claudeCommands.run,
+    runClaudeCommand,
     setComposerText,
     disabled,
     onSend,
@@ -859,7 +859,7 @@ export const Composer = memo(function Composer({
         />
       </div>
     </footer>
-    {claudeCommands.node}
+    {claudeCommandNode}
     </>
   );
 });
