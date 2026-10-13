@@ -213,6 +213,8 @@ export type FollowUpMessageBehavior = "queue" | "steer";
 export type ComposerSendIntent = "default" | "queue" | "steer";
 export type SendMessageResult = {
   status: "sent" | "blocked" | "steer_failed";
+  /** Destination when sending created or recovered a thread. */
+  threadId?: string;
 };
 
 export type ComposerEditorPreset = "default" | "helpful" | "smart";

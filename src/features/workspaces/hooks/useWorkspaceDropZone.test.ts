@@ -4,21 +4,8 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceDropZone } from "./useWorkspaceDropZone";
 
-let mockOnDragDropEvent:
-  | ((event: {
-      payload: {
-        type: "enter" | "over" | "leave" | "drop";
-        position: { x: number; y: number };
-        paths?: string[];
-      };
-    }) => void)
-  | null = null;
-
 vi.mock("../../../services/dragDrop", () => ({
-  subscribeWindowDragDrop: (handler: typeof mockOnDragDropEvent) => {
-    mockOnDragDropEvent = handler;
-    return () => {};
-  },
+  subscribeWindowDragDrop: vi.fn(() => () => {}),
 }));
 
 type HookResult = ReturnType<typeof useWorkspaceDropZone>;
@@ -65,7 +52,6 @@ function renderDropHook(options: {
 
 describe("useWorkspaceDropZone", () => {
   beforeEach(() => {
-    mockOnDragDropEvent = null;
   });
 
   it("tracks drag over state for file transfers", () => {

@@ -296,7 +296,7 @@ describe("useThreadMessaging telemetry", () => {
 
       await act(async () => {
         expect(await result.current.sendUserMessage("Continue", ["img-1"]))
-          .toEqual({ status: retrySucceeds ? "sent" : "blocked" });
+          .toEqual({ status: retrySucceeds ? "sent" : "blocked", threadId: "recovered-thread" });
       });
 
       expect(startThreadForWorkspace).toHaveBeenCalledOnce();

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WorkspaceInfo } from "../../../types";
+import type { SendMessageResult, WorkspaceInfo } from "../../../types";
 
 const STARTING_DRAFT_CLEAR_MS = 1500;
 const STARTING_DRAFT_FALLBACK_MS = 4000;
@@ -16,7 +16,7 @@ export function useNewAgentDraft({
   activeThreadId,
 }: UseNewAgentDraftOptions) {
   const clearStartingTimeoutRef = useRef<number | null>(null);
-  const draftStartChainByWorkspaceRef = useRef<Record<string, Promise<void>>>({});
+  const draftStartChainByWorkspaceRef = useRef<Record<string, Promise<unknown>>>({});
   const [newAgentDraftWorkspaceId, setNewAgentDraftWorkspaceId] = useState<string | null>(
     null,
   );
@@ -88,7 +88,7 @@ export function useNewAgentDraft({
   );
 
   const runWithDraftStart = useCallback(
-    async (runner: () => Promise<void>) => {
+    async <T extends void | SendMessageResult>(runner: () => Promise<T>): Promise<T> => {
       const shouldMarkStarting = Boolean(activeWorkspace && !activeThreadId);
       const draftWorkspaceId = activeWorkspace?.id ?? null;
       if (shouldMarkStarting && draftWorkspaceId) {
@@ -100,14 +100,19 @@ export function useNewAgentDraft({
           .then(async () => {
             setStartingDraftThreadWorkspaceId(draftWorkspaceId);
             try {
-              await runner();
+              const result = await runner();
               clearStartingTimeout();
+              if (result && result.status !== "sent") {
+                setStartingDraftThreadWorkspaceId((value) => value === draftWorkspaceId ? null : value);
+                return result;
+              }
               clearStartingTimeoutRef.current = window.setTimeout(() => {
                 clearStartingTimeoutRef.current = null;
                 setStartingDraftThreadWorkspaceId((value) =>
                   value === draftWorkspaceId ? null : value,
                 );
               }, STARTING_DRAFT_FALLBACK_MS);
+              return result;
             } catch (error) {
               clearStartingTimeout();
               setStartingDraftThreadWorkspaceId((value) =>
@@ -122,11 +127,10 @@ export function useNewAgentDraft({
             }
           });
         draftStartChainByWorkspaceRef.current[draftWorkspaceId] = current;
-        await current;
-        return;
+        return current;
       }
 
-      await runner();
+      return runner();
     },
     [activeThreadId, activeWorkspace, clearStartingTimeout],
   );

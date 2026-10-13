@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isMobilePlatform } from "../../../utils/platformPaths";
@@ -9,6 +9,7 @@ import type {
   AppMention,
   ComposerSendIntent,
   FollowUpMessageBehavior,
+  SendMessageResult,
 } from "../../../types";
 
 vi.mock("../../../services/dragDrop", () => ({
@@ -35,13 +36,17 @@ type HarnessProps = {
     images: string[],
     appMentions?: AppMention[],
     submitIntent?: ComposerSendIntent,
-  ) => void;
+  ) => void | Promise<void | SendMessageResult>;
   apps?: AppOption[];
   isProcessing?: boolean;
   followUpMessageBehavior?: FollowUpMessageBehavior;
   steerAvailable?: boolean;
   selectedServiceTier?: "fast" | "flex" | null;
   attachments?: string[];
+  draftKey?: string | null;
+  historyKey?: string;
+  externalDraft?: string;
+  onAttachImages?: (images: string[]) => void;
 };
 
 function ComposerHarness({
@@ -52,6 +57,10 @@ function ComposerHarness({
   steerAvailable = false,
   selectedServiceTier = null,
   attachments = [],
+  draftKey = "thread-1",
+  historyKey = "workspace-1",
+  externalDraft,
+  onAttachImages,
 }: HarnessProps) {
   const [draftText, setDraftText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -83,11 +92,14 @@ function ComposerHarness({
       apps={apps}
       prompts={[]}
       files={[]}
-      draftText={draftText}
+      draftText={externalDraft ?? draftText}
+      draftKey={draftKey}
+      historyKey={historyKey}
       onDraftChange={setDraftText}
       textareaRef={textareaRef}
       dictationEnabled={false}
       attachedImages={attachments}
+      onAttachImages={onAttachImages}
     />
   );
 }
@@ -97,6 +109,95 @@ describe("Composer send triggers", () => {
     cleanup();
     vi.mocked(isMobilePlatform).mockReturnValue(false);
     vi.restoreAllMocks();
+  });
+
+  it("keeps an unaccepted draft and prevents duplicate submits while sending", async () => {
+    let finish!: (result: SendMessageResult) => void;
+    const onSend = vi.fn(() => new Promise<SendMessageResult>((resolve) => { finish = resolve; }));
+    render(<ComposerHarness onSend={onSend} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "Keep my draft" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(textarea.value).toBe("Keep my draft");
+
+    await act(async () => { finish({ status: "blocked" }); });
+
+    expect(textarea.value).toBe("Keep my draft");
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledTimes(2);
+    await act(async () => { finish({ status: "sent" }); });
+    expect(textarea.value).toBe("");
+  });
+
+  it("preserves text edited while an earlier send is pending", async () => {
+    let finish!: (result: SendMessageResult) => void;
+    const onSend = vi.fn(() => new Promise<SendMessageResult>((resolve) => { finish = resolve; }));
+    render(<ComposerHarness onSend={onSend} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "First message" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    fireEvent.change(textarea, { target: { value: "Next message" } });
+
+    await act(async () => { finish({ status: "sent" }); });
+
+    expect(textarea.value).toBe("Next message");
+  });
+
+  it("retains a draft when its send rejects", async () => {
+    const onSend = vi.fn().mockRejectedValue(new Error("Connection failed"));
+    render(<ComposerHarness onSend={onSend} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "Try this again" } });
+
+    await act(async () => { fireEvent.keyDown(textarea, { key: "Enter" }); });
+
+    expect(textarea.value).toBe("Try this again");
+  });
+
+  it("does not clear an identical draft in another thread after sending", async () => {
+    let finish!: (result: SendMessageResult) => void;
+    const onSend = vi.fn(() => new Promise<SendMessageResult>((resolve) => { finish = resolve; }));
+    const { rerender } = render(<ComposerHarness onSend={onSend} draftKey="thread-1" externalDraft="Shared wording" />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    rerender(<ComposerHarness onSend={onSend} draftKey="thread-2" externalDraft="Shared wording" />);
+
+    await act(async () => { finish({ status: "sent" }); });
+
+    expect(textarea.value).toBe("Shared wording");
+  });
+
+  it("restores text and attachments when a newly created thread rejects its first message", async () => {
+    let finish!: (result: SendMessageResult) => void;
+    const onSend = vi.fn(() => new Promise<SendMessageResult>((resolve) => { finish = resolve; }));
+    const onAttachImages = vi.fn();
+    const { rerender } = render(<ComposerHarness onSend={onSend} draftKey={null} externalDraft="First message" attachments={["/tmp/image.png"]} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    rerender(<ComposerHarness onSend={onSend} draftKey="new-thread" externalDraft="" onAttachImages={onAttachImages} />);
+
+    await act(async () => { finish({ status: "blocked", threadId: "new-thread" }); });
+
+    expect(textarea.value).toBe("First message");
+    expect(onAttachImages).toHaveBeenCalledWith(["/tmp/image.png"]);
+  });
+
+  it("does not replace newer typing in a created thread when its first send fails", async () => {
+    let finish!: (result: SendMessageResult) => void;
+    const onSend = vi.fn(() => new Promise<SendMessageResult>((resolve) => { finish = resolve; }));
+    const onAttachImages = vi.fn();
+    const { rerender } = render(<ComposerHarness onSend={onSend} draftKey={null} externalDraft="First message" attachments={["/tmp/image.png"]} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    rerender(<ComposerHarness onSend={onSend} draftKey="new-thread" externalDraft="Another draft" onAttachImages={onAttachImages} />);
+
+    await act(async () => { finish({ status: "blocked", threadId: "new-thread" }); });
+
+    expect(textarea.value).toBe("Another draft");
+    expect(onAttachImages).not.toHaveBeenCalled();
   });
 
   it("sends once on Enter", () => {

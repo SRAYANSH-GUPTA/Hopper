@@ -6,6 +6,7 @@ import type {
   GitHubPullRequest,
   PullRequestReviewAction,
   PullRequestReviewIntent,
+  SendMessageResult,
   WorkspaceInfo,
 } from "../../../types";
 import type { GitDiffSource, GitPanelMode } from "../types";
@@ -52,7 +53,7 @@ type UsePullRequestComposerOptions = {
     images: string[],
     appMentions?: AppMention[],
     submitIntent?: ComposerSendIntent,
-  ) => Promise<void>;
+  ) => Promise<void | SendMessageResult>;
 };
 
 export function usePullRequestComposer({
@@ -134,9 +135,9 @@ export function usePullRequestComposer({
       images: string[] = [],
       appMentions: AppMention[] = [],
       submitIntent?: ComposerSendIntent,
-    ) => {
+    ): Promise<void | SendMessageResult> => {
       if (pullRequestReviewLaunching) {
-        return;
+        return { status: "blocked" };
       }
       const trimmed = text.trim();
       const reviewCommand = parsePullRequestReviewCommand(trimmed);
@@ -150,21 +151,20 @@ export function usePullRequestComposer({
         if (reviewThreadId) {
           clearActiveImages();
         }
-        return;
+        return reviewThreadId ? { status: "sent", threadId: reviewThreadId } : { status: "blocked" };
       }
       if (KNOWN_SLASH_COMMAND_REGEX.test(trimmed)) {
         if (appMentions.length > 0) {
-          await handleSend(trimmed, images, appMentions, submitIntent);
+          return handleSend(trimmed, images, appMentions, submitIntent);
         } else {
-          await handleSend(trimmed, images, undefined, submitIntent);
+          return handleSend(trimmed, images, undefined, submitIntent);
         }
-        return;
       }
       if (!activeWorkspace || !selectedPullRequest) {
-        return;
+        return { status: "blocked" };
       }
       if (!trimmed && images.length === 0) {
-        return;
+        return { status: "blocked" };
       }
       const reviewThreadId = await runPullRequestReview({
         intent: "question",
@@ -175,6 +175,7 @@ export function usePullRequestComposer({
       if (reviewThreadId) {
         clearActiveImages();
       }
+      return reviewThreadId ? { status: "sent", threadId: reviewThreadId } : { status: "blocked" };
     },
     [
       activeWorkspace,

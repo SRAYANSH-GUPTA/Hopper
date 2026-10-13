@@ -6,6 +6,8 @@ type UseComposerImagesArgs = {
   activeWorkspaceId: string | null;
 };
 
+const EMPTY_IMAGES: string[] = [];
+
 export function useComposerImages({
   activeThreadId,
   activeWorkspaceId,
@@ -17,7 +19,7 @@ export function useComposerImages({
     [activeThreadId, activeWorkspaceId],
   );
 
-  const activeImages = imagesByThread[draftKey] ?? [];
+  const activeImages = imagesByThread[draftKey] ?? EMPTY_IMAGES;
 
   const attachImages = useCallback(
     (paths: string[]) => {
@@ -57,14 +59,17 @@ export function useComposerImages({
   );
 
   const clearActiveImages = useCallback(() => {
+    const submittedImages = new Set(activeImages);
     setImagesByThread((prev) => {
       if (!(draftKey in prev)) {
         return prev;
       }
+      const remaining = prev[draftKey].filter((image) => !submittedImages.has(image));
+      if (remaining.length > 0) return { ...prev, [draftKey]: remaining };
       const { [draftKey]: _, ...rest } = prev;
       return rest;
     });
-  }, [draftKey]);
+  }, [activeImages, draftKey]);
 
   const setImagesForThread = useCallback((threadId: string, images: string[]) => {
     setImagesByThread((prev) => ({ ...prev, [threadId]: images }));

@@ -58,6 +58,17 @@ function renderComposerImages(
 }
 
 describe("useComposerImages", () => {
+  it("clears only submitted attachments when more are added during a send", () => {
+    const hook = renderComposerImages({ activeThreadId: "thread-1", activeWorkspaceId: "ws-1" });
+    act(() => { hook.result.attachImages(["/tmp/sent.png"]); });
+    const clearSubmittedImages = hook.result.clearActiveImages;
+    act(() => { hook.result.attachImages(["/tmp/new.png"]); });
+    act(() => { clearSubmittedImages(); });
+
+    expect(hook.result.activeImages).toEqual(["/tmp/new.png"]);
+    hook.unmount();
+  });
+
   it("attaches images and deduplicates paths", () => {
     const hook = renderComposerImages({
       activeThreadId: "thread-1",

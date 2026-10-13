@@ -140,23 +140,20 @@ export function useComposerController({
     clearActiveImages,
   });
 
+  const draftKey = activeThreadId ?? `draft-${activeWorkspaceId ?? "none"}`;
   const activeDraft = useMemo(
-    () =>
-      activeThreadId ? composerDraftsByThread[activeThreadId] ?? "" : "",
-    [activeThreadId, composerDraftsByThread],
+    () => composerDraftsByThread[draftKey] ?? "",
+    [draftKey, composerDraftsByThread],
   );
 
   const handleDraftChange = useCallback(
     (next: string) => {
-      if (!activeThreadId) {
-        return;
-      }
       setComposerDraftsByThread((prev) => ({
         ...prev,
-        [activeThreadId]: next,
+        [draftKey]: next,
       }));
     },
-    [activeThreadId],
+    [draftKey],
   );
 
   const handleSendPrompt = useCallback(

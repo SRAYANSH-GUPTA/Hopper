@@ -329,7 +329,7 @@ export function useThreadMessaging({
                   false,
                 );
                 if (recovered.status === "sent") acknowledgeContext();
-                return recovered;
+                return { ...recovered, threadId: recovered.threadId ?? newThreadId };
               }
             }
             markProcessing(threadId, false);
@@ -459,11 +459,14 @@ export function useThreadMessaging({
       if (!threadId) {
         return { status: "blocked" };
       }
-      return sendMessageToThread(activeWorkspace, threadId, finalText, images, {
+      const result = await sendMessageToThread(activeWorkspace, threadId, finalText, images, {
         skipPromptExpansion: true,
         appMentions,
         sendIntent: options?.sendIntent,
       });
+      return activeThreadId === threadId && !result.threadId
+        ? result
+        : { ...result, threadId: result.threadId ?? threadId };
     },
     [
       activeThreadId,

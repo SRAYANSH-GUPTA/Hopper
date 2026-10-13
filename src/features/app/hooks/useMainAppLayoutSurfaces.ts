@@ -507,6 +507,7 @@ function buildPrimarySurface({
           composerFollowUpHintEnabled: appSettings.composerFollowUpHintEnabled,
           isProcessing: composerWorkspaceState.isProcessing,
           draftText: composerWorkspaceState.activeDraft,
+          draftKey: activeThreadId,
           onDraftChange: composerWorkspaceState.handleDraftChange,
           attachedImages: composerWorkspaceState.activeImages,
           onPickImages: composerWorkspaceState.pickImages,

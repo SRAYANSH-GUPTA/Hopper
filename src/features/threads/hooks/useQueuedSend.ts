@@ -60,7 +60,7 @@ type UseQueuedSendResult = {
     images?: string[],
     appMentions?: AppMention[],
     submitIntent?: ComposerSendIntent,
-  ) => Promise<void>;
+  ) => Promise<SendMessageResult>;
   queueMessage: (
     text: string,
     images?: string[],
@@ -278,7 +278,7 @@ export function useQueuedSend({
       images: string[] = [],
       appMentions: AppMention[] = [],
       submitIntent: ComposerSendIntent = "default",
-    ) => {
+    ): Promise<SendMessageResult> => {
       const trimmed = text.trim();
       const command = parseSlashCommand(trimmed, { appsEnabled, provider });
       const nextImages = command ? [] : images;
@@ -297,16 +297,16 @@ export function useQueuedSend({
               ? "steer"
               : "queue";
       if (!trimmed && nextImages.length === 0) {
-        return;
+        return { status: "blocked" };
       }
       if (activeThreadId && isReviewing) {
-        return;
+        return { status: "blocked" };
       }
       if (isProcessing && activeThreadId && effectiveIntent === "queue") {
         const item = createQueuedItem(trimmed, nextImages, nextMentions);
         enqueueMessage(activeThreadId, item);
         clearActiveImages();
-        return;
+        return { status: "sent" };
       }
       if (activeWorkspace && !activeWorkspace.connected) {
         await connectWorkspace(activeWorkspace);
@@ -314,7 +314,7 @@ export function useQueuedSend({
       if (command) {
         await runSlashCommand(command, trimmed);
         clearActiveImages();
-        return;
+        return { status: "sent" };
       }
       const sendResult =
         nextMentions.length > 0
@@ -330,8 +330,11 @@ export function useQueuedSend({
         isProcessing
       ) {
         enqueueMessage(activeThreadId, createQueuedItem(trimmed, nextImages, nextMentions));
+        clearActiveImages();
+        return { status: "sent" };
       }
-      clearActiveImages();
+      if (sendResult.status === "sent") clearActiveImages();
+      return sendResult;
     },
     [
       activeThreadId,

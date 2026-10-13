@@ -15,6 +15,7 @@ import type {
   DictationTranscript,
   FollowUpMessageBehavior,
   QueuedMessage,
+  SendMessageResult,
   ServiceTier,
   ThreadTokenUsage,
 } from "../../../types";
@@ -47,6 +48,7 @@ import { ComposerQueue } from "./ComposerQueue";
 import { isMacPlatform } from "../../../utils/platformPaths";
 import type { CodexArgsOption } from "../../threads/utils/codexArgsProfiles";
 import type { SlashCommandOption } from "../../../services/tauri";
+import { pushErrorToast } from "@services/toasts";
 import {
   appendAttachedFileContext,
   splitComposerAttachments,
@@ -58,7 +60,7 @@ type ComposerProps = {
     images: string[],
     appMentions?: AppMention[],
     submitIntent?: ComposerSendIntent,
-  ) => void;
+  ) => void | SendMessageResult | Promise<void | SendMessageResult>;
   onStop: () => void;
   canStop: boolean;
   disabled?: boolean;
@@ -98,6 +100,7 @@ type ComposerProps = {
   draftText?: string;
   onDraftChange?: (text: string) => void;
   historyKey?: string | null;
+  draftKey?: string | null;
   attachedImages?: string[];
   onPickImages?: () => void;
   onAttachImages?: (paths: string[]) => void;
@@ -219,6 +222,7 @@ export const Composer = memo(function Composer({
   draftText = "",
   onDraftChange,
   historyKey = null,
+  draftKey = null,
   attachedImages = [],
   onPickImages,
   onAttachImages,
@@ -274,11 +278,15 @@ export const Composer = memo(function Composer({
   const [text, setText] = useState(draftText);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [appMentionBindings, setAppMentionBindings] = useState<AppMentionBinding[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const currentDraftRef = useRef({ text, historyKey, draftKey, onDraftChange, onAttachImages });
+  currentDraftRef.current = { text, historyKey, draftKey, onDraftChange, onAttachImages };
   const internalRef = useRef<HTMLTextAreaElement | null>(null);
   const textareaRef = externalTextareaRef ?? internalRef;
   const editorSettings = editorSettingsProp ?? DEFAULT_EDITOR_SETTINGS;
   const isDictationBusy = dictationState !== "idle";
-  const canSend = text.trim().length > 0 || attachedImages.length > 0;
+  const canSend = !isSubmitting && (text.trim().length > 0 || attachedImages.length > 0);
   const isMac = isMacPlatform();
   const followUpShortcutLabel = isMac ? "Shift+Cmd+Enter" : "Shift+Ctrl+Enter";
   const effectiveFollowUpBehavior: FollowUpMessageBehavior =
@@ -308,12 +316,14 @@ export const Composer = memo(function Composer({
 
   const setComposerText = useCallback(
     (next: string) => {
+      currentDraftRef.current.text = next;
       setText(next);
       onDraftChange?.(next);
     },
     [onDraftChange],
   );
   const syncDraftText = useCallback((next: string) => {
+    currentDraftRef.current.text = next;
     setText((prev) => (prev === next ? prev : next));
   }, []);
 
@@ -417,7 +427,7 @@ export const Composer = memo(function Composer({
   );
 
   const handleSend = useCallback((submitIntent: ComposerSendIntent = "default") => {
-    if (disabled) {
+    if (disabled || submittingRef.current) {
       return;
     }
     const trimmed = text.trim();
@@ -434,14 +444,68 @@ export const Composer = memo(function Composer({
       ? `/plan\n\n${textWithFiles}`
       : textWithFiles;
     const resolvedMentions = resolveBoundAppMentions(trimmed, appMentionBindings);
-    if (resolvedMentions.length > 0) {
-      onSend(textToSend, images, resolvedMentions, submitIntent);
-    } else {
-      onSend(textToSend, images, undefined, submitIntent);
+    const submittedDraft = currentDraftRef.current;
+    const finish = (result: void | SendMessageResult) => {
+      const current = currentDraftRef.current;
+      const sameDraft = current.historyKey === submittedDraft.historyKey &&
+        current.draftKey === submittedDraft.draftKey;
+      const createdThreadDraft = current.historyKey === submittedDraft.historyKey &&
+        Boolean(result?.threadId) && current.draftKey === result?.threadId;
+      const failed = result && result.status !== "sent";
+      if (failed) {
+        // Starting a thread may have switched the composer to its empty draft.
+        // Restore the submission there without overwriting newer typing.
+        if (!sameDraft && createdThreadDraft && !current.text) {
+          currentDraftRef.current.text = text;
+          setText(text);
+          current.onDraftChange?.(text);
+          submittedDraft.onDraftChange?.("");
+          setAppMentionBindings(appMentionBindings);
+        }
+        if (!sameDraft && createdThreadDraft && current.text === text) {
+          current.onAttachImages?.(attachedImages);
+        }
+        pushErrorToast({
+          title: "Message was not sent",
+          message: "Your draft has been kept. Resolve the error and try again.",
+        });
+        return;
+      }
+      if ((sameDraft && current.text === text) ||
+        (!sameDraft && createdThreadDraft && (!current.text || current.text === text))) {
+        currentDraftRef.current.text = "";
+        setText("");
+        current.onDraftChange?.("");
+        if (!sameDraft) submittedDraft.onDraftChange?.("");
+        resetHistoryNavigation();
+        setAppMentionBindings([]);
+      }
+    };
+    const failed = (error: unknown) => {
+      pushErrorToast({
+        title: "Message was not sent",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    };
+    const settled = () => {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    };
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    try {
+      const result = onSend(textToSend, images,
+        resolvedMentions.length > 0 ? resolvedMentions : undefined, submitIntent);
+      if (result && "then" in result) {
+        void result.then(finish).catch(failed).finally(settled);
+      } else {
+        finish(result);
+        settled();
+      }
+    } catch (error) {
+      failed(error);
+      settled();
     }
-    resetHistoryNavigation();
-    setComposerText("");
-    setAppMentionBindings([]);
   }, [
     appMentionBindings,
     attachedImages,
@@ -450,7 +514,6 @@ export const Composer = memo(function Composer({
     planCommandPrefix,
     recordHistory,
     resetHistoryNavigation,
-    setComposerText,
     text,
   ]);
 

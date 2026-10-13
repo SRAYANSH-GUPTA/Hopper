@@ -72,6 +72,20 @@ const makeOptions = (overrides: Partial<Parameters<typeof usePullRequestComposer
 });
 
 describe("usePullRequestComposer", () => {
+  it("reports a failed PR send without clearing its attachments", async () => {
+    const options = makeOptions({
+      selectedPullRequest: pullRequest,
+      runPullRequestReview: vi.fn().mockResolvedValue(null),
+    });
+    const { result } = renderHook(() => usePullRequestComposer(options));
+
+    await act(async () => {
+      expect(await result.current.handleComposerSend("Review this", ["img-1"]))
+        .toEqual({ status: "blocked" });
+    });
+    expect(options.clearActiveImages).not.toHaveBeenCalled();
+  });
+
   it("prefills composer and switches to PR diff view", () => {
     const options = makeOptions({ isCompact: true });
     const { result } = renderHook(() => usePullRequestComposer(options));

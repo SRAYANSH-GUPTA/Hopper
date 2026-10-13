@@ -17,6 +17,19 @@ describe("useNewAgentDraft", () => {
     vi.useRealTimers();
   });
 
+  it("returns a failed draft send to the composer and clears the starting state", async () => {
+    const { result } = renderHook(() => useNewAgentDraft({
+      activeWorkspace: workspace, activeWorkspaceId: workspace.id, activeThreadId: null,
+    }));
+
+    await act(async () => {
+      expect(await result.current.runWithDraftStart(async () => ({ status: "blocked" as const })))
+        .toEqual({ status: "blocked" });
+    });
+
+    expect(result.current.startingDraftThreadWorkspaceId).toBeNull();
+  });
+
   it("clears starting state after successful send when no thread activates", async () => {
     vi.useFakeTimers();
 

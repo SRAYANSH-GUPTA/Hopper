@@ -42,6 +42,17 @@ const makeOptions = (
 });
 
 describe("useQueuedSend", () => {
+  it("returns blocked sends to the composer without discarding attachments", async () => {
+    const options = makeOptions({ sendUserMessage: vi.fn().mockResolvedValue({ status: "blocked" }) });
+    const { result } = renderHook(() => useQueuedSend(options));
+
+    await act(async () => {
+      expect(await result.current.handleSend("Retry me", ["img-1"])).toEqual({ status: "blocked" });
+    });
+
+    expect(options.clearActiveImages).not.toHaveBeenCalled();
+  });
+
   it("sends queued messages one at a time after processing completes", async () => {
     const options = makeOptions();
     const { result, rerender } = renderHook(

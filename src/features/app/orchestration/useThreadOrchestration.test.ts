@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pushErrorToast } from "@/services/toasts";
-import type { AccessMode, AppSettings } from "@/types";
+import type { AccessMode, AppSettings, SendMessageResult } from "@/types";
 import type { PendingNewThreadSeed } from "@threads/utils/threadCodexParamsSeed";
 import {
   useThreadCodexSyncOrchestration,
@@ -325,7 +325,7 @@ describe("useThreadUiOrchestration", () => {
       pendingNewThreadSeedRef: {
         current: null,
       } as MutableRefObject<PendingNewThreadSeed | null>,
-      runWithDraftStart: vi.fn(async (runner: () => Promise<void>) => runner()),
+      runWithDraftStart: vi.fn(async (runner: () => Promise<void | SendMessageResult>) => runner()),
       handleComposerSend: vi.fn(async () => undefined),
       clearDraftState: vi.fn(),
       exitDiffView: vi.fn(),
