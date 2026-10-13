@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sentryInitMock = vi.fn();
 const sentryMetricsCountMock = vi.fn();
@@ -34,16 +34,28 @@ describe("main sentry bootstrap", () => {
     createRootMock.mockClear();
     renderMock.mockClear();
     document.body.innerHTML = '<div id="root"></div>';
+    vi.stubEnv("VITE_SENTRY_DSN", "");
   });
 
-  it("initializes sentry and records app_open", async () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(["", "   "])("starts without telemetry for an unconfigured DSN (%j)", async (dsn) => {
+    vi.stubEnv("VITE_SENTRY_DSN", dsn);
+    await import("./main");
+    expect(sentryInitMock).not.toHaveBeenCalled();
+    expect(sentryMetricsCountMock).not.toHaveBeenCalled();
+    expect(renderMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses only the explicitly configured telemetry destination", async () => {
+    vi.stubEnv("VITE_SENTRY_DSN", " https://public@example.com/42 ");
     await import("./main");
 
     expect(sentryInitMock).toHaveBeenCalledTimes(1);
     expect(sentryInitMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        dsn: expect.stringContaining("ingest.us.sentry.io"),
-        enabled: true,
+        dsn: "https://public@example.com/42",
+        sendDefaultPii: false,
         release: expect.any(String),
       }),
     );
@@ -53,7 +65,7 @@ describe("main sentry bootstrap", () => {
       1,
       expect.objectContaining({
         attributes: expect.objectContaining({
-          platform: "macos",
+          env: "test",
         }),
       }),
     );

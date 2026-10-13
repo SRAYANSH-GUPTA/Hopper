@@ -7,6 +7,7 @@ use tauri::RunEvent;
 use tauri::WindowEvent;
 
 mod antigravity;
+mod asset_protocol;
 mod backend;
 mod claude;
 mod marketplace;
@@ -109,6 +110,7 @@ pub fn run() {
     let builder = tauri::Builder::default();
 
     let builder = builder
+        .register_asynchronous_uri_scheme_protocol("asset", asset_protocol::handle)
         .on_window_event(|window, event| {
             if window.label() != "main" {
                 return;

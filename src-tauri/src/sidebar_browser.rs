@@ -19,6 +19,14 @@ struct WebChatDownload {
 
 type RequestedDownloads = Arc<Mutex<HashMap<String, PathBuf>>>;
 
+fn browser_navigation_allowed(url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https")
+        && !matches!(
+            url.host_str(),
+            Some("tauri.localhost" | "asset.localhost" | "ipc.localhost")
+        )
+}
+
 /// Where a finished download landed. Some platforms only report the
 /// destination when the download is requested, so fall back to that.
 fn finished_download(
@@ -28,7 +36,10 @@ fn finished_download(
     completed_path: Option<PathBuf>,
     success: bool,
 ) -> Option<WebChatDownload> {
-    let requested_path = requested.lock().ok().and_then(|mut paths| paths.remove(url));
+    let requested_path = requested
+        .lock()
+        .ok()
+        .and_then(|mut paths| paths.remove(url));
     if !success {
         return None;
     }
@@ -60,8 +71,8 @@ pub(crate) async fn create_sidebar_browser(
     }
 
     let url = Url::parse(&url).map_err(|error| error.to_string())?;
-    if !matches!(url.scheme(), "http" | "https") {
-        return Err("Sidebar browser URL must use HTTP or HTTPS".into());
+    if !browser_navigation_allowed(&url) {
+        return Err("Sidebar browser URL must be an HTTP or HTTPS website".into());
     }
 
     let window = app.get_window("main").ok_or("Main window not found")?;
@@ -81,9 +92,12 @@ pub(crate) async fn create_sidebar_browser(
         // Assistant sites handle their own file drops (uploads). Hopper's native
         // handler would swallow them and report positions in the wrong frame.
         .disable_drag_drop_handler()
+        .on_navigation(browser_navigation_allowed)
         .on_new_window(move |url, _features| {
-            if let Some(webview) = popup_app.get_webview(&popup_label) {
-                let _ = webview.navigate(url);
+            if browser_navigation_allowed(&url) {
+                if let Some(webview) = popup_app.get_webview(&popup_label) {
+                    let _ = webview.navigate(url);
+                }
             }
             tauri::webview::NewWindowResponse::Deny
         })
@@ -127,6 +141,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn browser_cannot_navigate_to_local_files_or_app_protocols() {
+        for target in [
+            "file:///etc/passwd",
+            "tauri://localhost",
+            "asset://localhost/etc/passwd",
+            "http://tauri.localhost",
+            "https://asset.localhost/etc/passwd",
+            "http://ipc.localhost",
+            "javascript:alert(1)",
+            "data:text/html,hello",
+        ] {
+            assert!(
+                !browser_navigation_allowed(&Url::parse(target).unwrap()),
+                "{target}"
+            );
+        }
+        for target in [
+            "https://claude.ai",
+            "https://accounts.google.com",
+            "http://localhost:3000",
+        ] {
+            assert!(
+                browser_navigation_allowed(&Url::parse(target).unwrap()),
+                "{target}"
+            );
+        }
+    }
+
+    #[test]
     fn reports_finished_downloads_with_requested_destination_fallback() {
         let requested: RequestedDownloads = Arc::new(Mutex::new(HashMap::new()));
         let url = "blob:https://claude.ai/abc";
@@ -154,7 +197,10 @@ mod tests {
     #[test]
     fn ignores_failed_or_unlocated_downloads() {
         let requested: RequestedDownloads = Arc::new(Mutex::new(HashMap::new()));
-        requested.lock().unwrap().insert("u".into(), PathBuf::from("/tmp/a.pdf"));
+        requested
+            .lock()
+            .unwrap()
+            .insert("u".into(), PathBuf::from("/tmp/a.pdf"));
         assert!(finished_download(&requested, "tab", "u", None, false).is_none());
         assert!(requested.lock().unwrap().is_empty());
         assert!(finished_download(&requested, "tab", "missing", None, true).is_none());

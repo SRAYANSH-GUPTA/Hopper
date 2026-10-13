@@ -2,7 +2,7 @@
 //!
 //! Hopper asks an assistant tab for its conversation (or to paste text into its
 //! composer) by evaluating the injected `web_chat.js` with a request id. The page
-//! answers through `web_chat_reply`, the only command assistant tabs may call.
+//! answers through `web_chat_reply`; selected files use `web_chat_file_import`.
 //! Replies are accepted only for request ids Hopper issued to that same tab.
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -46,19 +46,53 @@ pub(crate) fn assistant_command_allowed(command: &str) -> bool {
     ASSISTANT_COMMANDS.contains(&command)
 }
 
-/// Wraps the app command handler so assistant webviews, which run third-party
-/// site code, can only reach `ASSISTANT_COMMANDS`. The app defines no ACL
-/// manifest, so Tauri does not restrict app commands by origin on its own.
+pub(crate) fn is_app_webview(label: &str) -> bool {
+    matches!(label, "main" | "about")
+}
+
+pub(crate) fn is_app_url(url: &Url, dev_url: Option<&Url>) -> bool {
+    if !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
+    let bundled = url.port().is_none()
+        && ((url.scheme() == "tauri" && url.host_str() == Some("localhost"))
+            || (matches!(url.scheme(), "http" | "https")
+                && url.host_str() == Some("tauri.localhost")));
+    bundled
+        || dev_url.is_some_and(|dev| {
+            matches!(url.scheme(), "http" | "https") && url.origin() == dev.origin()
+        })
+}
+
+fn command_allowed(label: &str, url: &Url, command: &str, dev_url: Option<&Url>) -> bool {
+    if is_app_webview(label) {
+        is_app_url(url, dev_url)
+    } else {
+        is_assistant_webview(label)
+            && assistant_provider(url).is_some()
+            && assistant_command_allowed(command)
+    }
+}
+
+/// App commands do not have Tauri ACL manifests. Check both the caller's
+/// webview and its current origin, including unknown or navigated webviews.
 pub(crate) fn guard_assistant_invoke<R: Runtime>(
     handler: impl Fn(Invoke<R>) -> bool + Send + Sync + 'static,
 ) -> impl Fn(Invoke<R>) -> bool + Send + Sync + 'static {
     move |invoke| {
-        if is_assistant_webview(invoke.message.webview_ref().label())
-            && !assistant_command_allowed(invoke.message.command())
-        {
+        let webview = invoke.message.webview_ref();
+        let dev_url = if cfg!(dev) {
+            webview.app_handle().config().build.dev_url.as_ref()
+        } else {
+            None
+        };
+        let allowed = webview.url().is_ok_and(|url| {
+            command_allowed(webview.label(), &url, invoke.message.command(), dev_url)
+        });
+        if !allowed {
             invoke
                 .resolver
-                .reject("This command is not available to assistant tabs.");
+                .reject("This command is not available to this page.");
             return true;
         }
         handler(invoke)
@@ -67,13 +101,13 @@ pub(crate) fn guard_assistant_invoke<R: Runtime>(
 
 /// Returns the display name of the assistant served at `url`, if it is one.
 fn assistant_provider(url: &Url) -> Option<&'static str> {
-    if url.scheme() != "https" {
+    if url.scheme() != "https" || url.port().is_some() {
         return None;
     }
     let host = url.host_str()?;
     ASSISTANT_HOSTS
         .iter()
-        .find(|(allowed, _)| host == *allowed || host.ends_with(&format!(".{allowed}")))
+        .find(|(allowed, _)| host == *allowed || host == format!("www.{allowed}"))
         .map(|(_, provider)| *provider)
 }
 
@@ -317,7 +351,10 @@ fn safe_file_name(value: &str) -> String {
         .collect();
     let trimmed = sanitized.trim_matches([' ', '.']);
     // A name made only of replaced characters says nothing about the file.
-    if trimmed.chars().any(|character| character.is_ascii_alphanumeric()) {
+    if trimmed
+        .chars()
+        .any(|character| character.is_ascii_alphanumeric())
+    {
         trimmed.into()
     } else {
         FALLBACK_FILE_NAME.into()
@@ -449,11 +486,69 @@ mod tests {
     }
 
     #[test]
+    fn app_commands_require_trusted_webview_and_origin() {
+        let local = url("tauri://localhost/index.html");
+        let remote = url("https://claude.ai/chat/1");
+        assert!(command_allowed("main", &local, "file_write", None));
+        assert!(command_allowed("about", &local, "get_app_settings", None));
+        assert!(!command_allowed("main", &remote, "file_write", None));
+        assert!(!command_allowed("unrecognized", &local, "file_write", None));
+        assert!(!command_allowed("ai-chatbot-1", &local, "file_write", None));
+        assert!(!command_allowed(
+            "ai-chatbot-1",
+            &remote,
+            "file_write",
+            None
+        ));
+        assert!(command_allowed(
+            "ai-chatbot-1",
+            &remote,
+            "web_chat_reply",
+            None
+        ));
+        assert!(!command_allowed(
+            "ai-chatbot-1",
+            &url("https://example.com"),
+            "web_chat_reply",
+            None
+        ));
+        assert!(!command_allowed(
+            "ai-chatbot-1",
+            &local,
+            "web_chat_reply",
+            None
+        ));
+    }
+
+    #[test]
+    fn app_origin_check_allows_only_configured_dev_origin_and_bundled_urls() {
+        let dev = url("http://localhost:1420");
+        assert!(is_app_url(&url("http://localhost:1420/about"), Some(&dev)));
+        assert!(!is_app_url(&url("http://localhost:1420"), None));
+        assert!(!is_app_url(&url("http://localhost:1421"), Some(&dev)));
+        assert!(!is_app_url(
+            &url("http://localhost.evil.com:1420"),
+            Some(&dev)
+        ));
+        assert!(is_app_url(&url("http://tauri.localhost"), None));
+        assert!(is_app_url(&url("https://tauri.localhost/about"), None));
+        assert!(!is_app_url(&url("http://tauri.localhost:1420"), None));
+        assert!(!is_app_url(&url("tauri://other/index.html"), None));
+        assert!(!is_app_url(
+            &url("asset://localhost/tmp/payload.html"),
+            None
+        ));
+        assert!(!is_app_url(&url("http://user@tauri.localhost"), None));
+    }
+
+    #[test]
     fn recognizes_assistant_hosts_only_over_https() {
         let provider = |value: &str| assistant_provider(&url(value));
         assert_eq!(provider("https://chatgpt.com/c/1"), Some("ChatGPT"));
         assert_eq!(provider("https://chat.openai.com/c/1"), Some("ChatGPT"));
         assert_eq!(provider("https://www.claude.ai/"), Some("Claude"));
+        assert_eq!(provider("https://untrusted.claude.ai/"), None);
+        assert_eq!(provider("https://claude.ai:8443/"), None);
         assert_eq!(provider("http://claude.ai/"), None);
         assert_eq!(provider("https://claude.ai.evil.com/"), None);
         assert_eq!(provider("https://www.google.com/"), None);
@@ -481,8 +576,14 @@ mod tests {
         assert_eq!(
             conversation.messages,
             vec![
-                WebChatMessage { role: "user".into(), content: "Hi".into() },
-                WebChatMessage { role: "assistant".into(), content: "Hello".into() },
+                WebChatMessage {
+                    role: "user".into(),
+                    content: "Hi".into()
+                },
+                WebChatMessage {
+                    role: "assistant".into(),
+                    content: "Hello".into()
+                },
             ]
         );
     }

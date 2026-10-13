@@ -14,8 +14,8 @@
     "chat.mistral.ai": "mistral",
   };
   const host = location.hostname;
-  const siteHost = Object.keys(SITES).find((allowed) => host === allowed || host.endsWith(`.${allowed}`));
-  if (location.protocol !== "https:" || !siteHost) return;
+  const siteHost = Object.keys(SITES).find((allowed) => host === allowed || host === `www.${allowed}`);
+  if (location.protocol !== "https:" || location.port || !siteHost) return;
   const site = SITES[siteHost];
   const internals = window.__TAURI_INTERNALS__;
   if (!internals || typeof internals.invoke !== "function") return;

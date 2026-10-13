@@ -1718,6 +1718,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-av-foundation",
  "objc2-foundation",
+ "percent-encoding",
  "portable-pty",
  "regex",
  "reqwest 0.12.28",
